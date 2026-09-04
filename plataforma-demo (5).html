@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Plataforma da Clínica — Demonstração</title>
+
+<!-- ==========================================================================
+     PLATAFORMA — MODO DEMONSTRAÇÃO
+     Abre sem Supabase e sem login, com dados de exemplo. Serve só para conhecer.
+     Deixe este arquivo na MESMA pasta dos módulos (estoque.html, agenda.html,
+     apresentacao.html, etc.) e abra pelo endereço do GitHub Pages — os módulos
+     são carregados aqui dentro e mostram seus próprios dados de exemplo.
+     (Abrir por file:// pode bloquear o carregamento dos módulos; use o Pages.)
+     ========================================================================== -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<style>
+  :root{
+    --ink:#12212B; --surface:#F5F7F8; --card:#FFFFFF; --line:#E1E7EA;
+    --muted:#5C6B75; --primary:#0E7C7B; --primary-ink:#0A5A59;
+    --ok:#2E7D5B; --ok-bg:#E7F4EE; --warn:#B26B00; --warn-bg:#FAEED4;
+    --bad:#C0392B; --bad-bg:#FBE5E2; --blue:#1F6FB2; --blue-bg:#E4EFF7;
+    --radius:14px; --shadow:0 1px 2px rgba(18,33,43,.06), 0 10px 30px rgba(18,33,43,.06);
+  }
+  *{box-sizing:border-box} html,body{margin:0; height:100%}
+  body{font-family:Inter,system-ui,sans-serif; color:var(--ink); background:var(--surface); -webkit-font-smoothing:antialiased}
+
+  .demobar{background:#12212B; color:#fff; text-align:center; font-size:12.5px; font-weight:600; padding:6px 12px}
+  .demobar b{color:#7FD4C6}
+
+  .bar{display:flex; align-items:center; gap:12px; padding:12px 18px; background:var(--card); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:10; flex-wrap:wrap}
+  .bar .logo{width:30px; height:30px; border-radius:9px; background:var(--primary); color:#fff; display:flex; align-items:center; justify-content:center; font-family:"Space Grotesk"; font-weight:700}
+  .bar .title{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:17px}
+  .bar .back{font:inherit; font-weight:600; border:1px solid var(--line); background:var(--card); border-radius:9px; padding:7px 13px; cursor:pointer}
+  .bar .sp{flex:1}
+  .switch{display:inline-flex; background:#EEF1F3; border-radius:9px; padding:3px}
+  .switch button{font:inherit; font-weight:600; font-size:13px; border:none; background:none; color:var(--muted); padding:6px 12px; border-radius:7px; cursor:pointer}
+  .switch button.on{background:var(--card); color:var(--ink); box-shadow:var(--shadow)}
+  .switch .lbl{font-size:12px; color:var(--muted); align-self:center; padding:0 8px 0 4px}
+
+  .home{max-width:920px; margin:0 auto; padding:26px 20px 80px}
+  .hi{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:24px; margin:0 0 2px}
+  .hi + p{color:var(--muted); margin:0 0 22px}
+  .att{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:8px; margin-bottom:24px; box-shadow:var(--shadow)}
+  .att h3{font-size:12.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:10px 12px 8px}
+  .att-item{display:flex; align-items:center; gap:12px; padding:13px 12px; border-radius:10px; cursor:pointer; text-align:left; width:100%; border:none; background:none; font:inherit}
+  .att-item:hover{background:#FAFBFB}
+  .att-item + .att-item{border-top:1px solid var(--line)}
+  .dot{width:12px; height:12px; border-radius:50%; flex-shrink:0}
+  .dot.bad{background:var(--bad)} .dot.warn{background:var(--warn)} .dot.blue{background:var(--blue)} .dot.ok{background:var(--ok)}
+  .att-item .txt{font-size:15px; font-weight:500}
+  .att-item .go{margin-left:auto; color:var(--muted); font-size:20px}
+  .allok{display:flex; align-items:center; gap:12px; padding:16px 12px; color:var(--ok); font-weight:600}
+
+  .cards{display:grid; grid-template-columns:repeat(2,1fr); gap:14px}
+  .mcard{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:20px; cursor:pointer; text-align:left; transition:transform .08s ease, box-shadow .12s; display:flex; gap:16px; align-items:center}
+  .mcard:hover{transform:translateY(-2px); box-shadow:var(--shadow)}
+  .mcard .ic{width:48px; height:48px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; background:var(--ok-bg); color:var(--primary-ink)}
+  .mcard .ic svg{width:26px; height:26px}
+  .mcard .mnome{font-family:"Space Grotesk",sans-serif; font-weight:600; font-size:18px}
+  .mcard .mstat{font-size:13.5px; margin-top:3px; font-weight:500}
+  .mstat.bad{color:var(--bad)} .mstat.warn{color:var(--warn)} .mstat.ok{color:var(--ok)} .mstat.blue{color:var(--blue)} .mstat.muted{color:var(--muted)}
+
+  .frame{width:100%; border:none; display:block; height:calc(100vh - 82px)}
+  @media (max-width:640px){ .cards{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState } = React;
+const brl=(n)=>(n||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL",maximumFractionDigits:0});
+
+const MODULOS = [
+  { key:"documentos",   nome:"Documentos", src:"cofre-alvara.html",   ic:"doc" },
+  { key:"geladeiras",   nome:"Equipamentos", src:"cadeia-frio.html",   ic:"temp" },
+  { key:"estoque",      nome:"Estoque",    src:"estoque.html",        ic:"box" },
+  { key:"atendimentos", nome:"Atendimentos", src:"produtividade.html", ic:"chart" },
+  { key:"financeiro",  nome:"Financeiro",  src:"financeiro.html",       ic:"money" },
+  { key:"equipe",       nome:"Equipe (RH)", src:"rh.html",            ic:"people" },
+  { key:"escala",       nome:"Escala",     src:"escala.html",         ic:"grid" },
+  { key:"ponto",        nome:"Ponto",      src:"ponto.html",          ic:"clock" },
+  { key:"acessos",      nome:"Acessos",    src:"acessos.html",        ic:"key", soloGestor:true },
+  { key:"profissionais",nome:"Profissionais", src:"profissionais.html", ic:"steth" },
+  { key:"agenda",       nome:"Agenda",     src:"agenda.html",         ic:"calendar" },
+  { key:"apresentacao", nome:"Apresentação", src:"apresentacao.html", ic:"slides" },
+];
+
+function Icon({ name }){
+  const p={
+    doc:"M7 3h7l4 4v14H7z M14 3v4h4",
+    box:"M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10",
+    temp:"M12 3a2 2 0 0 1 2 2v8a4 4 0 1 1-4 0V5a2 2 0 0 1 2-2z",
+    chart:"M4 20V10 M10 20V4 M16 20v-7 M22 20H2",
+    money:"M12 1v22 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
+    people:"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75",
+    calendar:"M3 5h18v16H3z M3 9h18 M8 3v4 M16 3v4",
+    slides:"M3 4h18v12H3z M8 20h8 M12 16v4",
+    steth:"M6 3v5a4 4 0 0 0 8 0V3 M10 12v3a5 5 0 0 0 10 0v-1 M19 11a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",
+    grid:"M3 4h18v16H3z M3 10h18 M3 15h18 M9 4v16",
+    clock:"M12 8v4l3 2 M12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20z",
+    key:"M15 7a4 4 0 1 1-4 4 M11 11l-8 8v3h3l1-1v-2h2v-2h2l1-1",
+  }[name];
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={p}/></svg>;
+}
+
+/* dados de exemplo fixos só para a home da demo */
+const DEMO = {
+  documentos:{ bad:1, warn:2 },
+  estoque:{ bad:1, warn:2 },
+  geladeiras:{ bad:1, warn:1 },
+  atendimentos:{ blueN:3, blueV:19850 },
+  equipe:{ bad:1, warn:2 },
+  agenda:{ total:6, warn:3 },
+};
+
+function Home({ onAbrir, papel }){
+  const res=DEMO;
+  const att=[];
+  if(res.geladeiras.bad) att.push({ sev:"bad", txt:`${res.geladeiras.bad} equipamento(s) fora da temperatura`, mod:"geladeiras" });
+  if(res.documentos.bad) att.push({ sev:"bad", txt:`${res.documentos.bad} documento(s) vencido(s)`, mod:"documentos" });
+  if(res.estoque.bad) att.push({ sev:"bad", txt:`${res.estoque.bad} item(ns) de estoque no vermelho`, mod:"estoque" });
+  if(res.geladeiras.warn) att.push({ sev:"warn", txt:`${res.geladeiras.warn} equipamento(s) com leitura atrasada`, mod:"geladeiras" });
+  if(res.documentos.warn) att.push({ sev:"warn", txt:`${res.documentos.warn} documento(s) vencendo em breve`, mod:"documentos" });
+  if(res.estoque.warn) att.push({ sev:"warn", txt:`${res.estoque.warn} item(ns) de estoque para repor ou vencendo`, mod:"estoque" });
+  if(res.equipe.bad) att.push({ sev:"bad", txt:`${res.equipe.bad} pendência(s) vencida(s) na equipe`, mod:"equipe" });
+  if(res.equipe.warn) att.push({ sev:"warn", txt:`${res.equipe.warn} pendência(s) da equipe vencendo em breve`, mod:"equipe" });
+  if(res.atendimentos.blueN) att.push({ sev:"blue", txt:`${brl(res.atendimentos.blueV)} a faturar (${res.atendimentos.blueN} atendimentos)`, mod:"atendimentos" });
+  if(res.agenda.warn) att.push({ sev:"warn", txt:`${res.agenda.warn} agendamento(s) de hoje a confirmar`, mod:"agenda" });
+
+  const statusModulo=(key)=>{
+    if(key==="apresentacao") return {cls:"muted", t:"Indicadores e PDF"};
+    if(key==="profissionais") return {cls:"muted", t:"Cadastro e disponibilidade"};
+    if(key==="escala") return {cls:"muted", t:"Escala da enfermagem"};
+    if(key==="ponto") return {cls:"muted", t:"Cadastro e relatório de horas"};
+    if(key==="acessos") return {cls:"muted", t:"Logins e perfis da equipe"};
+    if(key==="financeiro") return {cls:"muted", t:"Receitas, despesas e resultado"};
+    const r=res[key];
+    if(key==="atendimentos") return r.blueN? {cls:"blue", t:`${brl(r.blueV)} a faturar`} : {cls:"ok", t:"Nada pendente"};
+    if(key==="agenda") return r.total? {cls:r.warn?"warn":"blue", t:`${r.total} hoje${r.warn?` · ${r.warn} a confirmar`:""}`} : {cls:"ok", t:"Sem agendamentos hoje"};
+    if(r.bad) return {cls:"bad", t:`${r.bad} precisam de atenção`};
+    if(r.warn) return {cls:"warn", t:`${r.warn} para acompanhar`};
+    return {cls:"ok", t:"Tudo certo"};
+  };
+
+  return (
+    <div className="home">
+      <h2 className="hi">Bom te ver por aqui</h2>
+      <p>Este é o resumo da clínica agora.</p>
+      <div className="att">
+        <h3>Precisa de atenção</h3>
+        {att.map((a,i)=>(
+          <button key={i} className="att-item" onClick={()=>onAbrir(a.mod)}>
+            <span className={"dot "+a.sev}></span><span className="txt">{a.txt}</span><span className="go">›</span>
+          </button>
+        ))}
+      </div>
+      <div className="cards">
+        {MODULOS.filter(m=> !m.soloGestor || papel==="gestor").map(m=>{ const s=statusModulo(m.key);
+          return (
+            <button key={m.key} className="mcard" onClick={()=>onAbrir(m.key)}>
+              <span className="ic"><Icon name={m.ic}/></span>
+              <span><span className="mnome">{m.nome}</span><span className={"mstat "+s.cls} style={{display:"block"}}>{s.t}</span></span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function App(){
+  const [papel,setPapel]=useState("gestor");
+  const [view,setView]=useState("home");
+  const trocar=(p)=>{ setPapel(p); setView("home"); };
+
+  const Switch = (
+    <div className="switch">
+      <span className="lbl">Ver como:</span>
+      <button className={papel==="gestor"?"on":""} onClick={()=>trocar("gestor")}>Gestora</button>
+      <button className={papel==="funcionario"?"on":""} onClick={()=>trocar("funcionario")}>Funcionário</button>
+      <button className={papel==="medico"?"on":""} onClick={()=>trocar("medico")}>Médico</button>
+      <button className={papel==="quiosque"?"on":""} onClick={()=>trocar("quiosque")}>Quiosque</button>
+      <button className={papel==="auditoria"?"on":""} onClick={()=>trocar("auditoria")}>Auditoria</button>
+    </div>
+  );
+
+  if(papel==="funcionario"){
+    const fv = view==="agenda" ? "agenda" : "inventario";
+    return (
+      <>
+        <div className="demobar">Modo <b>demonstração</b> — dados de exemplo, nada é salvo</div>
+        <div className="bar">
+          <span className="logo">C</span>
+          <div className="switch" style={{marginLeft:4}}>
+            <button className={fv==="inventario"?"on":""} onClick={()=>setView("inventario")}>Inventário</button>
+            <button className={fv==="agenda"?"on":""} onClick={()=>setView("agenda")}>Agenda</button>
+          </div>
+          <span className="sp"></span>{Switch}
+        </div>
+        <iframe className="frame" src={fv==="agenda" ? "agenda.html?somente=ver" : "estoque.html?somente=inventario"} title={fv==="agenda"?"Agenda":"Inventário"}></iframe>
+      </>
+    );
+  }
+
+  if(papel==="quiosque"){
+    return (
+      <>
+        <div className="demobar">Modo <b>demonstração</b> — dados de exemplo, nada é salvo</div>
+        <div className="bar"><span className="logo">C</span><span className="title">Ponto — Quiosque</span><span className="sp"></span>{Switch}</div>
+        <iframe className="frame" src="registro-ponto.html" title="Ponto"></iframe>
+      </>
+    );
+  }
+
+  if(papel==="medico"){
+    const mv = view==="disponibilidade" ? "disponibilidade" : "agenda";
+    return (
+      <>
+        <div className="demobar">Modo <b>demonstração</b> — dados de exemplo, nada é salvo</div>
+        <div className="bar">
+          <span className="logo">C</span>
+          <div className="switch" style={{marginLeft:4}}>
+            <button className={mv==="agenda"?"on":""} onClick={()=>setView("agenda")}>Minha agenda</button>
+            <button className={mv==="disponibilidade"?"on":""} onClick={()=>setView("disponibilidade")}>Minha disponibilidade</button>
+          </div>
+          <span className="sp"></span>{Switch}
+        </div>
+        <iframe className="frame"
+          src={mv==="disponibilidade" ? "profissionais.html?meu=p1" : "agenda.html?profissional=Dra.%20Marina"}
+          title={mv==="disponibilidade"?"Disponibilidade":"Agenda"}></iframe>
+      </>
+    );
+  }
+
+  const mod = MODULOS.find(m=>m.key===view);
+  return (
+    <>
+      <div className="demobar">Modo <b>demonstração</b> — dados de exemplo, nada é salvo</div>
+      <div className="bar">
+        <span className="logo">C</span>
+        {view==="home"
+          ? <span className="title">Plataforma da Clínica</span>
+          : <><button className="back" onClick={()=>setView("home")}>‹ Início</button><span className="title">{mod?.nome}</span></>}
+        <span className="sp"></span>
+        {Switch}
+      </div>
+      {view==="home" ? <Home onAbrir={setView} papel={papel} /> : <iframe className="frame" src={mod.src} title={mod.nome}></iframe>}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

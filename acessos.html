@@ -80,7 +80,7 @@ async function chamar(action, extra){
 
 function App(){
   const [users,setUsers]=useState([]); const [loading,setLoading]=useState(true);
-  const [msg,setMsg]=useState({}); const [novo,setNovo]=useState({ nome:"", email:"", senha:"", papel:"funcionario" });
+  const [msg,setMsg]=useState({}); const [novo,setNovo]=useState({ nome:"", email:"", senha:"", codigo:"", papel:"funcionario", criarColaborador:true, funcao:"", carga_horaria:"", regime:"int5" });
   const [salvando,setSalvando]=useState(false);
   const configOK = sb && WORKER_URL;
 
@@ -94,11 +94,24 @@ function App(){
   useEffect(()=>{ carregar(); },[]);
 
   async function criar(){
-    if(!novo.email||!novo.senha){ setMsg({novo:"Preencha e-mail/código e senha."}); return; }
+    const func = novo.papel==="funcionario";
+    let email = novo.email, senha = novo.senha;
+    if(func){
+      const cod=(novo.codigo||"").replace(/\D/g,"");
+      if(cod.length<6){ setMsg({novo:"O código do funcionário tem 6 dígitos."}); return; }
+      email = "f"+cod+"@clinica.local"; senha = cod;
+    } else {
+      if(!email){ setMsg({novo:"Informe o e-mail (login das pessoas que não são funcionário)."}); return; }
+      if((senha||"").length<6){ setMsg({novo:"A senha tem no mínimo 6 caracteres."}); return; }
+    }
     setSalvando(true); setMsg({});
-    const res=await chamar("criar", novo);
+    const res=await chamar("criar", {
+      nome:novo.nome, email, senha, papel:novo.papel,
+      criarColaborador: novo.criarColaborador,
+      funcao: novo.funcao, carga_horaria: novo.carga_horaria, regime: novo.regime,
+    });
     setSalvando(false);
-    if(res.ok){ setNovo({ nome:"", email:"", senha:"", papel:"funcionario" }); setMsg({novo:"Acesso criado."}); carregar(); }
+    if(res.ok){ setNovo({ nome:"", email:"", senha:"", codigo:"", papel:"funcionario", criarColaborador:true, funcao:"", carga_horaria:"", regime:"int5" }); setMsg({novo:"Acesso criado."}); carregar(); }
     else setMsg({novo:res.error||"Erro ao criar."});
   }
   async function mudarPapel(id, papel){ const res=await chamar("papel",{id,papel}); if(res.ok) carregar(); else setMsg({geral:res.error}); }
@@ -144,12 +157,32 @@ function App(){
           <h3>Novo acesso</h3>
           <div className="field full"><label>Nome</label><input value={novo.nome} onChange={e=>setNovo({...novo,nome:e.target.value})} placeholder="Nome da pessoa" /></div>
           <div className="field"><label>Perfil</label>
-            <select value={novo.papel} onChange={e=>setNovo({...novo,papel:e.target.value})}>{PAPEIS.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
-          <div className="field"><label>{novo.papel==="funcionario"?"E-mail (interno, ex.: nome@clinica.local)":"E-mail"}</label>
-            <input value={novo.email} onChange={e=>setNovo({...novo,email:e.target.value})} placeholder="pessoa@clinica.com" /></div>
-          <div className="field full"><label>Senha {novo.papel==="funcionario"||novo.papel==="quiosque"?"(pode ser um código só de números, mín. 6)":"(mín. 6)"}</label>
-            <input value={novo.senha} onChange={e=>setNovo({...novo,senha:e.target.value})} placeholder="mín. 6 caracteres" /></div>
-          <div className="hintline">O médico, depois de criado, pode ser vinculado ao seu cadastro em Profissionais para ver a própria agenda.</div>
+            <select value={novo.papel} onChange={e=>setNovo({...novo,papel:e.target.value, criarColaborador:(e.target.value==="funcionario"||e.target.value==="medico")})}>{PAPEIS.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
+
+          {novo.papel==="funcionario" ? (
+            <div className="field"><label>Código de acesso (6 números)</label>
+              <input value={novo.codigo} onChange={e=>setNovo({...novo,codigo:e.target.value.replace(/\D/g,"").slice(0,6)})} placeholder="ex.: 483920" inputMode="numeric" /></div>
+          ) : (<>
+            <div className="field"><label>E-mail (login)</label><input value={novo.email} onChange={e=>setNovo({...novo,email:e.target.value})} placeholder="pessoa@clinica.com" /></div>
+            <div className="field full"><label>Senha (mín. 6)</label><input value={novo.senha} onChange={e=>setNovo({...novo,senha:e.target.value})} placeholder="mín. 6 caracteres" /></div>
+          </>)}
+
+          <div className="full" style={{borderTop:"1px solid var(--line)",paddingTop:12,marginTop:2}}>
+            <label style={{display:"flex",gap:8,alignItems:"center",fontSize:14,fontWeight:600}}>
+              <input type="checkbox" checked={novo.criarColaborador} onChange={e=>setNovo({...novo,criarColaborador:e.target.checked})} style={{width:"auto"}} />
+              Incluir no ponto e na escala
+            </label>
+          </div>
+          {novo.criarColaborador && <>
+            <div className="field"><label>Função</label><input value={novo.funcao} onChange={e=>setNovo({...novo,funcao:e.target.value})} placeholder="Recepcionista, Téc…" /></div>
+            <div className="field"><label>Carga horária (h/sem)</label><input type="number" value={novo.carga_horaria} onChange={e=>setNovo({...novo,carga_horaria:e.target.value})} placeholder="ex.: 44" /></div>
+            <div className="field full"><label>Regime</label>
+              <select value={novo.regime} onChange={e=>setNovo({...novo,regime:e.target.value})}>
+                <option value="int5">Integral (seg–sex)</option><option value="int6">Integral + sábado</option>
+                <option value="manha">Só manhã</option><option value="tarde">Só tarde</option><option value="custom">Personalizado</option>
+              </select></div>
+          </>}
+
           <div className="full" style={{display:"flex",gap:12,alignItems:"center"}}>
             <button className="btn btn-primary" onClick={criar} disabled={salvando||!configOK}>{salvando?"Criando…":"Criar acesso"}</button>
             {msg.novo && <span className={"msg "+(msg.novo.includes("criado")?"ok":"bad")}>{msg.novo}</span>}

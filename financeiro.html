@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Financeiro</title>
+<!-- ==========================================================================
+     FINANCEIRO — resumo (receita × despesa × resultado) + despesas com PDF.
+     Receita vem dos Atendimentos; despesas são lançadas aqui, com comprovante.
+     Rode financeiro-schema.sql (cria a tabela e o "armário" de comprovantes).
+     Sem chaves -> modo demo (nada é salvo; anexo desativado).
+     ========================================================================== -->
+<script>
+  const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet" />
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{ --ink:#12212B; --surface:#F5F7F8; --card:#FFFFFF; --line:#E1E7EA; --muted:#5C6B75;
+    --primary:#0E7C7B; --primary-ink:#0A5A59; --ok:#2E7D5B; --ok-bg:#E7F4EE; --warn:#B26B00; --warn-bg:#FAEED4;
+    --bad:#C0392B; --bad-bg:#FBE5E2; --blue:#1F6FB2; --blue-bg:#E4EFF7;
+    --radius:12px; --shadow:0 1px 2px rgba(18,33,43,.06),0 8px 24px rgba(18,33,43,.05); }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--surface);font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin:0 auto;padding:24px 20px 80px}
+  .top{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+  .brand h1{font-family:"Space Grotesk";font-weight:700;font-size:26px;margin:0}
+  .brand p{margin:2px 0 0;color:var(--muted);font-size:13.5px}
+  .mode{font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px}
+  .mode.demo{background:var(--warn-bg);color:var(--warn)} .mode.live{background:var(--ok-bg);color:var(--ok)}
+  .monthbar{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+  .monthbar b{font-family:"Space Grotesk";font-size:17px;min-width:150px;text-align:center}
+  .navbtn{font:inherit;border:1px solid var(--line);background:var(--card);border-radius:9px;padding:7px 12px;cursor:pointer;font-weight:600}
+  .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
+  .tile{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;border-left-width:4px}
+  .tile .l{font-size:12px;color:var(--muted);font-weight:500}
+  .tile .v{font-family:"Space Grotesk";font-weight:700;font-size:23px;margin-top:6px;font-variant-numeric:tabular-nums}
+  .t-ok{border-left-color:var(--ok)} .t-ok .v{color:var(--ok)}
+  .t-bad{border-left-color:var(--bad)} .t-bad .v{color:var(--bad)}
+  .t-ink{border-left-color:var(--ink)}
+  .t-ink .v.pos{color:var(--ok)} .t-ink .v.neg{color:var(--bad)}
+  .btn{font:inherit;font-weight:600;padding:9px 15px;border-radius:9px;border:1px solid transparent;cursor:pointer}
+  .btn-primary{background:var(--primary);color:#fff} .btn-primary:disabled{opacity:.5}
+  .btn-ghost{background:var(--card);border:1px solid var(--line);color:var(--ink)} .btn-ghost:hover{border-color:var(--muted)}
+  .btn-sm{padding:5px 10px;font-size:13px;font-weight:500}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;margin-bottom:16px}
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600;padding:10px 12px;border-bottom:1px solid var(--line);background:#FBFCFC}
+  td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle;font-size:13.5px}
+  tr:last-child td{border-bottom:none}
+  .mono{font-variant-numeric:tabular-nums}
+  .val{font-weight:600;font-variant-numeric:tabular-nums;color:var(--bad)}
+  .cat{display:inline-block;font-size:11px;font-weight:600;color:var(--primary-ink);background:var(--ok-bg);padding:2px 7px;border-radius:6px}
+  .acts{display:flex;gap:6px;justify-content:flex-end}
+  .link{color:var(--primary);font-weight:600;text-decoration:none;font-size:13px;background:none;border:none;cursor:pointer}
+  .empty{padding:40px;text-align:center;color:var(--muted)}
+  .form{padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .form h3{grid-column:1/-1;margin:0;font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  .field{display:flex;flex-direction:column;gap:5px} .full{grid-column:1/-1}
+  .field label{font-size:12.5px;font-weight:600;color:var(--muted)}
+  .field input,.field select{font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:#fff}
+  .msg{font-size:13.5px} .msg.ok{color:var(--ok)} .msg.bad{color:var(--bad)}
+  @media(max-width:640px){ .tiles{grid-template-columns:1fr} .form{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
+const sb=(SUPABASE_URL&&SUPABASE_ANON_KEY)?supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
+const MESES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+const CATS=["Insumos","Medicamentos","Equipamentos","Manutenção","Serviços","Aluguel","Impostos","Salários","Marketing","Outros"];
+const brl=(n)=>(n||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+const fmtD=(s)=>{ if(!s)return"—"; const [y,m,d]=s.split("-"); return `${d}/${m}`; };
+
+function demoDesp(){ const rel=(n)=>{const x=new Date();x.setDate(x.getDate()+n);return x.toISOString().slice(0,10);};
+  return [
+    {id:"1",data:rel(-2),descricao:"Reagentes de coleta",categoria:"Insumos",fornecedor:"LabSupply",valor:2400,comprovante_path:null},
+    {id:"2",data:rel(-5),descricao:"Manutenção autoclave",categoria:"Manutenção",fornecedor:"TecMed",valor:850,comprovante_path:null},
+    {id:"3",data:rel(-9),descricao:"Aluguel da sala",categoria:"Aluguel",fornecedor:"Imob. Centro",valor:6500,comprovante_path:null},
+  ]; }
+function demoAtend(){ const rel=(n)=>{const x=new Date();x.setDate(x.getDate()+n);return x.toISOString().slice(0,10);};
+  return [ {data:rel(-1),valor:18000,status:"recebido"},{data:rel(-3),valor:450,status:"recebido"},{data:rel(-4),valor:1200,status:"faturado"},{data:rel(-6),valor:22000,status:"realizado"} ]; }
+
+function App(){
+  const now=new Date();
+  const [ano,setAno]=useState(now.getFullYear()); const [mes,setMes]=useState(now.getMonth());
+  const [desp,setDesp]=useState([]); const [atend,setAtend]=useState([]); const [loading,setLoading]=useState(true);
+  const [form,setForm]=useState({ data:new Date().toISOString().slice(0,10), descricao:"", categoria:"Insumos", fornecedor:"", valor:"", file:null });
+  const [saving,setSaving]=useState(false); const [msg,setMsg]=useState("");
+
+  async function load(){
+    setLoading(true);
+    if(sb){
+      const [d,a]=await Promise.all([ sb.from("despesas").select("*").order("data",{ascending:false}), sb.from("atendimentos").select("data,valor,status") ]);
+      if(d.error) setMsg(d.error.message);
+      setDesp(d.data||[]); setAtend(a.data||[]);
+    } else { setDesp(demoDesp()); setAtend(demoAtend()); }
+    setLoading(false);
+  }
+  useEffect(()=>{ load(); },[]);
+
+  const noMes=(s)=>{ if(!s)return false; const [y,m]=s.split("-").map(Number); return y===ano && (m-1)===mes; };
+  const despMes=desp.filter(x=>noMes(x.data));
+  const atendMes=atend.filter(x=>noMes(x.data));
+  const totDesp=despMes.reduce((s,x)=>s+Number(x.valor||0),0);
+  const receita=atendMes.reduce((s,x)=>s+Number(x.valor||0),0);
+  const recebido=atendMes.filter(x=>x.status==="recebido").reduce((s,x)=>s+Number(x.valor||0),0);
+  const resultado=receita-totDesp;
+
+  function mudarMes(k){ let m=mes+k,y=ano; if(m<0){m=11;y--;} if(m>11){m=0;y++;} setMes(m); setAno(y); }
+
+  async function salvar(){
+    if(!form.descricao||!form.valor){ setMsg("Preencha descrição e valor."); return; }
+    setSaving(true); setMsg("");
+    let path=null;
+    if(sb && form.file){
+      const nome=crypto.randomUUID()+"-"+form.file.name.replace(/[^\w.\-]/g,"_");
+      const up=await sb.storage.from("comprovantes").upload(nome, form.file);
+      if(up.error){ setSaving(false); setMsg("Erro ao enviar o PDF: "+up.error.message); return; }
+      path=nome;
+    }
+    const payload={ data:form.data, descricao:form.descricao, categoria:form.categoria, fornecedor:form.fornecedor||null, valor:Number(form.valor)||0, comprovante_path:path };
+    if(sb){ const r=await sb.from("despesas").insert(payload); if(r.error){ setSaving(false); setMsg(r.error.message); return; } await load(); }
+    else setDesp(p=>[{...payload,id:"n"+Date.now()},...p]);
+    setForm({ data:new Date().toISOString().slice(0,10), descricao:"", categoria:"Insumos", fornecedor:"", valor:"", file:null });
+    setSaving(false); setMsg("Despesa lançada.");
+  }
+  async function verComprovante(path){
+    if(!sb||!path) return;
+    const { data, error }=await sb.storage.from("comprovantes").createSignedUrl(path, 3600);
+    if(error){ alert("Não consegui abrir o comprovante."); return; }
+    window.open(data.signedUrl, "_blank");
+  }
+  async function excluir(x){
+    if(!confirm("Excluir esta despesa?")) return;
+    if(sb){ if(x.comprovante_path) await sb.storage.from("comprovantes").remove([x.comprovante_path]);
+      const r=await sb.from("despesas").delete().eq("id",x.id); if(r.error) return alert(r.error.message); await load(); }
+    else setDesp(p=>p.filter(d=>d.id!==x.id));
+  }
+
+  return (
+    <div className="wrap">
+      <div className="top">
+        <div className="brand"><h1>Financeiro</h1><p>Receitas, despesas e resultado do mês</p></div>
+        <span className={"mode "+(sb?"live":"demo")}>{sb?"● Conectado":"○ Modo demo"}</span>
+      </div>
+
+      <div className="monthbar">
+        <button className="navbtn" onClick={()=>mudarMes(-1)}>‹</button>
+        <b>{MESES[mes]} {ano}</b>
+        <button className="navbtn" onClick={()=>mudarMes(1)}>›</button>
+      </div>
+
+      <div className="tiles">
+        <div className="tile t-ok"><div className="l">Receita no mês</div><div className="v">{brl(receita)}</div><div className="l" style={{marginTop:4}}>recebido: {brl(recebido)}</div></div>
+        <div className="tile t-bad"><div className="l">Despesas no mês</div><div className="v">{brl(totDesp)}</div><div className="l" style={{marginTop:4}}>{despMes.length} lançamentos</div></div>
+        <div className="tile t-ink"><div className="l">Resultado</div><div className={"v "+(resultado>=0?"pos":"neg")}>{brl(resultado)}</div><div className="l" style={{marginTop:4}}>receita − despesas</div></div>
+      </div>
+
+      <div className="panel">
+        {loading ? <div className="empty">Carregando…</div> :
+         despMes.length===0 ? <div className="empty">Sem despesas neste mês.</div> :
+         <table>
+           <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Fornecedor</th><th>Valor</th><th>Comprovante</th><th></th></tr></thead>
+           <tbody>
+             {despMes.map(x=>(
+               <tr key={x.id}>
+                 <td className="mono">{fmtD(x.data)}</td>
+                 <td style={{fontWeight:600}}>{x.descricao}</td>
+                 <td><span className="cat">{x.categoria||"—"}</span></td>
+                 <td>{x.fornecedor||"—"}</td>
+                 <td className="val">{brl(Number(x.valor))}</td>
+                 <td>{x.comprovante_path ? <button className="link" onClick={()=>verComprovante(x.comprovante_path)}>Ver PDF</button> : <span style={{color:"var(--muted)"}}>—</span>}</td>
+                 <td><div className="acts"><button className="btn btn-ghost btn-sm" onClick={()=>excluir(x)}>Excluir</button></div></td>
+               </tr>
+             ))}
+           </tbody>
+         </table>}
+      </div>
+
+      <div className="panel">
+        <div className="form">
+          <h3>Nova despesa</h3>
+          <div className="field"><label>Data</label><input type="date" value={form.data} onChange={e=>setForm({...form,data:e.target.value})} /></div>
+          <div className="field"><label>Valor (R$)</label><input type="number" step="0.01" value={form.valor} onChange={e=>setForm({...form,valor:e.target.value})} /></div>
+          <div className="field full"><label>Descrição</label><input value={form.descricao} onChange={e=>setForm({...form,descricao:e.target.value})} placeholder="Ex.: Reagentes de coleta" /></div>
+          <div className="field"><label>Categoria</label><select value={form.categoria} onChange={e=>setForm({...form,categoria:e.target.value})}>{CATS.map(c=><option key={c}>{c}</option>)}</select></div>
+          <div className="field"><label>Fornecedor</label><input value={form.fornecedor} onChange={e=>setForm({...form,fornecedor:e.target.value})} /></div>
+          <div className="field full"><label>Comprovante (PDF ou imagem){!sb&&" — indisponível no modo demo"}</label>
+            <input type="file" accept="application/pdf,image/*" disabled={!sb} onChange={e=>setForm({...form,file:e.target.files[0]||null})} /></div>
+          <div className="full" style={{display:"flex",gap:12,alignItems:"center"}}>
+            <button className="btn btn-primary" onClick={salvar} disabled={saving}>{saving?"Salvando…":"Lançar despesa"}</button>
+            {msg && <span className={"msg "+(msg.includes("lançada")?"ok":"bad")}>{msg}</span>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
