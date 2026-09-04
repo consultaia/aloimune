@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Profissionais</title>
+
+<!-- ==========================================================================
+     PROFISSIONAIS e DISPONIBILIDADE
+     Cadastro de profissional + especialidade e a grade semanal de horários.
+     A IA de agendamento (WhatsApp) usa esta disponibilidade para oferecer
+     horários livres e preencher a agenda.
+     Stack: HTML único + React 18 (CDN) + Supabase (CDN). Sem build. GitHub Pages.
+     Mesmo projeto Supabase. Rode profissionais-schema.sql antes.
+     Sem chaves -> modo demo (dados em memória, nada é salvo).
+     ========================================================================== -->
+<script>
+  const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  :root{
+    --ink:#12212B; --surface:#F5F7F8; --card:#FFFFFF; --line:#E1E7EA;
+    --muted:#5C6B75; --primary:#0E7C7B; --primary-ink:#0A5A59;
+    --ok:#2E7D5B; --ok-bg:#E7F4EE; --warn:#B26B00; --warn-bg:#FAEED4;
+    --bad:#C0392B; --bad-bg:#FBE5E2;
+    --radius:12px; --shadow:0 1px 2px rgba(18,33,43,.06), 0 8px 24px rgba(18,33,43,.05);
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{font-family:Inter,system-ui,sans-serif; color:var(--ink); background:var(--surface); font-size:15px; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1100px; margin:0 auto; padding:24px 20px 80px}
+  .top{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:16px}
+  .brand h1{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:26px; margin:0; letter-spacing:-.01em}
+  .brand p{margin:2px 0 0; color:var(--muted); font-size:13.5px}
+  .mode{font-size:12px; font-weight:600; padding:5px 10px; border-radius:999px; white-space:nowrap}
+  .mode.demo{background:var(--warn-bg); color:var(--warn)} .mode.live{background:var(--ok-bg); color:var(--ok)}
+
+  .note{background:var(--ok-bg); color:var(--primary-ink); border:1px solid #CDE7DD; border-radius:12px; padding:11px 14px; font-size:13.5px; margin-bottom:18px}
+
+  .cols{display:grid; grid-template-columns:320px 1fr; gap:16px}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden}
+  .card h3{margin:0; font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding:14px 16px; border-bottom:1px solid var(--line)}
+  .btn{font:inherit; font-weight:600; padding:9px 15px; border-radius:9px; border:1px solid transparent; cursor:pointer}
+  .btn-primary{background:var(--primary); color:#fff} .btn-primary:hover{background:var(--primary-ink)}
+  .btn-ghost{background:var(--card); border-color:var(--line); color:var(--ink); border:1px solid var(--line)} .btn-ghost:hover{border-color:var(--muted)}
+  .btn-sm{padding:5px 10px; font-size:13px; font-weight:500}
+
+  .plist{display:flex; flex-direction:column}
+  .prow{display:flex; align-items:center; gap:11px; padding:12px 16px; border-bottom:1px solid var(--line); cursor:pointer; text-align:left; background:none; border-left:3px solid transparent; font:inherit; width:100%}
+  .prow:hover{background:#FAFBFB}
+  .prow.sel{background:#F3F8F7; border-left-color:var(--primary)}
+  .cdot{width:12px; height:12px; border-radius:50%; flex-shrink:0}
+  .prow .pn{font-weight:600}
+  .prow .pe{font-size:12.5px; color:var(--muted)}
+  .prow .inact{font-size:11px; color:var(--bad); font-weight:600}
+  .addp{padding:12px 16px}
+
+  .discard{padding:16px}
+  .selname{font-family:"Space Grotesk",sans-serif; font-weight:600; font-size:18px; margin:0 0 2px}
+  .selesp{color:var(--muted); font-size:13.5px; margin:0 0 16px}
+  .dia{border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:10px}
+  .dia .dh{display:flex; align-items:center; gap:10px; margin-bottom:8px}
+  .dia .dnome{font-weight:600}
+  .faixa{display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:8px; align-items:center; margin-bottom:8px}
+  .faixa input{font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; width:100%}
+  .faixa .rm{background:none; border:none; color:var(--muted); cursor:pointer; font-size:18px}
+  .lbl{font-size:11px; color:var(--muted)}
+  .savebar{position:sticky; bottom:0; background:var(--card); border-top:1px solid var(--line); padding:12px 16px; display:flex; justify-content:space-between; align-items:center; margin:16px -16px -16px}
+  .note2{color:var(--muted); font-size:13px}
+  .empty{padding:40px; text-align:center; color:var(--muted)}
+
+  .overlay{position:fixed; inset:0; background:rgba(18,33,43,.45); display:flex; align-items:flex-start; justify-content:center; padding:40px 16px; overflow:auto; z-index:50}
+  .modal{background:var(--card); border-radius:16px; width:100%; max-width:460px; box-shadow:var(--shadow); padding:22px}
+  .modal h2{font-family:"Space Grotesk",sans-serif; margin:0 0 16px; font-size:19px}
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  .field{display:flex; flex-direction:column; gap:5px} .field.full{grid-column:1/-1}
+  .field label{font-size:12.5px; font-weight:600; color:var(--muted)}
+  .field input{font:inherit; padding:9px 11px; border:1px solid var(--line); border-radius:9px; background:#fff}
+  .check{display:flex; align-items:center; gap:8px} .check input{width:auto}
+  .modal-actions{display:flex; justify-content:space-between; margin-top:18px; gap:10px}
+  .err{background:var(--bad-bg); color:var(--bad); padding:9px 12px; border-radius:9px; font-size:13px; margin-bottom:12px}
+
+  @media (max-width:760px){ .cols{grid-template-columns:1fr} .faixa{grid-template-columns:1fr 1fr} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const DIAS = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
+const uid = ()=> "tmp-"+Math.random().toString(36).slice(2,9);
+
+function demoData(){
+  const profs=[
+    { id:"p1", nome:"Dra. Marina Alves", especialidade:"Reprodução humana", cor:"#0E7C7B", ativo:true },
+    { id:"p2", nome:"Dr. André Costa", especialidade:"Imunologia", cor:"#1F6FB2", ativo:true },
+  ];
+  const disp=[
+    { id:"d1", profissional_id:"p1", dia_semana:1, hora_inicio:"08:00", hora_fim:"12:00", duracao_slot:30 },
+    { id:"d2", profissional_id:"p1", dia_semana:3, hora_inicio:"08:00", hora_fim:"12:00", duracao_slot:30 },
+    { id:"d3", profissional_id:"p1", dia_semana:5, hora_inicio:"14:00", hora_fim:"18:00", duracao_slot:30 },
+    { id:"d4", profissional_id:"p2", dia_semana:2, hora_inicio:"13:00", hora_fim:"17:00", duracao_slot:40 },
+    { id:"d5", profissional_id:"p2", dia_semana:4, hora_inicio:"13:00", hora_fim:"17:00", duracao_slot:40 },
+  ];
+  return { profs, disp };
+}
+const hhmm=(t)=> t? t.slice(0,5):"";
+
+function App(){
+  const meu = new URLSearchParams(location.search).get("meu") || "";
+  const [profs,setProfs]=useState([]); const [disp,setDisp]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [sel,setSel]=useState(null);
+  const [edit,setEdit]=useState(null);
+
+  async function load(){
+    setLoading(true);
+    if(sb){
+      const [p,d]=await Promise.all([ sb.from("profissionais").select("*").order("nome"), sb.from("disponibilidade").select("*") ]);
+      if(p.error||d.error) alert("Erro Supabase: "+(p.error?.message||d.error?.message));
+      setProfs(p.data||[]); setDisp(d.data||[]);
+      if(!sel && p.data && p.data.length) setSel(meu || p.data[0].id);
+    } else { const x=demoData(); setProfs(x.profs); setDisp(x.disp); if(!sel) setSel(meu || x.profs[0].id); }
+    setLoading(false);
+  }
+  useEffect(()=>{ load(); },[]);
+
+  const selProf = profs.find(p=>p.id===sel);
+
+  async function salvarProf(f){
+    const p={ nome:f.nome, especialidade:f.especialidade||null, cor:f.cor||"#0E7C7B", ativo:f.ativo!==false };
+    if(!p.nome.trim()) return "Informe o nome.";
+    if(sb){ const r=f.id? await sb.from("profissionais").update(p).eq("id",f.id) : await sb.from("profissionais").insert(p).select().single();
+      if(r.error) return r.error.message; await load(); if(!f.id && r.data) setSel(r.data.id); }
+    else { if(f.id) setProfs(prev=>prev.map(x=>x.id===f.id?{...x,...p}:x)); else { const id=uid(); setProfs(prev=>[...prev,{...p,id}]); setSel(id); } }
+    setEdit(null); return null;
+  }
+
+  async function salvarDisp(profId, faixas){
+    // substitui toda a disponibilidade do profissional
+    if(sb){
+      const del=await sb.from("disponibilidade").delete().eq("profissional_id",profId);
+      if(del.error) return del.error.message;
+      const rows=faixas.map(f=>({ profissional_id:profId, dia_semana:f.dia_semana, hora_inicio:f.hora_inicio, hora_fim:f.hora_fim, duracao_slot:Number(f.duracao_slot)||30 }));
+      if(rows.length){ const ins=await sb.from("disponibilidade").insert(rows); if(ins.error) return ins.error.message; }
+      await load();
+    } else {
+      setDisp(prev=> [...prev.filter(d=>d.profissional_id!==profId), ...faixas.map(f=>({...f, id:uid(), profissional_id:profId}))]);
+    }
+    return null;
+  }
+
+  return (
+    <div className="wrap">
+      <div className="top">
+        <div className="brand"><h1>Profissionais</h1><p>Cadastro, especialidade e disponibilidade para marcação</p></div>
+        <span className={"mode "+(sb?"live":"demo")}>{sb?"● Conectado ao Supabase":"○ Modo demo — nada é salvo"}</span>
+      </div>
+
+      <div className="note">A disponibilidade definida aqui é o que a IA de agendamento no WhatsApp usa para oferecer horários livres e preencher a agenda. Os agendamentos aparecem na Agenda em tempo real.</div>
+
+      <div className="cols" style={meu?{gridTemplateColumns:"1fr"}:null}>
+        {!meu &&
+        <div className="card">
+          <h3>Profissionais</h3>
+          {loading ? <div className="empty">Carregando…</div> :
+            <div className="plist">
+              {profs.map(p=>(
+                <button key={p.id} className={"prow"+(p.id===sel?" sel":"")} onClick={()=>setSel(p.id)}>
+                  <span className="cdot" style={{background:p.cor||"#0E7C7B"}}></span>
+                  <span style={{flex:1}}>
+                    <span className="pn" style={{display:"block"}}>{p.nome}</span>
+                    <span className="pe">{p.especialidade||"—"}</span>
+                  </span>
+                  {!p.ativo && <span className="inact">inativo</span>}
+                </button>
+              ))}
+              <div className="addp"><button className="btn btn-primary btn-sm" onClick={()=>setEdit({ cor:"#0E7C7B", ativo:true })}>+ Novo profissional</button></div>
+            </div>}
+        </div>}
+
+        <div className="card">
+          <h3>Disponibilidade semanal</h3>
+          {!selProf ? <div className="empty">Selecione um profissional.</div> :
+            <DispEditor key={selProf.id} prof={selProf} disp={disp.filter(d=>d.profissional_id===selProf.id)} onEditProf={()=>setEdit(selProf)} onSave={(faixas)=>salvarDisp(selProf.id, faixas)} />}
+        </div>
+      </div>
+
+      {edit && <ProfModal p={edit} onClose={()=>setEdit(null)} onSave={salvarProf} />}
+    </div>
+  );
+}
+
+function DispEditor({ prof, disp, onSave, onEditProf }){
+  const init = useMemo(()=> disp.map(d=>({ dia_semana:d.dia_semana, hora_inicio:hhmm(d.hora_inicio), hora_fim:hhmm(d.hora_fim), duracao_slot:d.duracao_slot||30 })), [prof.id]);
+  const [faixas,setFaixas]=useState(init);
+  const [msg,setMsg]=useState(""); const [saving,setSaving]=useState(false);
+  useEffect(()=>{ setFaixas(init); setMsg(""); },[prof.id]);
+
+  const porDia = (dia)=> faixas.map((f,i)=>({f,i})).filter(x=>x.f.dia_semana===dia);
+  const add=(dia)=> setFaixas(a=>[...a,{ dia_semana:dia, hora_inicio:"08:00", hora_fim:"12:00", duracao_slot:30 }]);
+  const upd=(i,k,v)=> setFaixas(a=>a.map((f,idx)=>idx===i?{...f,[k]:v}:f));
+  const rm=(i)=> setFaixas(a=>a.filter((_,idx)=>idx!==i));
+
+  async function salvar(){ setSaving(true); const e=await onSave(faixas); setSaving(false); setMsg(e?("Erro: "+e):"Disponibilidade salva."); if(!e) setTimeout(()=>setMsg(""),2500); }
+
+  return (
+    <div className="discard">
+      <div style={{display:"flex", alignItems:"center", gap:10, marginBottom:14}}>
+        <span className="cdot" style={{background:prof.cor||"#0E7C7B", width:16, height:16}}></span>
+        <div style={{flex:1}}>
+          <p className="selname">{prof.nome}</p>
+          <p className="selesp">{prof.especialidade||"—"}</p>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={onEditProf}>Editar cadastro</button>
+      </div>
+
+      {[1,2,3,4,5,6,0].map(dia=>(
+        <div className="dia" key={dia}>
+          <div className="dh"><span className="dnome">{DIAS[dia]}</span><button className="btn btn-ghost btn-sm" onClick={()=>add(dia)}>+ faixa</button></div>
+          {porDia(dia).length===0 ? <span className="note2">Sem atendimento</span> :
+            porDia(dia).map(({f,i})=>(
+              <div className="faixa" key={i}>
+                <span><span className="lbl">Início</span><input type="time" value={f.hora_inicio} onChange={e=>upd(i,"hora_inicio",e.target.value)} /></span>
+                <span><span className="lbl">Fim</span><input type="time" value={f.hora_fim} onChange={e=>upd(i,"hora_fim",e.target.value)} /></span>
+                <span><span className="lbl">Slot (min)</span><input type="number" value={f.duracao_slot} onChange={e=>upd(i,"duracao_slot",e.target.value)} /></span>
+                <button className="rm" title="Remover" onClick={()=>rm(i)}>×</button>
+              </div>
+            ))}
+        </div>
+      ))}
+
+      <div className="savebar">
+        <span className="note2">{msg || "A IA usará estes horários para marcar."}</span>
+        <button className="btn btn-primary" onClick={salvar} disabled={saving}>{saving?"Salvando…":"Salvar disponibilidade"}</button>
+      </div>
+    </div>
+  );
+}
+
+function ProfModal({ p, onClose, onSave }){
+  const [f,setF]=useState({ id:p.id, nome:p.nome||"", especialidade:p.especialidade||"", cor:p.cor||"#0E7C7B", ativo:p.ativo!==false });
+  const [err,setErr]=useState(""); const [s,setS]=useState(false);
+  const set=(k,v)=>setF(x=>({...x,[k]:v}));
+  async function submit(){ setS(true); const e=await onSave(f); setS(false); if(e) setErr(e); }
+  return (
+    <div className="overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}>
+      <h2>{p.id?"Editar profissional":"Novo profissional"}</h2>
+      {err && <div className="err">{err}</div>}
+      <div className="grid">
+        <div className="field full"><label>Nome</label><input value={f.nome} onChange={e=>set("nome",e.target.value)} placeholder="Dra. Fulana" /></div>
+        <div className="field full"><label>Especialidade</label><input value={f.especialidade} onChange={e=>set("especialidade",e.target.value)} placeholder="Reprodução humana, Imunologia…" /></div>
+        <div className="field"><label>Cor na agenda</label><input type="color" value={f.cor} onChange={e=>set("cor",e.target.value)} style={{height:42,padding:4}} /></div>
+        <div className="field full check"><input type="checkbox" id="at" checked={f.ativo} onChange={e=>set("ativo",e.target.checked)} /><label htmlFor="at" style={{margin:0}}>Ativo (recebe agendamentos)</label></div>
+      </div>
+      <div className="modal-actions"><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={submit} disabled={s}>{s?"Salvando…":"Salvar"}</button></div>
+    </div></div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

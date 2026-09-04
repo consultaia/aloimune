@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cadeia de Frio</title>
+
+<!-- ==========================================================================
+     CADEIA DE FRIO
+     Stack: HTML único + React 18 (CDN) + Supabase (CDN). Sem build. GitHub Pages.
+     Use o MESMO projeto Supabase do cofre. Rode cadeia-frio-schema.sql antes.
+     Sem chaves -> modo demo (dados em memória, nada é salvo).
+     ========================================================================== -->
+<script>
+  const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  :root{
+    --ink:#12212B; --surface:#F5F7F8; --card:#FFFFFF; --line:#E1E7EA;
+    --muted:#5C6B75; --primary:#0E7C7B; --primary-ink:#0A5A59;
+    --ok:#2E7D5B;   --ok-bg:#E7F4EE;
+    --warn:#B26B00; --warn-bg:#FAEED4;
+    --bad:#C0392B;  --bad-bg:#FBE5E2;
+    --pend:#454AA6; --pend-bg:#E9E9F7;
+    --radius:12px; --shadow:0 1px 2px rgba(18,33,43,.06), 0 8px 24px rgba(18,33,43,.05);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font-family:Inter,system-ui,sans-serif; color:var(--ink); background:var(--surface); font-size:15px; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1100px; margin:0 auto; padding:24px 20px 80px}
+
+  .top{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:22px}
+  .brand h1{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:26px; margin:0; letter-spacing:-.01em}
+  .brand p{margin:2px 0 0; color:var(--muted); font-size:13.5px}
+  .mode{font-size:12px; font-weight:600; padding:5px 10px; border-radius:999px; white-space:nowrap}
+  .mode.demo{background:var(--warn-bg); color:var(--warn)}
+  .mode.live{background:var(--ok-bg); color:var(--ok)}
+
+  .tiles{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:20px}
+  .tile{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:12px 14px; border-left-width:4px}
+  .tile .n{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:28px; line-height:1; font-variant-numeric:tabular-nums}
+  .tile .l{font-size:12px; color:var(--muted); margin-top:6px; font-weight:500}
+  .t-bad{border-left-color:var(--bad)}   .t-bad .n{color:var(--bad)}
+  .t-warn{border-left-color:var(--warn)} .t-warn .n{color:var(--warn)}
+  .t-pend{border-left-color:var(--pend)} .t-pend .n{color:var(--pend)}
+  .t-ok{border-left-color:var(--ok)}     .t-ok .n{color:var(--ok)}
+
+  .grid-cards{display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:14px}
+  .cardp{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:16px; border-top-width:4px}
+  .cardp.s-excursao{border-top-color:var(--bad)}
+  .cardp.s-atrasada{border-top-color:var(--warn)}
+  .cardp.s-sem_leitura{border-top-color:var(--pend)}
+  .cardp.s-ok{border-top-color:var(--ok)}
+  .cardp .head{display:flex; justify-content:space-between; align-items:flex-start; gap:10px}
+  .cardp .nome{font-weight:600; font-size:16px}
+  .cardp .sub{font-size:12.5px; color:var(--muted); margin-top:2px}
+  .band{font-size:12.5px; color:var(--muted); margin-top:2px}
+  .reading{display:flex; align-items:baseline; gap:10px; margin:14px 0 4px}
+  .reading .big{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:32px; font-variant-numeric:tabular-nums}
+  .reading .unit{font-size:15px; color:var(--muted)}
+  .minmax{font-size:12.5px; color:var(--muted); font-variant-numeric:tabular-nums}
+  .when{font-size:12px; color:var(--muted); margin-top:8px}
+
+  .pill{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:4px 10px; border-radius:999px; white-space:nowrap}
+  .pill::before{content:""; width:7px; height:7px; border-radius:50%; background:currentColor}
+  .p-excursao{color:var(--bad); background:var(--bad-bg)}
+  .p-atrasada{color:var(--warn); background:var(--warn-bg)}
+  .p-sem_leitura{color:var(--pend); background:var(--pend-bg)}
+  .p-ok{color:var(--ok); background:var(--ok-bg)}
+
+  .spark{margin:12px 0 6px}
+  .card-actions{display:flex; gap:8px; margin-top:12px}
+  .btn{font:inherit; font-weight:600; padding:8px 14px; border-radius:9px; border:1px solid transparent; cursor:pointer}
+  .btn-primary{background:var(--primary); color:#fff} .btn-primary:hover{background:var(--primary-ink)}
+  .btn-ghost{background:var(--card); border-color:var(--line); color:var(--ink)} .btn-ghost:hover{border-color:var(--muted)}
+  .btn-sm{padding:6px 11px; font-size:13px}
+  .linkbtn{background:none; border:none; color:var(--primary); font:inherit; font-weight:600; cursor:pointer; padding:0; margin-top:10px}
+
+  .hist{margin-top:12px; border-top:1px solid var(--line); padding-top:10px}
+  .hist table{width:100%; border-collapse:collapse; font-size:13px}
+  .hist td{padding:5px 0; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums}
+  .hist td:last-child{text-align:right; color:var(--muted)}
+  .hist .out{color:var(--bad); font-weight:600}
+
+  .overlay{position:fixed; inset:0; background:rgba(18,33,43,.45); display:flex; align-items:flex-start; justify-content:center; padding:40px 16px; overflow:auto; z-index:50}
+  .modal{background:var(--card); border-radius:16px; width:100%; max-width:460px; box-shadow:var(--shadow); padding:22px}
+  .modal h2{font-family:"Space Grotesk",sans-serif; margin:0 0 4px; font-size:19px}
+  .modal .mt{color:var(--muted); font-size:13px; margin:0 0 16px}
+  .frow{display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px}
+  .field{display:flex; flex-direction:column; gap:5px}
+  .field.full{grid-column:1 / -1}
+  .field label{font-size:12.5px; font-weight:600; color:var(--muted)}
+  .field input{font:inherit; padding:9px 11px; border:1px solid var(--line); border-radius:9px; background:#fff; color:var(--ink)}
+  .modal-actions{display:flex; justify-content:space-between; margin-top:18px; gap:10px}
+  .err{background:var(--bad-bg); color:var(--bad); padding:9px 12px; border-radius:9px; font-size:13px; margin-bottom:12px}
+  .empty{padding:40px; text-align:center; color:var(--muted); grid-column:1/-1}
+
+  @media (max-width:620px){ .tiles{grid-template-columns:repeat(2,1fr)} .frow{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
+
+/* ===========================================================================
+   AVALIAÇÃO DO PONTO — combina duas checagens:
+     EXCURSÃO   : temperatura (atual, mínima ou máxima do período) fora da faixa
+     ATRASADA   : horas desde a última leitura > intervalo permitido
+   Prioridade: excursão > atrasada > ok. Sem leitura -> 'sem_leitura'.
+   (A checagem de "atrasada" é a mesma lógica de prazo do cofre, em horas.)
+   =========================================================================== */
+function avaliarPonto(ponto, leituras) {
+  const ordenadas = [...leituras].sort((a,b) => new Date(b.medido_em) - new Date(a.medido_em));
+  const ultima = ordenadas[0];
+  if (!ultima) return { status: "sem_leitura", ultima: null, horas: null, ordenadas };
+  const horas = (Date.now() - new Date(ultima.medido_em)) / 3600000;
+  const atrasada = horas > (ponto.intervalo_horas ?? 12);
+  const acima = Math.max(ultima.temp_atual, ultima.temp_max ?? -Infinity) > ponto.temp_max;
+  const abaixo = Math.min(ultima.temp_atual, ultima.temp_min ?? Infinity) < ponto.temp_min;
+  const status = (acima || abaixo) ? "excursao" : atrasada ? "atrasada" : "ok";
+  return { status, ultima, horas, ordenadas };
+}
+window.avaliarPonto = avaliarPonto;
+
+const STATUS = {
+  excursao:    { label: "Excursão",    rank: 0 },
+  atrasada:    { label: "Leitura atrasada", rank: 1 },
+  sem_leitura: { label: "Sem leitura", rank: 2 },
+  ok:          { label: "Na faixa",    rank: 3 },
+};
+
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY)
+  ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+function demoData() {
+  const h = (n) => new Date(Date.now() - n*3600000).toISOString();
+  const pontos = [
+    { id:"p1", nome:"Geladeira de imunobiológicos", tipo:"Imunobiológicos", local:"Sala de imunização", temp_min:2, temp_max:8, intervalo_horas:12 },
+    { id:"p2", nome:"Geladeira de amostras", tipo:"Amostras", local:"Posto de coleta", temp_min:2, temp_max:8, intervalo_horas:12 },
+    { id:"p3", nome:"Freezer de amostras", tipo:"Amostras", local:"Posto de coleta", temp_min:-25, temp_max:-15, intervalo_horas:24 },
+  ];
+  const leituras = [
+    { id:"l1", ponto_id:"p1", medido_em:h(2),  temp_atual:5.1, temp_min:4.6, temp_max:5.8, responsavel:"Recepção" },
+    { id:"l2", ponto_id:"p1", medido_em:h(10), temp_atual:4.8, temp_min:4.2, temp_max:6.0, responsavel:"Recepção" },
+    { id:"l3", ponto_id:"p1", medido_em:h(22), temp_atual:5.4, temp_min:4.9, temp_max:6.2, responsavel:"Recepção" },
+    { id:"l4", ponto_id:"p2", medido_em:h(1),  temp_atual:9.3, temp_min:5.1, temp_max:9.3, responsavel:"Coleta" },
+    { id:"l5", ponto_id:"p2", medido_em:h(9),  temp_atual:6.0, temp_min:4.8, temp_max:6.4, responsavel:"Coleta" },
+    { id:"l6", ponto_id:"p3", medido_em:h(30), temp_atual:-19.0, temp_min:-21.0, temp_max:-17.5, responsavel:"Coleta" },
+  ];
+  return { pontos, leituras };
+}
+
+function Sparkline({ leituras, min, max }) {
+  const pts = [...leituras].sort((a,b)=> new Date(a.medido_em)-new Date(b.medido_em)).slice(-14);
+  if (pts.length < 2) return <div className="band">Sem histórico suficiente para o gráfico.</div>;
+  const W=280, H=64, pad=6;
+  const temps = pts.map(p=>p.temp_atual);
+  const lo = Math.min(min, ...temps), hi = Math.max(max, ...temps);
+  const rng = (hi-lo)||1;
+  const x = (i)=> pad + (i*(W-2*pad))/(pts.length-1);
+  const y = (t)=> pad + (H-2*pad)*(1-(t-lo)/rng);
+  const line = pts.map((p,i)=> `${i===0?"M":"L"}${x(i).toFixed(1)},${y(p.temp_atual).toFixed(1)}`).join(" ");
+  return (
+    <svg className="spark" width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+      <rect x="0" y={y(max)} width={W} height={Math.max(0,y(min)-y(max))} fill="#E7F4EE" />
+      <line x1="0" y1={y(max)} x2={W} y2={y(max)} stroke="#B9D9C7" strokeDasharray="3 3" />
+      <line x1="0" y1={y(min)} x2={W} y2={y(min)} stroke="#B9D9C7" strokeDasharray="3 3" />
+      <path d={line} fill="none" stroke="#0E7C7B" strokeWidth="2" />
+      {pts.map((p,i)=>{
+        const fora = p.temp_atual>max || p.temp_atual<min;
+        return <circle key={i} cx={x(i)} cy={y(p.temp_atual)} r={fora?3.5:2.5} fill={fora?"#C0392B":"#0E7C7B"} />;
+      })}
+    </svg>
+  );
+}
+
+function fmtWhen(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const dd = String(d.getDate()).padStart(2,"0"), mm = String(d.getMonth()+1).padStart(2,"0");
+  const hh = String(d.getHours()).padStart(2,"0"), mi = String(d.getMinutes()).padStart(2,"0");
+  return `${dd}/${mm} ${hh}:${mi}`;
+}
+function horasTxt(h) {
+  if (h == null) return "";
+  if (h < 1) return "há poucos minutos";
+  if (h < 24) return `há ${Math.floor(h)} h`;
+  return `há ${Math.floor(h/24)} d`;
+}
+
+function PontoCard({ ponto, leituras, onRegistrar, onReload }) {
+  const [open, setOpen] = useState(false);
+  const { status, ultima, horas, ordenadas } = avaliarPonto(ponto, leituras);
+  return (
+    <div className={"cardp s-" + status}>
+      <div className="head">
+        <div>
+          <div className="nome">{ponto.nome}</div>
+          <div className="sub">{ponto.local || ponto.tipo || ""}</div>
+          <div className="band">Faixa: {ponto.temp_min} a {ponto.temp_max} °C · leitura a cada {ponto.intervalo_horas} h</div>
+        </div>
+        <span className={"pill p-" + status}>{STATUS[status].label}</span>
+      </div>
+
+      {ultima ? (
+        <>
+          <div className="reading">
+            <span className="big">{Number(ultima.temp_atual).toFixed(1)}</span>
+            <span className="unit">°C</span>
+            {(ultima.temp_min != null && ultima.temp_max != null) &&
+              <span className="minmax">mín {Number(ultima.temp_min).toFixed(1)} · máx {Number(ultima.temp_max).toFixed(1)}</span>}
+          </div>
+          <div className="when">Última leitura {fmtWhen(ultima.medido_em)} · {horasTxt(horas)}{ultima.responsavel ? ` · ${ultima.responsavel}` : ""}</div>
+          <Sparkline leituras={ordenadas} min={ponto.temp_min} max={ponto.temp_max} />
+        </>
+      ) : (
+        <div className="when" style={{marginTop:14}}>Nenhuma leitura registrada ainda.</div>
+      )}
+
+      <div className="card-actions">
+        <button className="btn btn-primary btn-sm" onClick={() => onRegistrar(ponto)}>Registrar leitura</button>
+      </div>
+
+      {ordenadas.length > 0 &&
+        <button className="linkbtn" onClick={() => setOpen(o=>!o)}>
+          {open ? "Ocultar histórico" : `Ver histórico (${ordenadas.length})`}
+        </button>}
+      {open &&
+        <div className="hist">
+          <table><tbody>
+            {ordenadas.slice(0,20).map(l => {
+              const fora = l.temp_atual>ponto.temp_max || l.temp_atual<ponto.temp_min;
+              return (
+                <tr key={l.id}>
+                  <td className={fora ? "out" : ""}>{Number(l.temp_atual).toFixed(1)} °C</td>
+                  <td>{fmtWhen(l.medido_em)}</td>
+                </tr>
+              );
+            })}
+          </tbody></table>
+        </div>}
+    </div>
+  );
+}
+
+function App() {
+  const [pontos, setPontos] = useState([]);
+  const [leituras, setLeituras] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [registrando, setRegistrando] = useState(null);
+
+  async function load() {
+    setLoading(true);
+    if (sb) {
+      const [p, l] = await Promise.all([
+        sb.from("pontos_frio").select("*").eq("ativo", true),
+        sb.from("leituras").select("*").order("medido_em", { ascending:false }).limit(500),
+      ]);
+      if (p.error || l.error) alert("Erro Supabase: " + (p.error?.message || l.error?.message));
+      setPontos(p.data || []); setLeituras(l.data || []);
+    } else {
+      const d = demoData(); setPontos(d.pontos); setLeituras(d.leituras);
+    }
+    setLoading(false);
+  }
+  useEffect(() => { load(); }, []);
+
+  const porPonto = useMemo(() => {
+    const m = {}; pontos.forEach(p => m[p.id] = []);
+    leituras.forEach(l => { (m[l.ponto_id] = m[l.ponto_id] || []).push(l); });
+    return m;
+  }, [pontos, leituras]);
+
+  const counts = useMemo(() => {
+    const c = { excursao:0, atrasada:0, sem_leitura:0, ok:0 };
+    pontos.forEach(p => c[avaliarPonto(p, porPonto[p.id] || []).status]++);
+    return c;
+  }, [pontos, porPonto]);
+
+  async function salvarLeitura(form) {
+    const payload = {
+      ponto_id: form.ponto_id,
+      temp_atual: Number(form.temp_atual),
+      temp_min: form.temp_min === "" ? null : Number(form.temp_min),
+      temp_max: form.temp_max === "" ? null : Number(form.temp_max),
+      responsavel: form.responsavel || null,
+    };
+    if (Number.isNaN(payload.temp_atual)) return "Informe a temperatura atual.";
+    if (sb) {
+      const { error } = await sb.from("leituras").insert(payload);
+      if (error) return error.message;
+      await load();
+    } else {
+      setLeituras(prev => [{ ...payload, id:"n"+Date.now(), medido_em:new Date().toISOString() }, ...prev]);
+    }
+    setRegistrando(null);
+    return null;
+  }
+
+  const tiles = [
+    ["excursao","Em excursão","t-bad"],
+    ["atrasada","Leitura atrasada","t-warn"],
+    ["sem_leitura","Sem leitura","t-pend"],
+    ["ok","Na faixa","t-ok"],
+  ];
+
+  return (
+    <div className="wrap">
+      <div className="top">
+        <div className="brand">
+          <h1>Equipamentos</h1>
+          <p>Temperatura de geladeiras e freezers — imunobiológicos e amostras</p>
+        </div>
+        <span className={"mode " + (sb ? "live" : "demo")}>
+          {sb ? "● Conectado ao Supabase" : "○ Modo demo — nada é salvo"}
+        </span>
+      </div>
+
+      <div className="tiles">
+        {tiles.map(([k,l,cls]) => (
+          <div key={k} className={"tile " + cls}>
+            <div className="n">{counts[k]}</div>
+            <div className="l">{l}</div>
+          </div>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="empty">Carregando…</div>
+      ) : pontos.length === 0 ? (
+        <div className="empty">Nenhum equipamento cadastrado. Rode o schema ou adicione um ponto no Supabase.</div>
+      ) : (
+        <div className="grid-cards">
+          {pontos.map(p => (
+            <PontoCard key={p.id} ponto={p} leituras={porPonto[p.id] || []}
+                       onRegistrar={setRegistrando} onReload={load} />
+          ))}
+        </div>
+      )}
+
+      {registrando &&
+        <RegistroModal ponto={registrando} onClose={() => setRegistrando(null)} onSave={salvarLeitura} />}
+    </div>
+  );
+}
+
+function RegistroModal({ ponto, onClose, onSave }) {
+  const [form, setForm] = useState({ ponto_id: ponto.id, temp_atual:"", temp_min:"", temp_max:"", responsavel:"" });
+  const [err, setErr] = useState(""); const [saving, setSaving] = useState(false);
+  const set = (k,v) => setForm(f => ({ ...f, [k]: v }));
+  async function submit() {
+    setSaving(true); const e = await onSave(form); setSaving(false);
+    if (e) setErr(e);
+  }
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <h2>Registrar leitura</h2>
+        <p className="mt">{ponto.nome} · faixa {ponto.temp_min} a {ponto.temp_max} °C</p>
+        {err && <div className="err">{err}</div>}
+        <div className="frow">
+          <div className="field">
+            <label>Atual (°C)</label>
+            <input type="number" step="0.1" value={form.temp_atual} onChange={e=>set("temp_atual",e.target.value)} autoFocus />
+          </div>
+          <div className="field">
+            <label>Mínima (°C)</label>
+            <input type="number" step="0.1" value={form.temp_min} onChange={e=>set("temp_min",e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Máxima (°C)</label>
+            <input type="number" step="0.1" value={form.temp_max} onChange={e=>set("temp_max",e.target.value)} />
+          </div>
+          <div className="field full">
+            <label>Responsável</label>
+            <input value={form.responsavel} onChange={e=>set("responsavel",e.target.value)} />
+          </div>
+        </div>
+        <div className="modal-actions">
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={submit} disabled={saving}>
+            {saving ? "Salvando…" : "Salvar leitura"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

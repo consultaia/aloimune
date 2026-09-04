@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Agenda</title>
+
+<!-- ==========================================================================
+     AGENDA  (visão do dia: consultas, coletas, procedimentos, retornos)
+     Stack: HTML único + React 18 (CDN) + Supabase (CDN). Sem build. GitHub Pages.
+     Mesmo projeto Supabase. Rode agenda-schema.sql antes.
+     Sem chaves -> modo demo (dados em memória, nada é salvo).
+     ========================================================================== -->
+<script>
+  const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  :root{
+    --ink:#12212B; --surface:#F5F7F8; --card:#FFFFFF; --line:#E1E7EA;
+    --muted:#5C6B75; --primary:#0E7C7B; --primary-ink:#0A5A59;
+    --ok:#2E7D5B; --ok-bg:#E7F4EE; --warn:#B26B00; --warn-bg:#FAEED4;
+    --bad:#C0392B; --bad-bg:#FBE5E2; --blue:#1F6FB2; --blue-bg:#E4EFF7;
+    --radius:12px; --shadow:0 1px 2px rgba(18,33,43,.06), 0 8px 24px rgba(18,33,43,.05);
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{font-family:Inter,system-ui,sans-serif; color:var(--ink); background:var(--surface); font-size:15px; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px; margin:0 auto; padding:24px 20px 80px}
+  .top{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:16px}
+  .brand h1{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:26px; margin:0; letter-spacing:-.01em}
+  .brand p{margin:2px 0 0; color:var(--muted); font-size:13.5px}
+  .mode{font-size:12px; font-weight:600; padding:5px 10px; border-radius:999px; white-space:nowrap}
+  .mode.demo{background:var(--warn-bg); color:var(--warn)} .mode.live{background:var(--ok-bg); color:var(--ok)}
+
+  .daybar{display:flex; align-items:center; gap:10px; margin-bottom:16px; flex-wrap:wrap}
+  .navbtn{font:inherit; border:1px solid var(--line); background:var(--card); border-radius:9px; padding:8px 13px; cursor:pointer; font-weight:600}
+  .daylabel{font-family:"Space Grotesk",sans-serif; font-size:17px; min-width:210px; text-align:center; text-transform:capitalize}
+  .today{font:inherit; font-weight:600; border:1px solid var(--line); background:var(--card); border-radius:9px; padding:8px 12px; cursor:pointer}
+  .sp{flex:1}
+  .btn{font:inherit; font-weight:600; padding:9px 15px; border-radius:9px; border:1px solid transparent; cursor:pointer}
+  .btn-primary{background:var(--primary); color:#fff} .btn-primary:hover{background:var(--primary-ink)}
+  .btn-ghost{background:var(--card); border-color:var(--line); color:var(--ink)} .btn-ghost:hover{border-color:var(--muted)}
+  .btn-sm{padding:5px 10px; font-size:13px; font-weight:500}
+
+  .tiles{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:18px}
+  .tile{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:12px 14px; border-left-width:4px}
+  .tile .n{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:26px; line-height:1; font-variant-numeric:tabular-nums}
+  .tile .l{font-size:12px; color:var(--muted); margin-top:6px; font-weight:500}
+  .t-blue{border-left-color:var(--blue)} .t-blue .n{color:var(--blue)}
+  .t-warn{border-left-color:var(--warn)} .t-warn .n{color:var(--warn)}
+  .t-ok{border-left-color:var(--ok)} .t-ok .n{color:var(--ok)}
+  .t-bad{border-left-color:var(--bad)} .t-bad .n{color:var(--bad)}
+
+  .toolbar{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px}
+  .toolbar select{font:inherit; padding:9px 12px; border:1px solid var(--line); border-radius:9px; background:var(--card); color:var(--ink)}
+
+  .panel{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden}
+  .slot{display:flex; gap:14px; padding:14px 16px; border-bottom:1px solid var(--line); align-items:center}
+  .slot:last-child{border-bottom:none}
+  .slot.cancelado{opacity:.5}
+  .hora{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:17px; min-width:56px; font-variant-numeric:tabular-nums}
+  .hsub{font-size:11px; color:var(--muted); font-weight:500}
+  .slot .info{flex:1; min-width:0}
+  .nome{font-weight:600}
+  .sub{font-size:12.5px; color:var(--muted); margin-top:1px}
+  .pill{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:4px 10px; border-radius:999px; white-space:nowrap}
+  .pill::before{content:""; width:7px; height:7px; border-radius:50%; background:currentColor}
+  .p-agendado{color:var(--muted); background:#EDF0F2}
+  .p-confirmado{color:var(--blue); background:var(--blue-bg)}
+  .p-realizado{color:var(--ok); background:var(--ok-bg)}
+  .p-faltou{color:var(--bad); background:var(--bad-bg)}
+  .p-cancelado{color:var(--muted); background:#EDF0F2}
+  .slot .acts{display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end}
+  .empty{padding:48px 20px; text-align:center; color:var(--muted)}
+  .empty b{color:var(--ink); display:block; margin-bottom:4px; font-size:16px}
+
+  .overlay{position:fixed; inset:0; background:rgba(18,33,43,.45); display:flex; align-items:flex-start; justify-content:center; padding:40px 16px; overflow:auto; z-index:50}
+  .modal{background:var(--card); border-radius:16px; width:100%; max-width:520px; box-shadow:var(--shadow); padding:22px}
+  .modal h2{font-family:"Space Grotesk",sans-serif; margin:0 0 16px; font-size:19px}
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  .field{display:flex; flex-direction:column; gap:5px} .field.full{grid-column:1/-1}
+  .field label{font-size:12.5px; font-weight:600; color:var(--muted)}
+  .field input,.field select{font:inherit; padding:9px 11px; border:1px solid var(--line); border-radius:9px; background:#fff; color:var(--ink)}
+  .modal-actions{display:flex; justify-content:space-between; margin-top:18px; gap:10px}
+  .err{background:var(--bad-bg); color:var(--bad); padding:9px 12px; border-radius:9px; font-size:13px; margin-bottom:12px}
+
+  @media (max-width:720px){ .tiles{grid-template-columns:repeat(2,1fr)} .grid{grid-template-columns:1fr} .slot .acts{justify-content:flex-start} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+const TIPOS = ["Consulta","Consulta imuno","Coleta","Procedimento","Retorno","Ciclo FIV","Outro"];
+const STATUS = { agendado:"Agendado", confirmado:"Confirmado", realizado:"Realizado", faltou:"Faltou", cancelado:"Cancelado" };
+const DIAS = ["domingo","segunda-feira","terça-feira","quarta-feira","quinta-feira","sexta-feira","sábado"];
+const MESES = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+const hojeStr = () => new Date().toISOString().slice(0,10);
+const addDias = (s,n)=>{ const [y,m,d]=s.split("-").map(Number); const x=new Date(y,m-1,d); x.setDate(x.getDate()+n); return x.toISOString().slice(0,10); };
+function rotuloData(s){ const [y,m,d]=s.split("-").map(Number); const dt=new Date(y,m-1,d); return `${DIAS[dt.getDay()]}, ${String(d).padStart(2,"0")} ${MESES[m-1]}`; }
+
+function demoData(){
+  const t=hojeStr();
+  return [
+    { id:"1", data:t, hora:"08:30", duracao_min:30, paciente:"A.C.", tipo:"Consulta", profissional:"Dra. Marina", status:"confirmado" },
+    { id:"2", data:t, hora:"09:00", duracao_min:20, paciente:"R.S.", tipo:"Coleta", profissional:"Enf. Paula", status:"agendado" },
+    { id:"3", data:t, hora:"09:30", duracao_min:40, paciente:"M.L.", tipo:"Procedimento", profissional:"Dra. Marina", status:"agendado" },
+    { id:"4", data:t, hora:"10:30", duracao_min:30, paciente:"J.P.", tipo:"Consulta imuno", profissional:"Dr. André", status:"confirmado" },
+    { id:"5", data:t, hora:"11:00", duracao_min:20, paciente:"B.T.", tipo:"Coleta", profissional:"Enf. Paula", status:"agendado" },
+    { id:"6", data:t, hora:"14:00", duracao_min:30, paciente:"F.M.", tipo:"Retorno", profissional:"Dra. Marina", status:"agendado" },
+    { id:"7", data:addDias(t,1), hora:"08:30", duracao_min:30, paciente:"C.R.", tipo:"Consulta", profissional:"Dr. André", status:"agendado" },
+    { id:"8", data:addDias(t,1), hora:"09:30", duracao_min:40, paciente:"L.G.", tipo:"Procedimento", profissional:"Dra. Marina", status:"agendado" },
+  ];
+}
+
+function App(){
+  const params = new URLSearchParams(location.search);
+  const somenteVer = params.get("somente")==="ver";       // esconde ações (só leitura)
+  const profLock = params.get("profissional") || "";        // trava o filtro num profissional
+  const [rows,setRows]=useState([]); const [loading,setLoading]=useState(true);
+  const [dia,setDia]=useState(hojeStr());
+  const [prof,setProf]=useState(profLock);
+  const [edit,setEdit]=useState(null);
+
+  async function load(){
+    setLoading(true);
+    if(sb){ const {data,error}=await sb.from("agendamentos").select("*").order("hora",{ascending:true});
+      if(error) alert("Erro Supabase: "+error.message); setRows(data||[]); }
+    else setRows(demoData());
+    setLoading(false);
+  }
+  useEffect(()=>{ load(); },[]);
+
+  // Tempo real: quando a IA (ou alguém) marca/altera, a agenda atualiza sozinha.
+  useEffect(()=>{
+    if(!sb) return;
+    const ch = sb.channel("agenda-rt")
+      .on("postgres_changes", { event:"*", schema:"public", table:"agendamentos" }, ()=> load())
+      .subscribe();
+    return ()=> sb.removeChannel(ch);
+  },[]);
+
+  const profs = useMemo(()=> Array.from(new Set(rows.map(r=>r.profissional).filter(Boolean))),[rows]);
+  const doDia = useMemo(()=>{
+    let l=rows.filter(r=>r.data===dia);
+    if(prof) l=l.filter(r=>r.profissional===prof);
+    return [...l].sort((a,b)=> (a.hora||"").localeCompare(b.hora||""));
+  },[rows,dia,prof]);
+
+  const counts = useMemo(()=>{
+    const base=rows.filter(r=>r.data===dia);
+    return {
+      total: base.filter(r=>r.status!=="cancelado").length,
+      confirmar: base.filter(r=>r.status==="agendado").length,
+      realizados: base.filter(r=>r.status==="realizado").length,
+      faltas: base.filter(r=>r.status==="faltou").length,
+    };
+  },[rows,dia]);
+
+  async function mudar(r, status){
+    if(sb){ const {error}=await sb.from("agendamentos").update({status}).eq("id",r.id); if(error) return alert(error.message); await load(); }
+    else setRows(prev=>prev.map(x=>x.id===r.id?{...x,status}:x));
+  }
+  async function salvar(f){
+    const p={ data:f.data, hora:f.hora||null, duracao_min:Number(f.duracao_min)||30, paciente:f.paciente||null,
+      tipo:f.tipo||null, profissional:f.profissional||null, status:f.status||"agendado", obs:f.obs||null };
+    if(sb){ const r=f.id? await sb.from("agendamentos").update(p).eq("id",f.id) : await sb.from("agendamentos").insert(p);
+      if(r.error) return r.error.message; await load(); }
+    else setRows(prev=> f.id? prev.map(x=>x.id===f.id?{...x,...p}:x):[...prev,{...p,id:"n"+Date.now()}]);
+    setEdit(null); return null;
+  }
+  async function excluir(id){
+    if(!confirm("Excluir este agendamento?")) return;
+    if(sb){ const {error}=await sb.from("agendamentos").delete().eq("id",id); if(error) return alert(error.message); await load(); }
+    else setRows(prev=>prev.filter(x=>x.id!==id));
+  }
+
+  return (
+    <div className="wrap">
+      <div className="top">
+        <div className="brand"><h1>Agenda</h1><p>Consultas, coletas e procedimentos do dia</p></div>
+        <span className={"mode "+(sb?"live":"demo")}>{sb?"● Conectado ao Supabase":"○ Modo demo — nada é salvo"}</span>
+      </div>
+
+      <div className="daybar">
+        <button className="navbtn" onClick={()=>setDia(addDias(dia,-1))}>‹</button>
+        <span className="daylabel">{rotuloData(dia)}</span>
+        <button className="navbtn" onClick={()=>setDia(addDias(dia,1))}>›</button>
+        <button className="today" onClick={()=>setDia(hojeStr())}>Hoje</button>
+        <input type="date" value={dia} onChange={e=>setDia(e.target.value)} style={{font:"inherit",padding:"8px 10px",border:"1px solid var(--line)",borderRadius:9,background:"var(--card)"}} />
+        <div className="sp"></div>
+        <button className="btn btn-primary" onClick={()=>setEdit({ data:dia, duracao_min:30, tipo:"Consulta", status:"agendado" })}>+ Agendar</button>
+      </div>
+
+      <div className="tiles">
+        <div className="tile t-blue"><div className="n">{counts.total}</div><div className="l">Agendados no dia</div></div>
+        <div className="tile t-warn"><div className="n">{counts.confirmar}</div><div className="l">A confirmar</div></div>
+        <div className="tile t-ok"><div className="n">{counts.realizados}</div><div className="l">Realizados</div></div>
+        <div className="tile t-bad"><div className="n">{counts.faltas}</div><div className="l">Faltas</div></div>
+      </div>
+
+      <div className="toolbar">
+        <select value={prof} onChange={e=>setProf(e.target.value)}>
+          <option value="">Todos os profissionais</option>
+          {profs.map(p=><option key={p} value={p}>{p}</option>)}
+        </select>
+      </div>
+
+      <div className="panel">
+        {loading ? <div className="empty">Carregando…</div>
+        : doDia.length===0 ? <div className="empty"><b>Dia livre</b>Nenhum agendamento. Use “+ Agendar”.</div>
+        : doDia.map(r=>(
+            <div className={"slot "+(r.status==="cancelado"?"cancelado":"")} key={r.id}>
+              <div>
+                <div className="hora">{r.hora? r.hora.slice(0,5):"—"}</div>
+                <div className="hsub">{r.duracao_min} min</div>
+              </div>
+              <div className="info">
+                <div className="nome">{r.tipo}{r.paciente?` · ${r.paciente}`:""}</div>
+                <div className="sub">{r.profissional||"—"}</div>
+              </div>
+              <span className={"pill p-"+r.status}>{STATUS[r.status]}</span>
+              <div className="acts">
+                {r.status==="agendado" && <button className="btn btn-ghost btn-sm" onClick={()=>mudar(r,"confirmado")}>Confirmar</button>}
+                {(r.status==="agendado"||r.status==="confirmado") && <>
+                  <button className="btn btn-ghost btn-sm" onClick={()=>mudar(r,"realizado")}>Realizou</button>
+                  <button className="btn btn-ghost btn-sm" onClick={()=>mudar(r,"faltou")}>Faltou</button>
+                </>}
+                <button className="btn btn-ghost btn-sm" onClick={()=>setEdit(r)}>Editar</button>
+                <button className="btn btn-ghost btn-sm" onClick={()=>excluir(r.id)}>Excluir</button>
+              </div>
+            </div>
+          ))}
+      </div>
+
+      {edit && <AgModal ag={edit} profs={profs} onClose={()=>setEdit(null)} onSave={salvar} />}
+    </div>
+  );
+}
+
+function AgModal({ ag, profs, onClose, onSave }){
+  const [f,setF]=useState({ id:ag.id, data:ag.data||new Date().toISOString().slice(0,10), hora:ag.hora?ag.hora.slice(0,5):"",
+    duracao_min:ag.duracao_min??30, paciente:ag.paciente||"", tipo:ag.tipo||"Consulta", profissional:ag.profissional||"", status:ag.status||"agendado", obs:ag.obs||"" });
+  const [err,setErr]=useState(""); const [s,setS]=useState(false);
+  const set=(k,v)=>setF(x=>({...x,[k]:v}));
+  async function submit(){ setS(true); const e=await onSave(f); setS(false); if(e) setErr(e); }
+  return (
+    <div className="overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}>
+      <h2>{ag.id?"Editar agendamento":"Novo agendamento"}</h2>
+      {err && <div className="err">{err}</div>}
+      <div className="grid">
+        <div className="field"><label>Data</label><input type="date" value={f.data} onChange={e=>set("data",e.target.value)} /></div>
+        <div className="field"><label>Hora</label><input type="time" value={f.hora} onChange={e=>set("hora",e.target.value)} /></div>
+        <div className="field"><label>Duração (min)</label><input type="number" value={f.duracao_min} onChange={e=>set("duracao_min",e.target.value)} /></div>
+        <div className="field"><label>Tipo</label><select value={f.tipo} onChange={e=>set("tipo",e.target.value)}>{TIPOS.map(t=><option key={t}>{t}</option>)}</select></div>
+        <div className="field"><label>Paciente (iniciais/código)</label><input value={f.paciente} onChange={e=>set("paciente",e.target.value)} /></div>
+        <div className="field"><label>Profissional</label>
+          <input list="profs" value={f.profissional} onChange={e=>set("profissional",e.target.value)} />
+          <datalist id="profs">{profs.map(p=><option key={p} value={p} />)}</datalist>
+        </div>
+        <div className="field full"><label>Status</label><select value={f.status} onChange={e=>set("status",e.target.value)}>{Object.entries(STATUS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div>
+      </div>
+      <div className="modal-actions"><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={submit} disabled={s}>{s?"Salvando…":"Salvar"}</button></div>
+    </div></div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

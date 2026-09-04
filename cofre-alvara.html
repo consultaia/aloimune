@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cofre de Alvará</title>
+
+<!-- ==========================================================================
+     COFRE DE DOCUMENTOS / ALVARÁ
+     Stack: HTML único + React 18 (CDN) + Supabase (CDN). Sem build. GitHub Pages.
+
+     PARA ATIVAR A PERSISTÊNCIA:
+       1. Rode alvara-schema.sql no Supabase (SQL Editor).
+       2. Cole abaixo a URL do projeto e a chave anon (Settings > API).
+     Enquanto estiver em branco, o app roda em MODO DEMO (dados de exemplo em
+     memória) — nada é salvo. O motor de alertas funciona igual nos dois modos.
+     ========================================================================== -->
+<script>
+  const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";        // ex.: "https://xxxx.supabase.co"
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";   // ex.: "eyJhbGciOi..."
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  :root{
+    --ink:#12212B; --surface:#F5F7F8; --card:#FFFFFF; --line:#E1E7EA;
+    --muted:#5C6B75; --primary:#0E7C7B; --primary-ink:#0A5A59;
+    --ok:#2E7D5B;   --ok-bg:#E7F4EE;
+    --warn:#B26B00; --warn-bg:#FAEED4;
+    --bad:#C0392B;  --bad-bg:#FBE5E2;
+    --pend:#454AA6; --pend-bg:#E9E9F7;
+    --perm:#5C6B75; --perm-bg:#EDF0F2;
+    --radius:12px; --shadow:0 1px 2px rgba(18,33,43,.06), 0 8px 24px rgba(18,33,43,.05);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:Inter,system-ui,sans-serif; color:var(--ink);
+    background:var(--surface); font-size:15px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1100px; margin:0 auto; padding:24px 20px 80px}
+
+  /* Header */
+  .top{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:22px}
+  .brand h1{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:26px; margin:0; letter-spacing:-.01em}
+  .brand p{margin:2px 0 0; color:var(--muted); font-size:13.5px}
+  .mode{font-size:12px; font-weight:600; padding:5px 10px; border-radius:999px; white-space:nowrap}
+  .mode.demo{background:var(--warn-bg); color:var(--warn)}
+  .mode.live{background:var(--ok-bg); color:var(--ok)}
+
+  /* Summary tiles */
+  .tiles{display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:20px}
+  .tile{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:12px 14px;
+        cursor:pointer; text-align:left; transition:transform .08s ease, box-shadow .12s ease; border-left-width:4px}
+  .tile:hover{transform:translateY(-1px); box-shadow:var(--shadow)}
+  .tile.active{box-shadow:0 0 0 2px var(--primary) inset}
+  .tile .n{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:28px; line-height:1; font-variant-numeric:tabular-nums}
+  .tile .l{font-size:12px; color:var(--muted); margin-top:6px; font-weight:500}
+  .t-bad{border-left-color:var(--bad)}   .t-bad .n{color:var(--bad)}
+  .t-warn{border-left-color:var(--warn)} .t-warn .n{color:var(--warn)}
+  .t-pend{border-left-color:var(--pend)} .t-pend .n{color:var(--pend)}
+  .t-ok{border-left-color:var(--ok)}     .t-ok .n{color:var(--ok)}
+  .t-perm{border-left-color:var(--perm)} .t-perm .n{color:var(--perm)}
+
+  /* Toolbar */
+  .toolbar{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px}
+  .toolbar input,.toolbar select{
+    font:inherit; padding:9px 12px; border:1px solid var(--line); border-radius:9px; background:var(--card); color:var(--ink)}
+  .toolbar input{flex:1; min-width:180px}
+  .spacer{flex:1}
+  .btn{font:inherit; font-weight:600; padding:9px 15px; border-radius:9px; border:1px solid transparent; cursor:pointer}
+  .btn-primary{background:var(--primary); color:#fff}
+  .btn-primary:hover{background:var(--primary-ink)}
+  .btn-ghost{background:var(--card); border-color:var(--line); color:var(--ink)}
+  .btn-ghost:hover{border-color:var(--muted)}
+  .btn-sm{padding:5px 9px; font-size:13px; font-weight:500}
+
+  /* Table */
+  .panel{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden}
+  table{width:100%; border-collapse:collapse}
+  thead th{text-align:left; font-size:11.5px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted);
+           font-weight:600; padding:11px 14px; border-bottom:1px solid var(--line); background:#FBFCFC; cursor:pointer; user-select:none}
+  tbody td{padding:12px 14px; border-bottom:1px solid var(--line); vertical-align:middle}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:#FAFBFB}
+  .doc-name{font-weight:600}
+  .doc-meta{font-size:12.5px; color:var(--muted); margin-top:2px}
+  .cat{display:inline-block; font-size:11px; font-weight:600; color:var(--primary-ink); background:var(--ok-bg);
+       padding:2px 7px; border-radius:6px; margin-right:6px}
+  .val-date{font-variant-numeric:tabular-nums}
+  .val-sub{font-size:12px; color:var(--muted); margin-top:2px; font-variant-numeric:tabular-nums}
+
+  /* Status pill */
+  .pill{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; padding:4px 10px; border-radius:999px; white-space:nowrap}
+  .pill::before{content:""; width:7px; height:7px; border-radius:50%; background:currentColor}
+  .p-vencido{color:var(--bad); background:var(--bad-bg)}
+  .p-a_vencer{color:var(--warn); background:var(--warn-bg)}
+  .p-pendente{color:var(--pend); background:var(--pend-bg)}
+  .p-vigente{color:var(--ok); background:var(--ok-bg)}
+  .p-permanente{color:var(--perm); background:var(--perm-bg)}
+
+  .row-actions{display:flex; gap:6px; justify-content:flex-end}
+  .icon-link{color:var(--primary); text-decoration:none; font-weight:600; font-size:13px}
+  .empty{padding:48px 20px; text-align:center; color:var(--muted)}
+  .empty b{color:var(--ink); display:block; margin-bottom:4px; font-size:16px}
+
+  /* Modal */
+  .overlay{position:fixed; inset:0; background:rgba(18,33,43,.45); display:flex; align-items:flex-start;
+           justify-content:center; padding:40px 16px; overflow:auto; z-index:50}
+  .modal{background:var(--card); border-radius:16px; width:100%; max-width:560px; box-shadow:var(--shadow); padding:22px}
+  .modal h2{font-family:"Space Grotesk",sans-serif; margin:0 0 16px; font-size:19px}
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  .field{display:flex; flex-direction:column; gap:5px}
+  .field.full{grid-column:1 / -1}
+  .field label{font-size:12.5px; font-weight:600; color:var(--muted)}
+  .field input,.field select,.field textarea{font:inherit; padding:9px 11px; border:1px solid var(--line); border-radius:9px; background:#fff; color:var(--ink)}
+  .field textarea{resize:vertical; min-height:52px}
+  .hint{font-size:12px; color:var(--muted)}
+  .modal-actions{display:flex; justify-content:space-between; align-items:center; margin-top:18px; gap:10px}
+  .err{background:var(--bad-bg); color:var(--bad); padding:9px 12px; border-radius:9px; font-size:13px; margin-bottom:12px}
+  .check{display:flex; align-items:center; gap:8px}
+  .check input{width:auto}
+
+  @media (max-width:720px){
+    .tiles{grid-template-columns:repeat(2,1fr)}
+    thead{display:none}
+    tbody td{display:block; border:none; padding:4px 16px}
+    tbody tr{display:block; padding:12px 0; border-bottom:1px solid var(--line)}
+    .row-actions{justify-content:flex-start; padding-top:8px}
+    .grid{grid-template-columns:1fr}
+  }
+  .tabs{display:inline-flex; background:#EEF1F3; border-radius:10px; padding:3px; margin-bottom:18px}
+  .tabs button{font:inherit; font-weight:600; font-size:14px; border:none; background:none; color:var(--muted); padding:7px 16px; border-radius:8px; cursor:pointer}
+  .tabs button.on{background:var(--card); color:var(--ink); box-shadow:var(--shadow)}
+  .guia-intro{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px}
+  .guia-intro h2{font-family:"Space Grotesk",sans-serif; font-size:18px; margin:0 0 6px}
+  .guia-intro p{margin:0; color:var(--muted); font-size:13.5px}
+  .prog{height:10px; border-radius:999px; background:#EEF1F3; overflow:hidden; margin:14px 0 6px}
+  .prog > span{display:block; height:100%; background:var(--ok); border-radius:999px}
+  .prog-txt{font-size:13px; color:var(--muted); font-weight:500}
+  .fase{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:12px; border-left:4px solid var(--line)}
+  .fase.ok{border-left-color:var(--ok)} .fase.pend{border-left-color:var(--warn)} .fase.bad{border-left-color:var(--bad)}
+  .fase .fh{display:flex; align-items:center; gap:10px}
+  .fase .num{width:26px; height:26px; border-radius:50%; background:#EEF1F3; color:var(--ink); display:flex; align-items:center; justify-content:center; font-weight:700; font-family:"Space Grotesk"; font-size:13px; flex-shrink:0}
+  .fase.ok .num{background:var(--ok-bg); color:var(--ok)}
+  .fase .ft{font-family:"Space Grotesk",sans-serif; font-weight:600; font-size:16px}
+  .fase .fstatus{margin-left:auto; font-size:12px; font-weight:600}
+  .fase.ok .fstatus{color:var(--ok)} .fase.pend .fstatus{color:var(--warn)} .fase.bad .fstatus{color:var(--bad)}
+  .fase .fdesc{color:var(--muted); font-size:13.5px; margin:8px 0 10px; line-height:1.5}
+  .fase .docs{display:flex; flex-direction:column; gap:6px}
+  .fase .docline{display:flex; align-items:center; gap:8px; font-size:13.5px}
+  .fase .docline .dn{font-weight:500}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
+
+/* ===========================================================================
+   MOTOR DE ALERTAS  —  reaproveitável.
+   Recebe um item com { validade, aviso_dias, obrigatorio, arquivo_url } e
+   devolve { status, dias }. A mesma função serve estoque (troque `validade`
+   pela data de validade do lote), RH (férias/exames) e cadeia de frio.
+   Regras:
+     sem validade + obrigatório + sem arquivo -> 'pendente'  (a obter)
+     sem validade                              -> 'permanente'
+     dias < 0                                  -> 'vencido'
+     dias <= aviso_dias                        -> 'a_vencer'
+     senão                                     -> 'vigente'
+   =========================================================================== */
+function computeStatus(item, hoje = new Date()) {
+  const obrigatorio = item.obrigatorio !== false;
+  const temArquivo = !!item.arquivo_url;
+  if (!item.validade) {
+    return obrigatorio && !temArquivo
+      ? { status: "pendente", dias: null }
+      : { status: "permanente", dias: null };
+  }
+  const [y, m, d] = item.validade.split("-").map(Number);
+  const alvo = new Date(y, m - 1, d);
+  const base = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+  const dias = Math.round((alvo - base) / 86400000);
+  if (dias < 0) return { status: "vencido", dias };
+  if (dias <= (item.aviso_dias ?? 60)) return { status: "a_vencer", dias };
+  return { status: "vigente", dias };
+}
+window.computeStatus = computeStatus; // exposto para reuso nos outros módulos
+
+const STATUS = {
+  vencido:    { label: "Vencido",    rank: 0 },
+  pendente:   { label: "A obter",    rank: 1 },
+  a_vencer:   { label: "A vencer",   rank: 2 },
+  vigente:    { label: "Vigente",    rank: 3 },
+  permanente: { label: "Permanente", rank: 4 },
+};
+
+/* Supabase (só se configurado) */
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY)
+  ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+
+/* Dados de exemplo do MODO DEMO (espelham o seed do SQL, relativos a hoje) */
+function demoData() {
+  const hoje = new Date();
+  const rel = (n) => { const x = new Date(hoje); x.setDate(x.getDate() + n); return x.toISOString().slice(0,10); };
+  const base = [
+    ["Regulatório","Alvará sanitário","VISA municipal",90,65,true],
+    ["Regulatório","Alvará de localização e funcionamento","Prefeitura",60,165,true],
+    ["Regulatório","AVCB — Corpo de Bombeiros","Corpo de Bombeiros",90,30,true],
+    ["Regulatório","CNES atualizado","DATASUS",30,null,true],
+    ["Regulatório","Responsabilidade Técnica (RT) + registro no conselho","CRM",60,-5,true],
+    ["Regulatório","Manual de Boas Práticas e POPs","Interno",30,null,true],
+    ["Resíduos","PGRSS aprovado","VISA municipal",90,110,true],
+    ["Resíduos","Contrato de coleta de resíduos de saúde","Empresa coletora",60,250,true],
+    ["Infraestrutura","Controle de vetores e pragas","Empresa especializada",30,40,true],
+    ["Infraestrutura","Potabilidade da água / reservatório","Laboratório",30,20,true],
+    ["Terceirização","Contrato com CRHA parceiro","CRHA parceiro",90,300,true],
+    ["Terceirização","Regularidade do CRHA parceiro (licença)","CRHA parceiro",60,null,true],
+    ["Terceirização","Contrato de transporte de amostra biológica","Transportadora",60,200,true],
+    ["Posto de coleta","Supervisor técnico — registro no conselho","Conselho",60,null,true],
+    ["Posto de coleta","POPs de coleta e transporte","Interno",30,null,true],
+    ["Posto de coleta","Registro de temperatura (geladeira/freezer)","Interno",15,5,true],
+    ["Posto de coleta","Controle de qualidade (CIQ/CEQ)","Lab. de apoio",30,300,true],
+    ["Imunologia","Cadeia de frio de imunobiológicos","Interno",15,10,true],
+    ["Equipamentos","Calibração de balança / esfigmo","Metrologia",60,35,true],
+    ["Equipamentos","Validação de autoclave (teste biológico)","Especializada",30,10,true],
+    ["Ocupacional/RH","PCMSO / PGR","Medicina do trabalho",60,165,true],
+    ["Ocupacional/RH","Imunização da equipe","Interno",60,null,true],
+    ["Ocupacional/RH","Treinamento NR-32","Interno",60,265,true],
+  ];
+  return base.map((r, i) => ({
+    id: "demo-" + i, categoria: r[0], nome: r[1], orgao: r[2], responsavel: "",
+    arquivo_url: "", descricao: "", emitido_em: null,
+    validade: r[4] === null ? null : rel(r[4]), aviso_dias: r[3], obrigatorio: r[5],
+  }));
+}
+
+const BRL_CATS = ["Regulatório","Resíduos","Infraestrutura","Terceirização","Posto de coleta","Imunologia","Equipamentos","Ocupacional/RH","Outros"];
+
+function Pill({ status, dias }) {
+  const label = STATUS[status].label;
+  let extra = "";
+  if (status === "a_vencer") extra = ` · ${dias} d`;
+  else if (status === "vencido") extra = ` · há ${Math.abs(dias)} d`;
+  return <span className={"pill p-" + status}>{label}{extra}</span>;
+}
+
+function fmtDate(s) {
+  if (!s) return "—";
+  const [y, m, d] = s.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+function App() {
+  const [docs, setDocs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState("");
+  const [cat, setCat] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [sortKey, setSortKey] = useState("urgencia");
+  const [editing, setEditing] = useState(null); // objeto em edição ou null
+  const [modo, setModo] = useState("documentos"); // 'documentos' | 'guia'
+  const hoje = new Date();
+
+  async function load() {
+    setLoading(true);
+    if (sb) {
+      const { data, error } = await sb.from("documentos").select("*");
+      if (error) { alert("Erro ao carregar do Supabase: " + error.message); setDocs([]); }
+      else setDocs(data || []);
+    } else {
+      setDocs(demoData());
+    }
+    setLoading(false);
+  }
+  useEffect(() => { load(); }, []);
+
+  const enriched = useMemo(() =>
+    docs.map(d => ({ ...d, ...computeStatus(d, hoje) })), [docs]);
+
+  const counts = useMemo(() => {
+    const c = { vencido:0, a_vencer:0, pendente:0, vigente:0, permanente:0 };
+    enriched.forEach(d => c[d.status]++);
+    return c;
+  }, [enriched]);
+
+  const view = useMemo(() => {
+    let list = enriched;
+    if (cat) list = list.filter(d => d.categoria === cat);
+    if (statusFilter) list = list.filter(d => d.status === statusFilter);
+    if (q.trim()) {
+      const t = q.toLowerCase();
+      list = list.filter(d =>
+        (d.nome||"").toLowerCase().includes(t) ||
+        (d.orgao||"").toLowerCase().includes(t) ||
+        (d.responsavel||"").toLowerCase().includes(t));
+    }
+    const sorted = [...list];
+    if (sortKey === "urgencia") {
+      sorted.sort((a,b) => STATUS[a.status].rank - STATUS[b.status].rank
+        || (a.dias ?? 99999) - (b.dias ?? 99999));
+    } else if (sortKey === "nome") {
+      sorted.sort((a,b) => (a.nome||"").localeCompare(b.nome||""));
+    } else if (sortKey === "validade") {
+      sorted.sort((a,b) => (a.validade||"9999").localeCompare(b.validade||"9999"));
+    }
+    return sorted;
+  }, [enriched, cat, statusFilter, q, sortKey]);
+
+  async function save(form) {
+    const payload = {
+      categoria: form.categoria, nome: form.nome, orgao: form.orgao || null,
+      responsavel: form.responsavel || null, arquivo_url: form.arquivo_url || null,
+      descricao: form.descricao || null, emitido_em: form.emitido_em || null,
+      validade: form.validade || null, aviso_dias: Number(form.aviso_dias) || 60,
+      obrigatorio: !!form.obrigatorio,
+    };
+    if (sb) {
+      let res;
+      if (form.id) res = await sb.from("documentos").update(payload).eq("id", form.id);
+      else res = await sb.from("documentos").insert(payload);
+      if (res.error) return res.error.message;
+      await load();
+    } else {
+      setDocs(prev => form.id
+        ? prev.map(d => d.id === form.id ? { ...d, ...payload } : d)
+        : [...prev, { ...payload, id: "novo-" + Date.now() }]);
+    }
+    setEditing(null);
+    return null;
+  }
+
+  async function remove(id) {
+    if (!confirm("Excluir este documento do cofre?")) return;
+    if (sb) {
+      const { error } = await sb.from("documentos").delete().eq("id", id);
+      if (error) return alert(error.message);
+      await load();
+    } else {
+      setDocs(prev => prev.filter(d => d.id !== id));
+    }
+  }
+
+  const tiles = [
+    ["vencido","Vencidos","t-bad"],
+    ["a_vencer","A vencer","t-warn"],
+    ["pendente","A obter","t-pend"],
+    ["vigente","Vigentes","t-ok"],
+    ["permanente","Permanentes","t-perm"],
+  ];
+
+  return (
+    <div className="wrap">
+      <div className="top">
+        <div className="brand">
+          <h1>Cofre de Alvará</h1>
+          <p>Documentos do dossiê sanitário — validade e alerta de vencimento</p>
+        </div>
+        <span className={"mode " + (sb ? "live" : "demo")}>
+          {sb ? "● Conectado ao Supabase" : "○ Modo demo — nada é salvo"}
+        </span>
+      </div>
+
+      <div className="tabs">
+        <button className={modo==="documentos"?"on":""} onClick={()=>setModo("documentos")}>Documentos</button>
+        <button className={modo==="guia"?"on":""} onClick={()=>setModo("guia")}>Guia do alvará</button>
+      </div>
+
+      {modo==="guia" && <Guia docs={enriched} />}
+
+      {modo==="documentos" && <>
+      <div className="tiles">
+        {tiles.map(([key,label,cls]) => (
+          <button key={key}
+            className={"tile " + cls + (statusFilter === key ? " active" : "")}
+            onClick={() => setStatusFilter(statusFilter === key ? "" : key)}>
+            <div className="n">{counts[key]}</div>
+            <div className="l">{label}</div>
+          </button>
+        ))}
+      </div>
+
+      <div className="toolbar">
+        <input placeholder="Buscar documento, órgão ou responsável…"
+               value={q} onChange={e => setQ(e.target.value)} />
+        <select value={cat} onChange={e => setCat(e.target.value)}>
+          <option value="">Todas as categorias</option>
+          {BRL_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <button className="btn btn-primary"
+          onClick={() => setEditing({ categoria:"Regulatório", aviso_dias:60, obrigatorio:true })}>
+          + Novo documento
+        </button>
+      </div>
+
+      <div className="panel">
+        {loading ? (
+          <div className="empty">Carregando…</div>
+        ) : view.length === 0 ? (
+          <div className="empty">
+            <b>Nada por aqui</b>
+            {q || cat || statusFilter ? "Ajuste os filtros para ver mais." : "Adicione o primeiro documento do dossiê."}
+          </div>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th onClick={() => setSortKey("nome")}>Documento</th>
+                <th>Responsável</th>
+                <th onClick={() => setSortKey("validade")}>Validade</th>
+                <th onClick={() => setSortKey("urgencia")}>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {view.map(d => (
+                <tr key={d.id}>
+                  <td>
+                    <div className="doc-name">{d.nome}</div>
+                    <div className="doc-meta">
+                      <span className="cat">{d.categoria}</span>
+                      {d.orgao || ""}
+                    </div>
+                  </td>
+                  <td>{d.responsavel || <span style={{color:"var(--muted)"}}>—</span>}</td>
+                  <td>
+                    <div className="val-date">{fmtDate(d.validade)}</div>
+                    {d.emitido_em && <div className="val-sub">emitido {fmtDate(d.emitido_em)}</div>}
+                  </td>
+                  <td><Pill status={d.status} dias={d.dias} /></td>
+                  <td>
+                    <div className="row-actions">
+                      {d.arquivo_url &&
+                        <a className="icon-link" href={d.arquivo_url} target="_blank" rel="noopener">Abrir</a>}
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditing(d)}>Editar</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => remove(d.id)}>Excluir</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      </>}
+
+      {editing && <Modal doc={editing} onClose={() => setEditing(null)} onSave={save} />}
+    </div>
+  );
+}
+
+function Modal({ doc, onClose, onSave }) {
+  const [form, setForm] = useState({
+    id: doc.id, categoria: doc.categoria || "Regulatório", nome: doc.nome || "",
+    orgao: doc.orgao || "", responsavel: doc.responsavel || "", arquivo_url: doc.arquivo_url || "",
+    descricao: doc.descricao || "", emitido_em: doc.emitido_em || "", validade: doc.validade || "",
+    aviso_dias: doc.aviso_dias ?? 60, obrigatorio: doc.obrigatorio !== false,
+  });
+  const [err, setErr] = useState("");
+  const [saving, setSaving] = useState(false);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  async function submit() {
+    if (!form.nome.trim()) return setErr("Dê um nome ao documento.");
+    setSaving(true);
+    const e = await onSave(form);
+    setSaving(false);
+    if (e) setErr(e);
+  }
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <h2>{doc.id ? "Editar documento" : "Novo documento"}</h2>
+        {err && <div className="err">{err}</div>}
+        <div className="grid">
+          <div className="field full">
+            <label>Nome do documento</label>
+            <input value={form.nome} onChange={e => set("nome", e.target.value)}
+                   placeholder="Ex.: Alvará sanitário" />
+          </div>
+          <div className="field">
+            <label>Categoria</label>
+            <select value={form.categoria} onChange={e => set("categoria", e.target.value)}>
+              {BRL_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>Órgão emissor</label>
+            <input value={form.orgao} onChange={e => set("orgao", e.target.value)} placeholder="VISA, Bombeiros…" />
+          </div>
+          <div className="field">
+            <label>Emitido em</label>
+            <input type="date" value={form.emitido_em} onChange={e => set("emitido_em", e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Validade <span className="hint">(vazio = permanente)</span></label>
+            <input type="date" value={form.validade} onChange={e => set("validade", e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Avisar com (dias de antecedência)</label>
+            <input type="number" min="1" value={form.aviso_dias} onChange={e => set("aviso_dias", e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Responsável</label>
+            <input value={form.responsavel} onChange={e => set("responsavel", e.target.value)} />
+          </div>
+          <div className="field full">
+            <label>Link do arquivo (PDF)</label>
+            <input value={form.arquivo_url} onChange={e => set("arquivo_url", e.target.value)}
+                   placeholder="https://…" />
+          </div>
+          <div className="field full">
+            <label>Observações</label>
+            <textarea value={form.descricao} onChange={e => set("descricao", e.target.value)} />
+          </div>
+          <div className="field full check">
+            <input type="checkbox" id="obrig" checked={form.obrigatorio}
+                   onChange={e => set("obrigatorio", e.target.checked)} />
+            <label htmlFor="obrig" style={{margin:0}}>Exigido no dossiê (sem arquivo, aparece como “A obter”)</label>
+          </div>
+        </div>
+        <div className="modal-actions">
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={submit} disabled={saving}>
+            {saving ? "Salvando…" : "Salvar documento"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ===========================================================================
+   GUIA DO ALVARÁ — passo a passo para uma clínica particular de fertilidade
+   + imunologia + coleta de exames, com embriologia TERCEIRIZADA (caminho leve:
+   não é CRHA própria). Cada fase explica o que obter e puxa do cofre os
+   documentos relacionados, marcando o que já está pronto.
+   =========================================================================== */
+const GUIA_FASES = [
+  { t:"Base jurídica e cadastro", chaves:["localização","cnes"],
+    d:"Antes de acionar a Vigilância, tenha o CNPJ, o contrato social e o alvará de localização e funcionamento da prefeitura, além do CNES atualizado. É o que abre o processo." },
+  { t:"Responsabilidade técnica (RT)", chaves:["responsabilidade técnica"],
+    d:"Nomeie o responsável técnico habilitado, com registro ativo no conselho (CRM). A VISA exige um RT identificado para o serviço — é peça central do dossiê." },
+  { t:"Estrutura física e segurança", chaves:["avcb"],
+    d:"Planta aprovada conforme a RDC 50 e o AVCB (auto de vistoria do Corpo de Bombeiros). A sala de coleta e os ambientes precisam atender aos requisitos de fluxo e biossegurança." },
+  { t:"Documentação sanitária e resíduos", chaves:["boas práticas","pgrss","coleta de resíduos","vetores","potabilidade"],
+    d:"Manual de Boas Práticas e POPs, PGRSS aprovado com o contrato da empresa coletora de resíduos, controle de vetores/pragas e laudo de potabilidade da água. É o coração da inspeção sanitária." },
+  { t:"Equipamentos", chaves:["calibração","autoclave"],
+    d:"Certificados de calibração dos equipamentos (balança, esfigmo) e validação da autoclave com teste biológico. Mantenha as validades em dia — a VISA confere na hora." },
+  { t:"Terceirização da embriologia", chaves:["crha parceiro","regularidade do crha","transporte de amostra"],
+    d:"Como a FIV/embriologia é terceirizada, comprove o contrato com o CRHA parceiro e a regularidade (licença) dele, além do transporte de amostra biológica. É isso que mantém sua clínica no caminho leve, sem precisar de licença de banco própria." },
+  { t:"Posto de coleta (RDC 978/2025)", chaves:["supervisor técnico","pops de coleta","controle de temperatura","controle de qualidade"],
+    d:"Supervisor técnico de nível superior, POPs de coleta e transporte, registro de temperatura das geladeiras e controle de qualidade (CIQ/CEQ) com o laboratório de apoio." },
+  { t:"Saúde ocupacional e equipe", chaves:["pcmso","imunização","nr-32"],
+    d:"PCMSO/PGR em dia, comprovantes de imunização da equipe e treinamento NR-32. Protege a equipe e é item cobrado no licenciamento." },
+  { t:"Protocolo e inspeção na VISA", chaves:["alvará sanitário"],
+    d:"Com o dossiê completo, protocole o requerimento na Vigilância Sanitária municipal. Antes da visita, rode uma autoinspeção com o roteiro da VISA — chegar preparado encurta muito o prazo. O alvará sanitário é o resultado final de tudo acima." },
+];
+
+function Guia({ docs }){
+  const pronto = (d)=> d.status==="vigente" || d.status==="permanente";
+  const obrig = docs.filter(d=> d.obrigatorio!==false);
+  const prontos = obrig.filter(pronto).length;
+  const pct = obrig.length ? Math.round(prontos/obrig.length*100) : 0;
+
+  const fases = GUIA_FASES.map(f=>{
+    const rel = docs.filter(d=> f.chaves.some(k=> (d.nome||"").toLowerCase().includes(k)));
+    const temPendencia = rel.some(d=> d.status==="pendente" || d.status==="vencido");
+    const tudoPronto = rel.length>0 && rel.every(pronto);
+    const cls = tudoPronto ? "ok" : (rel.some(d=>d.status==="vencido") ? "bad" : "pend");
+    const stTxt = rel.length===0 ? "" : tudoPronto ? "concluído" : `${rel.filter(pronto).length}/${rel.length} prontos`;
+    return { ...f, rel, cls, stTxt };
+  });
+
+  return (
+    <div>
+      <div className="guia-intro">
+        <h2>Guia do alvará sanitário</h2>
+        <p>Roteiro sob medida para esta clínica (particular, fertilidade + imunologia + coleta, com embriologia terceirizada). Siga as fases; cada documento aqui é o mesmo do cofre — o que você anexa lá vai ficando verde aqui.</p>
+        <div className="prog"><span style={{width:pct+"%"}}></span></div>
+        <div className="prog-txt">{prontos} de {obrig.length} documentos obrigatórios prontos ({pct}%)</div>
+      </div>
+
+      {fases.map((f,i)=>(
+        <div className={"fase "+f.cls} key={i}>
+          <div className="fh">
+            <span className="num">{i+1}</span>
+            <span className="ft">{f.t}</span>
+            {f.stTxt && <span className="fstatus">{f.stTxt}</span>}
+          </div>
+          <div className="fdesc">{f.d}</div>
+          {f.rel.length>0 &&
+            <div className="docs">
+              {f.rel.map(d=>(
+                <div className="docline" key={d.id}>
+                  <Pill status={d.status} dias={d.dias} />
+                  <span className="dn">{d.nome}</span>
+                </div>
+              ))}
+            </div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RH</title>
+
+<!-- ==========================================================================
+     RH  (férias, exame periódico, registro no conselho, NR-32)
+     Stack: HTML único + React 18 (CDN) + Supabase (CDN). Sem build. GitHub Pages.
+     Mesmo projeto Supabase. Rode rh-schema.sql antes.
+     Sem chaves -> modo demo (dados em memória, nada é salvo).
+     ========================================================================== -->
+<script>
+  const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  :root{
+    --ink:#12212B; --surface:#F5F7F8; --card:#FFFFFF; --line:#E1E7EA;
+    --muted:#5C6B75; --primary:#0E7C7B; --primary-ink:#0A5A59;
+    --ok:#2E7D5B; --ok-bg:#E7F4EE; --warn:#B26B00; --warn-bg:#FAEED4;
+    --bad:#C0392B; --bad-bg:#FBE5E2; --perm:#5C6B75; --perm-bg:#EDF0F2;
+    --radius:12px; --shadow:0 1px 2px rgba(18,33,43,.06), 0 8px 24px rgba(18,33,43,.05);
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{font-family:Inter,system-ui,sans-serif; color:var(--ink); background:var(--surface); font-size:15px; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1100px; margin:0 auto; padding:24px 20px 80px}
+  .top{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:18px}
+  .brand h1{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:26px; margin:0; letter-spacing:-.01em}
+  .brand p{margin:2px 0 0; color:var(--muted); font-size:13.5px}
+  .mode{font-size:12px; font-weight:600; padding:5px 10px; border-radius:999px; white-space:nowrap}
+  .mode.demo{background:var(--warn-bg); color:var(--warn)} .mode.live{background:var(--ok-bg); color:var(--ok)}
+
+  .tiles{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:20px}
+  .tile{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:12px 14px; cursor:pointer; text-align:left; border-left-width:4px; transition:transform .08s, box-shadow .12s}
+  .tile:hover{transform:translateY(-1px); box-shadow:var(--shadow)}
+  .tile.active{box-shadow:0 0 0 2px var(--primary) inset}
+  .tile .n{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:28px; line-height:1; font-variant-numeric:tabular-nums}
+  .tile .l{font-size:12px; color:var(--muted); margin-top:6px; font-weight:500}
+  .t-bad{border-left-color:var(--bad)} .t-bad .n{color:var(--bad)}
+  .t-warn{border-left-color:var(--warn)} .t-warn .n{color:var(--warn)}
+  .t-ok{border-left-color:var(--ok)} .t-ok .n{color:var(--ok)}
+
+  .toolbar{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px}
+  .toolbar input{font:inherit; padding:9px 12px; border:1px solid var(--line); border-radius:9px; background:var(--card); color:var(--ink); flex:1; min-width:180px}
+  .btn{font:inherit; font-weight:600; padding:9px 15px; border-radius:9px; border:1px solid transparent; cursor:pointer}
+  .btn-primary{background:var(--primary); color:#fff} .btn-primary:hover{background:var(--primary-ink)}
+  .btn-ghost{background:var(--card); border-color:var(--line); color:var(--ink)} .btn-ghost:hover{border-color:var(--muted)}
+  .btn-sm{padding:5px 10px; font-size:13px; font-weight:500}
+
+  .panel{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden}
+  .colab{display:flex; align-items:flex-start; gap:14px; padding:14px 16px; border-bottom:1px solid var(--line)}
+  .colab:last-child{border-bottom:none}
+  .av{width:40px; height:40px; border-radius:50%; background:var(--ok-bg); color:var(--primary-ink); display:flex; align-items:center; justify-content:center; font-weight:700; flex-shrink:0; font-family:"Space Grotesk"}
+  .colab .info{flex:1; min-width:0}
+  .nome{font-weight:600}
+  .fx{font-size:12.5px; color:var(--muted); margin-top:1px}
+  .pends{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px}
+  .pill{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:4px 10px; border-radius:999px; white-space:nowrap}
+  .pill::before{content:""; width:7px; height:7px; border-radius:50%; background:currentColor}
+  .p-vencido{color:var(--bad); background:var(--bad-bg)}
+  .p-a_vencer{color:var(--warn); background:var(--warn-bg)}
+  .p-vigente{color:var(--ok); background:var(--ok-bg)}
+  .p-info{color:var(--muted); background:var(--perm-bg)}
+  .colab .acts{display:flex; flex-direction:column; gap:6px}
+  .empty{padding:48px 20px; text-align:center; color:var(--muted)}
+  .empty b{color:var(--ink); display:block; margin-bottom:4px; font-size:16px}
+
+  .overlay{position:fixed; inset:0; background:rgba(18,33,43,.45); display:flex; align-items:flex-start; justify-content:center; padding:40px 16px; overflow:auto; z-index:50}
+  .modal{background:var(--card); border-radius:16px; width:100%; max-width:560px; box-shadow:var(--shadow); padding:22px}
+  .modal h2{font-family:"Space Grotesk",sans-serif; margin:0 0 4px; font-size:19px}
+  .modal .mt{color:var(--muted); font-size:13px; margin:0 0 16px}
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  .field{display:flex; flex-direction:column; gap:5px} .field.full{grid-column:1/-1}
+  .field label{font-size:12.5px; font-weight:600; color:var(--muted)}
+  .field input{font:inherit; padding:9px 11px; border:1px solid var(--line); border-radius:9px; background:#fff; color:var(--ink)}
+  .modal-actions{display:flex; justify-content:space-between; margin-top:18px; gap:10px}
+  .err{background:var(--bad-bg); color:var(--bad); padding:9px 12px; border-radius:9px; font-size:13px; margin-bottom:12px}
+
+  @media (max-width:720px){ .tiles{grid-template-columns:repeat(2,1fr)} .grid{grid-template-columns:1fr} .colab .acts{flex-direction:row} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
+
+/* Motor de prazo (mesmo do cofre). */
+function computeStatus(dataStr, aviso_dias=30, hoje=new Date()){
+  if(!dataStr) return { status:null, dias:null };
+  const [y,m,d]=dataStr.split("-").map(Number);
+  const dias=Math.round((new Date(y,m-1,d)-new Date(hoje.getFullYear(),hoje.getMonth(),hoje.getDate()))/86400000);
+  if(dias<0) return {status:"vencido",dias}; if(dias<=aviso_dias) return {status:"a_vencer",dias}; return {status:"vigente",dias};
+}
+window.computeStatus = computeStatus;
+
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+function demoData(){
+  const rel=(n)=>{ const x=new Date(); x.setDate(x.getDate()+n); return x.toISOString().slice(0,10); };
+  return [
+    { id:"1", nome:"Marina Alves", funcao:"Médica", admissao:rel(-900), ferias_vencimento:rel(20), ferias_agendada:rel(45), exame_periodico:rel(200), conselho:"CRM 41892", conselho_validade:rel(300), nr32_validade:rel(15), aviso_dias:30 },
+    { id:"2", nome:"André Costa", funcao:"Médico", admissao:rel(-500), ferias_vencimento:rel(120), ferias_agendada:null, exame_periodico:rel(-5), conselho:"CRM 55210", conselho_validade:rel(400), nr32_validade:rel(260), aviso_dias:30 },
+    { id:"3", nome:"Paula Ribeiro", funcao:"Enfermeira", admissao:rel(-700), ferias_vencimento:rel(-3), ferias_agendada:null, exame_periodico:rel(90), conselho:"COREN 88123", conselho_validade:rel(120), nr32_validade:rel(40), aviso_dias:30 },
+    { id:"4", nome:"Bianca Souza", funcao:"Recepcionista", admissao:rel(-300), ferias_vencimento:rel(250), ferias_agendada:rel(60), exame_periodico:rel(250), conselho:null, conselho_validade:null, nr32_validade:rel(500), aviso_dias:30 },
+    { id:"5", nome:"Carla Nunes", funcao:"Téc. laboratório", admissao:rel(-420), ferias_vencimento:rel(80), ferias_agendada:null, exame_periodico:rel(25), conselho:null, conselho_validade:null, nr32_validade:rel(-2), aviso_dias:30 },
+  ];
+}
+function fmtDate(s){ if(!s) return "—"; const [y,m,d]=s.split("-"); return `${d}/${m}/${y}`; }
+function iniciais(nome){ return (nome||"?").split(" ").filter(Boolean).slice(0,2).map(p=>p[0].toUpperCase()).join(""); }
+
+/* Itens de prazo de um colaborador. */
+function pendencias(c){
+  const av=c.aviso_dias??30;
+  const items=[
+    { tipo:"Férias", data:c.ferias_vencimento, ...computeStatus(c.ferias_vencimento, av), grupo:"ferias" },
+    { tipo:"Exame periódico", data:c.exame_periodico, ...computeStatus(c.exame_periodico, av), grupo:"exame" },
+    { tipo:"Registro no conselho", data:c.conselho_validade, ...computeStatus(c.conselho_validade, av), grupo:"reg" },
+    { tipo:"NR-32", data:c.nr32_validade, ...computeStatus(c.nr32_validade, av), grupo:"reg" },
+  ].filter(i=>i.data);
+  return items;
+}
+
+function App(){
+  const [rows,setRows]=useState([]); const [loading,setLoading]=useState(true);
+  const [q,setQ]=useState(""); const [filtro,setFiltro]=useState("");
+  const [edit,setEdit]=useState(null);
+
+  async function load(){
+    setLoading(true);
+    if(sb){ const {data,error}=await sb.from("colaboradores").select("*").eq("ativo",true);
+      if(error) alert("Erro Supabase: "+error.message); setRows(data||[]); }
+    else setRows(demoData());
+    setLoading(false);
+  }
+  useEffect(()=>{ load(); },[]);
+
+  const comItens = useMemo(()=> rows.map(c=>({ c, itens:pendencias(c) })),[rows]);
+
+  const counts = useMemo(()=>{
+    const x={ ferias:0, exame:0, reg:0, ok:0 };
+    comItens.forEach(({itens})=>{
+      const alerta=(g)=> itens.some(i=>i.grupo===g && (i.status==="vencido"||i.status==="a_vencer"));
+      if(alerta("ferias")) x.ferias++;
+      if(alerta("exame")) x.exame++;
+      if(alerta("reg")) x.reg++;
+      if(!itens.some(i=>i.status==="vencido"||i.status==="a_vencer")) x.ok++;
+    });
+    return x;
+  },[comItens]);
+
+  const view = useMemo(()=>{
+    let l=comItens;
+    if(filtro){ l=l.filter(({itens})=>{
+      if(filtro==="ok") return !itens.some(i=>i.status==="vencido"||i.status==="a_vencer");
+      return itens.some(i=>i.grupo===filtro && (i.status==="vencido"||i.status==="a_vencer"));
+    }); }
+    if(q.trim()){ const t=q.toLowerCase(); l=l.filter(({c})=> c.nome.toLowerCase().includes(t) || (c.funcao||"").toLowerCase().includes(t)); }
+    // ordena por urgência (quem tem vencido primeiro)
+    return [...l].sort((a,b)=>{
+      const rank=(it)=> it.some(i=>i.status==="vencido")?0 : it.some(i=>i.status==="a_vencer")?1 : 2;
+      return rank(a.itens)-rank(b.itens);
+    });
+  },[comItens,filtro,q]);
+
+  async function salvar(f){
+    const p={ nome:f.nome, funcao:f.funcao||null, admissao:f.admissao||null,
+      ferias_vencimento:f.ferias_vencimento||null, ferias_agendada:f.ferias_agendada||null,
+      exame_periodico:f.exame_periodico||null, conselho:f.conselho||null, conselho_validade:f.conselho_validade||null,
+      nr32_validade:f.nr32_validade||null, aviso_dias:Number(f.aviso_dias)||30 };
+    if(!p.nome.trim()) return "Informe o nome.";
+    if(sb){ const r=f.id? await sb.from("colaboradores").update(p).eq("id",f.id) : await sb.from("colaboradores").insert(p);
+      if(r.error) return r.error.message; await load(); }
+    else setRows(prev=> f.id? prev.map(c=>c.id===f.id?{...c,...p}:c):[...prev,{...p,id:"n"+Date.now()}]);
+    setEdit(null); return null;
+  }
+  async function excluir(id){
+    if(!confirm("Remover este colaborador?")) return;
+    if(sb){ const {error}=await sb.from("colaboradores").update({ativo:false}).eq("id",id); if(error) return alert(error.message); await load(); }
+    else setRows(prev=>prev.filter(c=>c.id!==id));
+  }
+
+  const tiles=[["ferias","Férias vencendo","t-bad"],["exame","Exames a fazer","t-warn"],["reg","Registros/NR-32 vencendo","t-warn"],["ok","Em dia","t-ok"]];
+
+  return (
+    <div className="wrap">
+      <div className="top">
+        <div className="brand"><h1>Recursos Humanos</h1><p>Férias, exames periódicos, registro no conselho e NR-32</p></div>
+        <span className={"mode "+(sb?"live":"demo")}>{sb?"● Conectado ao Supabase":"○ Modo demo — nada é salvo"}</span>
+      </div>
+
+      <div className="tiles">
+        {tiles.map(([k,l,cls])=>(
+          <button key={k} className={"tile "+cls+(filtro===k?" active":"")} onClick={()=>setFiltro(filtro===k?"":k)}>
+            <div className="n">{counts[k]}</div><div className="l">{l}</div>
+          </button>
+        ))}
+      </div>
+
+      <div className="toolbar">
+        <input placeholder="Buscar por nome ou função…" value={q} onChange={e=>setQ(e.target.value)} />
+        <button className="btn btn-primary" onClick={()=>setEdit({ aviso_dias:30 })}>+ Novo colaborador</button>
+      </div>
+
+      <div className="panel">
+        {loading ? <div className="empty">Carregando…</div>
+        : view.length===0 ? <div className="empty"><b>Nada por aqui</b>{q||filtro?"Ajuste os filtros.":"Adicione o primeiro colaborador."}</div>
+        : view.map(({c,itens})=>(
+            <div className="colab" key={c.id}>
+              <div className="av">{iniciais(c.nome)}</div>
+              <div className="info">
+                <div className="nome">{c.nome}</div>
+                <div className="fx">{c.funcao||"—"}{c.conselho?` · ${c.conselho}`:""}</div>
+                <div className="pends">
+                  {itens.length===0 ? <span className="pill p-info">sem datas cadastradas</span> :
+                    itens.map((i,idx)=>(
+                      <span key={idx} className={"pill p-"+(i.status||"vigente")}>
+                        {i.tipo}: {fmtDate(i.data)}{i.status==="a_vencer"?` (${i.dias}d)`:i.status==="vencido"?" (vencido)":""}
+                      </span>
+                    ))}
+                  {c.ferias_agendada && <span className="pill p-info">férias marcadas: {fmtDate(c.ferias_agendada)}</span>}
+                </div>
+              </div>
+              <div className="acts">
+                <button className="btn btn-ghost btn-sm" onClick={()=>setEdit(c)}>Editar</button>
+                <button className="btn btn-ghost btn-sm" onClick={()=>excluir(c.id)}>Remover</button>
+              </div>
+            </div>
+          ))}
+      </div>
+
+      {edit && <ColabModal c={edit} onClose={()=>setEdit(null)} onSave={salvar} />}
+    </div>
+  );
+}
+
+function ColabModal({ c, onClose, onSave }){
+  const [f,setF]=useState({ id:c.id, nome:c.nome||"", funcao:c.funcao||"", admissao:c.admissao||"",
+    ferias_vencimento:c.ferias_vencimento||"", ferias_agendada:c.ferias_agendada||"", exame_periodico:c.exame_periodico||"",
+    conselho:c.conselho||"", conselho_validade:c.conselho_validade||"", nr32_validade:c.nr32_validade||"", aviso_dias:c.aviso_dias??30 });
+  const [err,setErr]=useState(""); const [s,setS]=useState(false);
+  const set=(k,v)=>setF(x=>({...x,[k]:v}));
+  async function submit(){ setS(true); const e=await onSave(f); setS(false); if(e) setErr(e); }
+  return (
+    <div className="overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}>
+      <h2>{c.id?"Editar colaborador":"Novo colaborador"}</h2>
+      <p className="mt">Deixe em branco as datas que não se aplicam.</p>
+      {err && <div className="err">{err}</div>}
+      <div className="grid">
+        <div className="field"><label>Nome</label><input value={f.nome} onChange={e=>set("nome",e.target.value)} /></div>
+        <div className="field"><label>Função</label><input value={f.funcao} onChange={e=>set("funcao",e.target.value)} /></div>
+        <div className="field"><label>Admissão</label><input type="date" value={f.admissao} onChange={e=>set("admissao",e.target.value)} /></div>
+        <div className="field"><label>Avisar com (dias)</label><input type="number" value={f.aviso_dias} onChange={e=>set("aviso_dias",e.target.value)} /></div>
+        <div className="field"><label>Férias — vencimento</label><input type="date" value={f.ferias_vencimento} onChange={e=>set("ferias_vencimento",e.target.value)} /></div>
+        <div className="field"><label>Férias — agendadas para</label><input type="date" value={f.ferias_agendada} onChange={e=>set("ferias_agendada",e.target.value)} /></div>
+        <div className="field"><label>Exame periódico (próximo)</label><input type="date" value={f.exame_periodico} onChange={e=>set("exame_periodico",e.target.value)} /></div>
+        <div className="field"><label>Registro no conselho</label><input value={f.conselho} onChange={e=>set("conselho",e.target.value)} placeholder="CRM 12345" /></div>
+        <div className="field"><label>Registro — validade</label><input type="date" value={f.conselho_validade} onChange={e=>set("conselho_validade",e.target.value)} /></div>
+        <div className="field"><label>NR-32 — validade</label><input type="date" value={f.nr32_validade} onChange={e=>set("nr32_validade",e.target.value)} /></div>
+      </div>
+      <div className="modal-actions"><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={submit} disabled={s}>{s?"Salvando…":"Salvar"}</button></div>
+    </div></div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

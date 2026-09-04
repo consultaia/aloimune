@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Produtividade</title>
+
+<!-- ==========================================================================
+     PRODUTIVIDADE  (clínica particular: realizado / a faturar / a receber)
+     Stack: HTML único + React 18 (CDN) + Supabase (CDN). Sem build. GitHub Pages.
+     Mesmo projeto Supabase. Rode produtividade-schema.sql antes.
+     Sem chaves -> modo demo (dados em memória, nada é salvo).
+     ========================================================================== -->
+<script>
+  const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  :root{
+    --ink:#12212B; --surface:#F5F7F8; --card:#FFFFFF; --line:#E1E7EA;
+    --muted:#5C6B75; --primary:#0E7C7B; --primary-ink:#0A5A59;
+    --ok:#2E7D5B; --ok-bg:#E7F4EE; --warn:#B26B00; --warn-bg:#FAEED4;
+    --bad:#C0392B; --bad-bg:#FBE5E2; --blue:#1F6FB2; --blue-bg:#E4EFF7;
+    --radius:12px; --shadow:0 1px 2px rgba(18,33,43,.06), 0 8px 24px rgba(18,33,43,.05);
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{font-family:Inter,system-ui,sans-serif; color:var(--ink); background:var(--surface); font-size:15px; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1100px; margin:0 auto; padding:24px 20px 80px}
+  .top{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:18px}
+  .brand h1{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:26px; margin:0; letter-spacing:-.01em}
+  .brand p{margin:2px 0 0; color:var(--muted); font-size:13.5px}
+  .mode{font-size:12px; font-weight:600; padding:5px 10px; border-radius:999px; white-space:nowrap}
+  .mode.demo{background:var(--warn-bg); color:var(--warn)} .mode.live{background:var(--ok-bg); color:var(--ok)}
+
+  .monthbar{display:flex; align-items:center; gap:12px; margin-bottom:16px}
+  .monthbar b{font-family:"Space Grotesk",sans-serif; font-size:17px; min-width:150px; text-align:center}
+  .navbtn{font:inherit; border:1px solid var(--line); background:var(--card); border-radius:9px; padding:7px 12px; cursor:pointer; font-weight:600}
+
+  .tiles{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:20px}
+  .tile{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:14px; border-left-width:4px}
+  .tile .l{font-size:12px; color:var(--muted); font-weight:500}
+  .tile .v{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:23px; margin-top:6px; font-variant-numeric:tabular-nums}
+  .tile .c{font-size:12px; color:var(--muted); margin-top:2px}
+  .t-blue{border-left-color:var(--blue)} .t-blue .v{color:var(--blue)}
+  .t-warn{border-left-color:var(--warn)} .t-warn .v{color:var(--warn)}
+  .t-ok{border-left-color:var(--ok)} .t-ok .v{color:var(--ok)}
+  .t-ink{border-left-color:var(--ink)} .t-ink .v{color:var(--ink)}
+
+  .cols{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:20px}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:16px}
+  .card h3{margin:0 0 12px; font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted)}
+  .brk{display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px dashed var(--line); font-variant-numeric:tabular-nums}
+  .brk:last-child{border-bottom:none}
+  .brk .nm{font-weight:500} .brk .vl{margin-left:auto; font-weight:600}
+
+  .toolbar{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px}
+  .toolbar select,.toolbar input{font:inherit; padding:9px 12px; border:1px solid var(--line); border-radius:9px; background:var(--card); color:var(--ink)}
+  .btn{font:inherit; font-weight:600; padding:9px 15px; border-radius:9px; border:1px solid transparent; cursor:pointer}
+  .btn-primary{background:var(--primary); color:#fff} .btn-primary:hover{background:var(--primary-ink)}
+  .btn-ghost{background:var(--card); border-color:var(--line); color:var(--ink)} .btn-ghost:hover{border-color:var(--muted)}
+  .btn-sm{padding:5px 10px; font-size:13px; font-weight:500}
+
+  .panel{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden}
+  table{width:100%; border-collapse:collapse}
+  thead th{text-align:left; font-size:11.5px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); font-weight:600; padding:11px 14px; border-bottom:1px solid var(--line); background:#FBFCFC}
+  tbody td{padding:11px 14px; border-bottom:1px solid var(--line); vertical-align:middle}
+  tbody tr:last-child td{border-bottom:none}
+  .nome{font-weight:600} .sub{font-size:12.5px; color:var(--muted); margin-top:2px}
+  .valor{font-variant-numeric:tabular-nums; font-weight:600}
+  .pill{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:4px 10px; border-radius:999px; white-space:nowrap}
+  .pill::before{content:""; width:7px; height:7px; border-radius:50%; background:currentColor}
+  .p-realizado{color:var(--warn); background:var(--warn-bg)}
+  .p-faturado{color:var(--blue); background:var(--blue-bg)}
+  .p-recebido{color:var(--ok); background:var(--ok-bg)}
+  .row-actions{display:flex; gap:6px; justify-content:flex-end}
+  .empty{padding:48px 20px; text-align:center; color:var(--muted)}
+  .empty b{color:var(--ink); display:block; margin-bottom:4px; font-size:16px}
+
+  .overlay{position:fixed; inset:0; background:rgba(18,33,43,.45); display:flex; align-items:flex-start; justify-content:center; padding:40px 16px; overflow:auto; z-index:50}
+  .modal{background:var(--card); border-radius:16px; width:100%; max-width:520px; box-shadow:var(--shadow); padding:22px}
+  .modal h2{font-family:"Space Grotesk",sans-serif; margin:0 0 16px; font-size:19px}
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  .field{display:flex; flex-direction:column; gap:5px} .field.full{grid-column:1/-1}
+  .field label{font-size:12.5px; font-weight:600; color:var(--muted)}
+  .field input,.field select{font:inherit; padding:9px 11px; border:1px solid var(--line); border-radius:9px; background:#fff; color:var(--ink)}
+  .modal-actions{display:flex; justify-content:space-between; margin-top:18px; gap:10px}
+  .err{background:var(--bad-bg); color:var(--bad); padding:9px 12px; border-radius:9px; font-size:13px; margin-bottom:12px}
+
+  @media (max-width:720px){
+    .tiles{grid-template-columns:repeat(2,1fr)} .cols{grid-template-columns:1fr}
+    thead{display:none}
+    tbody td{display:block; border:none; padding:3px 16px}
+    tbody tr{display:block; padding:12px 0; border-bottom:1px solid var(--line)}
+    .row-actions{justify-content:flex-start; padding-top:8px}
+    .grid{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
+
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const TIPOS = ["Consulta","Consulta imuno","Coleta","Procedimento","Ciclo FIV","Retorno","Outro"];
+const STATUS = { realizado:"Realizado", faturado:"Faturado", recebido:"Recebido" };
+const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+const brl = (n)=> (n||0).toLocaleString("pt-BR",{ style:"currency", currency:"BRL" });
+
+function demoData(){
+  const rel=(n)=>{ const x=new Date(); x.setDate(x.getDate()+n); return x.toISOString().slice(0,10); };
+  return [
+    { id:"1", data:rel(-1), paciente:"A.C.", tipo:"Consulta", profissional:"Dra. Marina", pacote:null, valor:450, status:"recebido" },
+    { id:"2", data:rel(-1), paciente:"R.S.", tipo:"Coleta", profissional:"Enf. Paula", pacote:null, valor:180, status:"recebido" },
+    { id:"3", data:rel(-2), paciente:"M.L.", tipo:"Ciclo FIV", profissional:"Dra. Marina", pacote:"Pacote FIV I", valor:18000, status:"faturado" },
+    { id:"4", data:rel(-3), paciente:"J.P.", tipo:"Consulta", profissional:"Dr. André", pacote:null, valor:450, status:"faturado" },
+    { id:"5", data:rel(-3), paciente:"B.T.", tipo:"Procedimento", profissional:"Dra. Marina", pacote:null, valor:1200, status:"faturado" },
+    { id:"6", data:rel(-4), paciente:"F.M.", tipo:"Consulta imuno", profissional:"Dr. André", pacote:null, valor:500, status:"realizado" },
+    { id:"7", data:rel(-5), paciente:"C.R.", tipo:"Coleta", profissional:"Enf. Paula", pacote:null, valor:180, status:"realizado" },
+    { id:"8", data:rel(-6), paciente:"L.G.", tipo:"Ciclo FIV", profissional:"Dra. Marina", pacote:"Pacote FIV II", valor:22000, status:"realizado" },
+    { id:"9", data:rel(-7), paciente:"D.N.", tipo:"Consulta", profissional:"Dr. André", pacote:null, valor:450, status:"realizado" },
+    { id:"10", data:rel(-8), paciente:"P.H.", tipo:"Procedimento", profissional:"Dra. Marina", pacote:null, valor:900, status:"recebido" },
+  ];
+}
+function fmtDate(s){ if(!s) return "—"; const [y,m,d]=s.split("-"); return `${d}/${m}`; }
+
+function App(){
+  const [rows,setRows]=useState([]); const [loading,setLoading]=useState(true);
+  const hoje=new Date();
+  const [ano,setAno]=useState(hoje.getFullYear()); const [mes,setMes]=useState(hoje.getMonth());
+  const [prof,setProf]=useState(""); const [status,setStatus]=useState("");
+  const [edit,setEdit]=useState(null);
+
+  async function load(){
+    setLoading(true);
+    if(sb){ const {data,error}=await sb.from("atendimentos").select("*").order("data",{ascending:false});
+      if(error) alert("Erro Supabase: "+error.message); setRows(data||[]); }
+    else setRows(demoData());
+    setLoading(false);
+  }
+  useEffect(()=>{ load(); },[]);
+
+  const doMes = useMemo(()=> rows.filter(r=>{ const [y,m]=r.data.split("-").map(Number); return y===ano && (m-1)===mes; }),[rows,ano,mes]);
+
+  const profs = useMemo(()=> Array.from(new Set(rows.map(r=>r.profissional).filter(Boolean))),[rows]);
+
+  const view = useMemo(()=>{
+    let l=doMes;
+    if(prof) l=l.filter(r=>r.profissional===prof);
+    if(status) l=l.filter(r=>r.status===status);
+    return [...l].sort((a,b)=> b.data.localeCompare(a.data));
+  },[doMes,prof,status]);
+
+  const soma = (arr)=> arr.reduce((s,r)=> s+Number(r.valor||0),0);
+  const realizadoTot = soma(doMes);
+  const aFaturar = soma(doMes.filter(r=>r.status==="realizado"));
+  const aReceber = soma(doMes.filter(r=>r.status==="faturado"));
+  const recebido = soma(doMes.filter(r=>r.status==="recebido"));
+
+  const porProf = useMemo(()=>{
+    const m={}; doMes.forEach(r=>{ m[r.profissional||"—"]=(m[r.profissional||"—"]||0)+Number(r.valor||0); });
+    return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+  },[doMes]);
+  const porTipo = useMemo(()=>{
+    const m={}; doMes.forEach(r=>{ m[r.tipo||"—"]=(m[r.tipo||"—"]||0)+1; });
+    return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+  },[doMes]);
+
+  function mudarMes(delta){
+    let m=mes+delta, y=ano;
+    if(m<0){ m=11; y--; } if(m>11){ m=0; y++; }
+    setMes(m); setAno(y);
+  }
+
+  async function avancar(r){
+    const prox = r.status==="realizado" ? "faturado" : r.status==="faturado" ? "recebido" : null;
+    if(!prox) return;
+    if(sb){ const {error}=await sb.from("atendimentos").update({status:prox}).eq("id",r.id); if(error) return alert(error.message); await load(); }
+    else setRows(prev=>prev.map(x=>x.id===r.id?{...x,status:prox}:x));
+  }
+  async function salvar(f){
+    const p={ data:f.data, paciente:f.paciente||null, tipo:f.tipo||null, profissional:f.profissional||null,
+      pacote:f.pacote||null, valor:Number(f.valor)||0, status:f.status||"realizado" };
+    if(sb){ const r=f.id? await sb.from("atendimentos").update(p).eq("id",f.id) : await sb.from("atendimentos").insert(p);
+      if(r.error) return r.error.message; await load(); }
+    else setRows(prev=> f.id? prev.map(x=>x.id===f.id?{...x,...p}:x):[{...p,id:"n"+Date.now()},...prev]);
+    setEdit(null); return null;
+  }
+  async function excluir(id){
+    if(!confirm("Excluir este atendimento?")) return;
+    if(sb){ const {error}=await sb.from("atendimentos").delete().eq("id",id); if(error) return alert(error.message); await load(); }
+    else setRows(prev=>prev.filter(x=>x.id!==id));
+  }
+
+  return (
+    <div className="wrap">
+      <div className="top">
+        <div className="brand"><h1>Produtividade</h1><p>Atendimentos, faturamento e recebimento — clínica particular</p></div>
+        <span className={"mode "+(sb?"live":"demo")}>{sb?"● Conectado ao Supabase":"○ Modo demo — nada é salvo"}</span>
+      </div>
+
+      <div className="monthbar">
+        <button className="navbtn" onClick={()=>mudarMes(-1)}>‹</button>
+        <b>{MESES[mes]} {ano}</b>
+        <button className="navbtn" onClick={()=>mudarMes(1)}>›</button>
+        <div style={{flex:1}}></div>
+        <button className="btn btn-primary" onClick={()=>setEdit({ data:new Date().toISOString().slice(0,10), tipo:"Consulta", status:"realizado", valor:0 })}>+ Novo atendimento</button>
+      </div>
+
+      <div className="tiles">
+        <div className="tile t-ink"><div className="l">Realizado no mês</div><div className="v">{brl(realizadoTot)}</div><div className="c">{doMes.length} atendimentos</div></div>
+        <div className="tile t-warn"><div className="l">A faturar</div><div className="v">{brl(aFaturar)}</div><div className="c">{doMes.filter(r=>r.status==="realizado").length} pendentes</div></div>
+        <div className="tile t-blue"><div className="l">A receber</div><div className="v">{brl(aReceber)}</div><div className="c">{doMes.filter(r=>r.status==="faturado").length} faturados</div></div>
+        <div className="tile t-ok"><div className="l">Recebido</div><div className="v">{brl(recebido)}</div><div className="c">{doMes.filter(r=>r.status==="recebido").length} quitados</div></div>
+      </div>
+
+      <div className="cols">
+        <div className="card">
+          <h3>Por profissional (R$ no mês)</h3>
+          {porProf.length===0 ? <div className="sub">Sem dados no mês.</div> :
+            porProf.map(([n,v])=>(<div className="brk" key={n}><span className="nm">{n}</span><span className="vl">{brl(v)}</span></div>))}
+        </div>
+        <div className="card">
+          <h3>Por tipo (nº de atendimentos)</h3>
+          {porTipo.length===0 ? <div className="sub">Sem dados no mês.</div> :
+            porTipo.map(([n,c])=>(<div className="brk" key={n}><span className="nm">{n}</span><span className="vl">{c}</span></div>))}
+        </div>
+      </div>
+
+      <div className="toolbar">
+        <select value={prof} onChange={e=>setProf(e.target.value)}>
+          <option value="">Todos os profissionais</option>
+          {profs.map(p=><option key={p} value={p}>{p}</option>)}
+        </select>
+        <select value={status} onChange={e=>setStatus(e.target.value)}>
+          <option value="">Todos os status</option>
+          {Object.entries(STATUS).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+        </select>
+      </div>
+
+      <div className="panel">
+        {loading ? <div className="empty">Carregando…</div>
+        : view.length===0 ? <div className="empty"><b>Nada neste mês</b>Adicione um atendimento ou troque o mês.</div>
+        : (
+          <table>
+            <thead><tr><th>Atendimento</th><th>Profissional</th><th>Valor</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {view.map(r=>(
+                <tr key={r.id}>
+                  <td>
+                    <div className="nome">{r.tipo}{r.pacote?` · ${r.pacote}`:""}</div>
+                    <div className="sub">{fmtDate(r.data)}{r.paciente?` · ${r.paciente}`:""}</div>
+                  </td>
+                  <td>{r.profissional||<span className="sub">—</span>}</td>
+                  <td className="valor">{brl(Number(r.valor))}</td>
+                  <td><span className={"pill p-"+r.status}>{STATUS[r.status]}</span></td>
+                  <td>
+                    <div className="row-actions">
+                      {r.status!=="recebido" &&
+                        <button className="btn btn-ghost btn-sm" onClick={()=>avancar(r)}>
+                          {r.status==="realizado"?"Marcar faturado":"Marcar recebido"}
+                        </button>}
+                      <button className="btn btn-ghost btn-sm" onClick={()=>setEdit(r)}>Editar</button>
+                      <button className="btn btn-ghost btn-sm" onClick={()=>excluir(r.id)}>Excluir</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {edit && <AtendModal at={edit} profs={profs} onClose={()=>setEdit(null)} onSave={salvar} />}
+    </div>
+  );
+}
+
+function AtendModal({ at, profs, onClose, onSave }){
+  const [f,setF]=useState({ id:at.id, data:at.data||new Date().toISOString().slice(0,10), paciente:at.paciente||"",
+    tipo:at.tipo||"Consulta", profissional:at.profissional||"", pacote:at.pacote||"", valor:at.valor??0, status:at.status||"realizado" });
+  const [err,setErr]=useState(""); const [s,setS]=useState(false);
+  const set=(k,v)=>setF(x=>({...x,[k]:v}));
+  async function submit(){ setS(true); const e=await onSave(f); setS(false); if(e) setErr(e); }
+  return (
+    <div className="overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}>
+      <h2>{at.id?"Editar atendimento":"Novo atendimento"}</h2>
+      {err && <div className="err">{err}</div>}
+      <div className="grid">
+        <div className="field"><label>Data</label><input type="date" value={f.data} onChange={e=>set("data",e.target.value)} /></div>
+        <div className="field"><label>Paciente (iniciais/código)</label><input value={f.paciente} onChange={e=>set("paciente",e.target.value)} /></div>
+        <div className="field"><label>Tipo</label><select value={f.tipo} onChange={e=>set("tipo",e.target.value)}>{TIPOS.map(t=><option key={t}>{t}</option>)}</select></div>
+        <div className="field"><label>Profissional</label>
+          <input list="profs" value={f.profissional} onChange={e=>set("profissional",e.target.value)} />
+          <datalist id="profs">{profs.map(p=><option key={p} value={p} />)}</datalist>
+        </div>
+        <div className="field"><label>Pacote/tratamento (opcional)</label><input value={f.pacote} onChange={e=>set("pacote",e.target.value)} /></div>
+        <div className="field"><label>Valor (R$)</label><input type="number" step="0.01" value={f.valor} onChange={e=>set("valor",e.target.value)} /></div>
+        <div className="field full"><label>Status</label><select value={f.status} onChange={e=>set("status",e.target.value)}>{Object.entries(STATUS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div>
+      </div>
+      <div className="modal-actions"><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={submit} disabled={s}>{s?"Salvando…":"Salvar"}</button></div>
+    </div></div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

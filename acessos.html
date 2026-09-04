@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Acessos</title>
+
+<!-- ==========================================================================
+     ACESSOS — a gestora cadastra todo mundo e escolhe o perfil.
+     Fala com o Worker seguro (acessos-worker.js), que guarda a chave secreta.
+     Preencha as chaves do Supabase E a URL do Worker abaixo.
+     ========================================================================== -->
+<script>
+  const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
+  const WORKER_URL = "https://acessos-clinica.janan-almeida.workers.dev";  // ex.: https://acessos.SEU.workers.dev
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet" />
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  :root{ --ink:#12212B; --surface:#F5F7F8; --card:#FFFFFF; --line:#E1E7EA; --muted:#5C6B75;
+    --primary:#0E7C7B; --primary-ink:#0A5A59; --ok:#2E7D5B; --ok-bg:#E7F4EE; --warn:#B26B00; --warn-bg:#FAEED4;
+    --bad:#C0392B; --bad-bg:#FBE5E2; --blue:#1F6FB2; --blue-bg:#E4EFF7;
+    --radius:12px; --shadow:0 1px 2px rgba(18,33,43,.06),0 8px 24px rgba(18,33,43,.05); }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--surface);font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:900px;margin:0 auto;padding:24px 20px 80px}
+  .top{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+  .brand h1{font-family:"Space Grotesk";font-weight:700;font-size:26px;margin:0}
+  .brand p{margin:2px 0 0;color:var(--muted);font-size:13.5px}
+  .note{background:var(--ok-bg);color:var(--primary-ink);border:1px solid #CDE7DD;border-radius:12px;padding:11px 14px;font-size:13px;margin-bottom:16px}
+  .cfg{background:var(--warn-bg);color:var(--warn);border-radius:12px;padding:11px 14px;font-size:13px;margin-bottom:16px}
+  .btn{font:inherit;font-weight:600;padding:9px 15px;border-radius:9px;border:1px solid transparent;cursor:pointer}
+  .btn-primary{background:var(--primary);color:#fff} .btn-primary:disabled{opacity:.5}
+  .btn-ghost{background:var(--card);border:1px solid var(--line);color:var(--ink)} .btn-ghost:hover{border-color:var(--muted)}
+  .btn-sm{padding:5px 10px;font-size:13px;font-weight:500}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;margin-bottom:16px}
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600;padding:10px 12px;border-bottom:1px solid var(--line);background:#FBFCFC}
+  td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  .nome{font-weight:600}
+  .badge{font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px}
+  .b-gestor{background:var(--ok-bg);color:var(--ok)} .b-auditoria{background:var(--blue-bg);color:var(--blue)}
+  .b-medico{background:#EDE9FE;color:#6D28D9} .b-funcionario{background:#EEF1F3;color:var(--muted)} .b-quiosque{background:var(--warn-bg);color:var(--warn)}
+  .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+  .form{padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .form h3{grid-column:1/-1;margin:0;font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  .field{display:flex;flex-direction:column;gap:5px} .full{grid-column:1/-1}
+  .field label{font-size:12.5px;font-weight:600;color:var(--muted)}
+  .field input,.field select{font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:#fff}
+  .msg{font-size:13.5px;margin-top:4px}
+  .msg.ok{color:var(--ok)} .msg.bad{color:var(--bad)}
+  .empty{padding:36px;text-align:center;color:var(--muted)}
+  .hintline{font-size:12.5px;color:var(--muted);grid-column:1/-1}
+  @media(max-width:640px){ .form{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+const sb=(SUPABASE_URL&&SUPABASE_ANON_KEY)?supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
+const PAPEIS=[["gestor","Gestor (acesso total)"],["auditoria","Chefe / Auditoria"],["medico","Médico"],["funcionario","Funcionário"],["quiosque","Quiosque (iPad de ponto)"]];
+const LABEL=Object.fromEntries(PAPEIS);
+
+async function chamar(action, extra){
+  const { data:{ session } } = await sb.auth.getSession();
+  const r = await fetch(WORKER_URL, { method:"POST",
+    headers:{ "Content-Type":"application/json", authorization:"Bearer "+(session?.access_token||"") },
+    body: JSON.stringify({ action, ...extra }) });
+  return r.json();
+}
+
+function App(){
+  const [users,setUsers]=useState([]); const [loading,setLoading]=useState(true);
+  const [msg,setMsg]=useState({}); const [novo,setNovo]=useState({ nome:"", email:"", senha:"", papel:"funcionario" });
+  const [salvando,setSalvando]=useState(false);
+  const configOK = sb && WORKER_URL;
+
+  async function carregar(){
+    setLoading(true);
+    if(!configOK){ setLoading(false); return; }
+    const res=await chamar("listar");
+    if(res.ok) setUsers(res.usuarios||[]); else setMsg({geral:res.error||"Erro ao listar."});
+    setLoading(false);
+  }
+  useEffect(()=>{ carregar(); },[]);
+
+  async function criar(){
+    if(!novo.email||!novo.senha){ setMsg({novo:"Preencha e-mail/código e senha."}); return; }
+    setSalvando(true); setMsg({});
+    const res=await chamar("criar", novo);
+    setSalvando(false);
+    if(res.ok){ setNovo({ nome:"", email:"", senha:"", papel:"funcionario" }); setMsg({novo:"Acesso criado."}); carregar(); }
+    else setMsg({novo:res.error||"Erro ao criar."});
+  }
+  async function mudarPapel(id, papel){ const res=await chamar("papel",{id,papel}); if(res.ok) carregar(); else setMsg({geral:res.error}); }
+  async function resetar(id, nome){ const s=prompt("Nova senha/código para "+nome+" (mín. 6):"); if(!s) return; if(s.length<6){alert("Mínimo 6 caracteres.");return;} const res=await chamar("senha",{id,senha:s}); alert(res.ok?"Senha atualizada.":(res.error||"Erro.")); }
+  async function remover(id, nome){ if(!confirm("Revogar o acesso de "+nome+"? A conta será removida.")) return; const res=await chamar("remover",{id}); if(res.ok) carregar(); else alert(res.error||"Erro."); }
+
+  return (
+    <div className="wrap">
+      <div className="top">
+        <div className="brand"><h1>Acessos</h1><p>Cadastre a equipe e escolha o perfil de cada um</p></div>
+      </div>
+
+      {!configOK && <div className="cfg">Falta configurar: preencha as chaves do Supabase e a URL do Worker no topo deste arquivo (veja o acessos-worker.js).</div>}
+      <div className="note">Cada pessoa entra com o próprio login e cai direto na janela do seu perfil. Para funcionário, a senha pode ser um código só de números. Só o gestor vê esta tela.</div>
+
+      <div className="panel">
+        {loading ? <div className="empty">Carregando…</div> :
+         users.length===0 ? <div className="empty">Nenhum acesso cadastrado ainda.</div> :
+         <table>
+           <thead><tr><th>Nome</th><th>Perfil</th><th></th></tr></thead>
+           <tbody>
+             {users.map(u=>(
+               <tr key={u.id}>
+                 <td className="nome">{u.nome||"—"}</td>
+                 <td>
+                   <select value={u.papel} onChange={e=>mudarPapel(u.id,e.target.value)} style={{font:"inherit",padding:"5px 8px",border:"1px solid var(--line)",borderRadius:8}}>
+                     {PAPEIS.map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                   </select>
+                 </td>
+                 <td><div className="acts">
+                   <button className="btn btn-ghost btn-sm" onClick={()=>resetar(u.id,u.nome)}>Resetar senha</button>
+                   <button className="btn btn-ghost btn-sm" onClick={()=>remover(u.id,u.nome)}>Revogar</button>
+                 </div></td>
+               </tr>
+             ))}
+           </tbody>
+         </table>}
+        {msg.geral && <div className="msg bad" style={{padding:"0 12px 12px"}}>{msg.geral}</div>}
+      </div>
+
+      <div className="panel">
+        <div className="form">
+          <h3>Novo acesso</h3>
+          <div className="field full"><label>Nome</label><input value={novo.nome} onChange={e=>setNovo({...novo,nome:e.target.value})} placeholder="Nome da pessoa" /></div>
+          <div className="field"><label>Perfil</label>
+            <select value={novo.papel} onChange={e=>setNovo({...novo,papel:e.target.value})}>{PAPEIS.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
+          <div className="field"><label>{novo.papel==="funcionario"?"E-mail (interno, ex.: nome@clinica.local)":"E-mail"}</label>
+            <input value={novo.email} onChange={e=>setNovo({...novo,email:e.target.value})} placeholder="pessoa@clinica.com" /></div>
+          <div className="field full"><label>Senha {novo.papel==="funcionario"||novo.papel==="quiosque"?"(pode ser um código só de números, mín. 6)":"(mín. 6)"}</label>
+            <input value={novo.senha} onChange={e=>setNovo({...novo,senha:e.target.value})} placeholder="mín. 6 caracteres" /></div>
+          <div className="hintline">O médico, depois de criado, pode ser vinculado ao seu cadastro em Profissionais para ver a própria agenda.</div>
+          <div className="full" style={{display:"flex",gap:12,alignItems:"center"}}>
+            <button className="btn btn-primary" onClick={criar} disabled={salvando||!configOK}>{salvando?"Criando…":"Criar acesso"}</button>
+            {msg.novo && <span className={"msg "+(msg.novo.includes("criado")?"ok":"bad")}>{msg.novo}</span>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

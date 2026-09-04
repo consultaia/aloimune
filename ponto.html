@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ponto — Administração</title>
+
+<!-- ==========================================================================
+     PONTO — ADMINISTRAÇÃO  (cadastro do rosto + relatório de horas)
+     Stack: HTML único + React 18 (CDN) + Supabase + face-api.js. Sem build.
+     Rode banco-completo.sql e ponto-schema.sql. Precisa HTTPS para a câmera.
+     Sem chaves -> modo demonstração.
+     LGPD: guardamos só o descritor (números do rosto), nunca a foto.
+     ========================================================================== -->
+<script>
+  const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
+  const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model";
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+
+<style>
+  :root{ --ink:#12212B; --surface:#F5F7F8; --card:#FFFFFF; --line:#E1E7EA; --muted:#5C6B75;
+    --primary:#0E7C7B; --primary-ink:#0A5A59; --ok:#2E7D5B; --ok-bg:#E7F4EE; --warn:#B26B00; --warn-bg:#FAEED4; --bad:#C0392B; --bad-bg:#FBE5E2;
+    --radius:12px; --shadow:0 1px 2px rgba(18,33,43,.06),0 8px 24px rgba(18,33,43,.05); }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--surface);font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin:0 auto;padding:24px 20px 80px}
+  .top{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+  .brand h1{font-family:"Space Grotesk";font-weight:700;font-size:26px;margin:0}
+  .brand p{margin:2px 0 0;color:var(--muted);font-size:13.5px}
+  .mode{font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px}
+  .mode.demo{background:var(--warn-bg);color:var(--warn)} .mode.live{background:var(--ok-bg);color:var(--ok)}
+  .tabs{display:inline-flex;background:#EEF1F3;border-radius:10px;padding:3px;margin-bottom:18px}
+  .tabs button{font:inherit;font-weight:600;font-size:14px;border:none;background:none;color:var(--muted);padding:7px 16px;border-radius:8px;cursor:pointer}
+  .tabs button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+
+  .note{background:var(--ok-bg);color:var(--primary-ink);border:1px solid #CDE7DD;border-radius:12px;padding:11px 14px;font-size:13px;margin-bottom:16px}
+  .cols{display:grid;grid-template-columns:300px 1fr;gap:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .card h3{margin:0;font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:14px 16px;border-bottom:1px solid var(--line)}
+  .prow{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);cursor:pointer;background:none;border:none;border-left:3px solid transparent;width:100%;text-align:left;font:inherit}
+  .prow:hover{background:#FAFBFB} .prow.sel{background:#F3F8F7;border-left-color:var(--primary)}
+  .prow .pn{font-weight:600} .prow .tag{margin-left:auto;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px}
+  .tag.sim{background:var(--ok-bg);color:var(--ok)} .tag.nao{background:#EEF1F3;color:var(--muted)}
+
+  .enroll{padding:16px}
+  .camwrap{width:100%;max-width:320px;aspect-ratio:1;border-radius:16px;overflow:hidden;background:#000;border:2px solid var(--line);margin-bottom:14px}
+  .camwrap.ok{border-color:var(--ok)}
+  video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+  .field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+  .field label{font-size:12.5px;font-weight:600;color:var(--muted)}
+  .field input{font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:#fff;max-width:200px}
+  .consent{display:flex;gap:9px;align-items:flex-start;background:#FBFCFC;border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:14px;font-size:13px}
+  .consent input{margin-top:2px}
+  .btn{font:inherit;font-weight:600;padding:10px 16px;border-radius:9px;border:1px solid transparent;cursor:pointer}
+  .btn-primary{background:var(--primary);color:#fff} .btn-primary:disabled{opacity:.5}
+  .btn-ghost{background:var(--card);border:1px solid var(--line);color:var(--ink)}
+  .cap-ok{color:var(--ok);font-weight:600;font-size:13.5px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600;padding:9px 12px;border-bottom:1px solid var(--line);background:#FBFCFC}
+  td{padding:9px 12px;border-bottom:1px solid var(--line);font-size:13.5px}
+  .mono{font-variant-numeric:tabular-nums}
+  .empty{padding:40px;text-align:center;color:var(--muted)}
+  .tot{font-family:"Space Grotesk";font-weight:700}
+  @media(max-width:720px){ .cols{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+const sb=(SUPABASE_URL&&SUPABASE_ANON_KEY)?supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
+const fmtDia=(iso)=>{const d=new Date(iso);return d.toLocaleDateString("pt-BR");};
+const fmtH=(iso)=>new Date(iso).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+
+function Enroll(){
+  const videoRef=useRef(null);
+  const [colabs,setColabs]=useState([]); const [bio,setBio]=useState({});
+  const [sel,setSel]=useState(null); const [ready,setReady]=useState(false);
+  const [desc,setDesc]=useState(null); const [pin,setPin]=useState(""); const [consent,setConsent]=useState(false);
+  const [msg,setMsg]=useState(""); const [capturing,setCapturing]=useState(false);
+
+  async function load(){
+    if(sb){
+      const [c,b]=await Promise.all([ sb.from("colaboradores").select("id,nome,funcao").eq("ativo",true), sb.from("ponto_biometria").select("colaborador_id,pin") ]);
+      setColabs(c.data||[]); const m={}; (b.data||[]).forEach(r=>m[r.colaborador_id]=r); setBio(m);
+    } else {
+      setColabs([{id:"1",nome:"Paula Ribeiro",funcao:"Enfermeira"},{id:"2",nome:"Bianca Souza",funcao:"Recepcionista"}]); setBio({});
+    }
+  }
+  useEffect(()=>{ load(); },[]);
+  useEffect(()=>{ (async()=>{
+    try{
+      await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+      await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+      await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"},audio:false});
+      if(videoRef.current){ videoRef.current.srcObject=stream; await videoRef.current.play(); }
+      setReady(true);
+    }catch(e){ setMsg("Não consegui iniciar câmera/reconhecimento. Verifique permissões e internet."); }
+  })(); },[]);
+
+  function escolher(c){ setSel(c); setDesc(null); setPin(bio[c.id]?"":""); setConsent(false); setMsg(""); }
+
+  async function capturar(){
+    if(!ready){ setMsg("Reconhecimento ainda carregando…"); return; }
+    setCapturing(true); setMsg("");
+    const amostras=[];
+    for(let i=0;i<4;i++){
+      const det=await faceapi.detectSingleFace(videoRef.current,new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+      if(det) amostras.push(Array.from(det.descriptor));
+      await new Promise(r=>setTimeout(r,400));
+    }
+    setCapturing(false);
+    if(amostras.length<2){ setMsg("Não consegui ver o rosto direito. Melhore a luz e tente de novo."); return; }
+    const media=amostras[0].map((_,k)=> amostras.reduce((s,a)=>s+a[k],0)/amostras.length);
+    setDesc(media); setMsg("Rosto capturado.");
+  }
+
+  async function salvar(){
+    if(!sel||!desc||!consent) return;
+    const payload={ colaborador_id:sel.id, nome:sel.nome, descritor:desc, pin:pin||null, consentimento_em:new Date().toISOString() };
+    if(sb){ const { error }=await sb.from("ponto_biometria").upsert(payload); if(error){ setMsg("Erro: "+error.message); return; } await load(); }
+    else setBio(p=>({...p,[sel.id]:{colaborador_id:sel.id,pin}}));
+    setMsg("Cadastro salvo para "+sel.nome+"."); setDesc(null); setConsent(false); setPin("");
+  }
+
+  return (
+    <div className="cols">
+      <div className="card">
+        <h3>Funcionários</h3>
+        {colabs.map(c=>(
+          <button key={c.id} className={"prow"+(sel?.id===c.id?" sel":"")} onClick={()=>escolher(c)}>
+            <span><span className="pn" style={{display:"block"}}>{c.nome}</span><span style={{fontSize:12.5,color:"var(--muted)"}}>{c.funcao||"—"}</span></span>
+            <span className={"tag "+(bio[c.id]?"sim":"nao")}>{bio[c.id]?"cadastrado":"pendente"}</span>
+          </button>
+        ))}
+        {colabs.length===0 && <div className="empty">Cadastre funcionários no RH primeiro.</div>}
+      </div>
+
+      <div className="card"><div className="enroll">
+        {!sel ? <div className="empty">Selecione um funcionário para cadastrar o rosto.</div> : <>
+          <div style={{fontWeight:600,fontSize:16,marginBottom:12}}>{sel.nome}</div>
+          <div className={"camwrap "+(desc?"ok":"")}><video ref={videoRef} playsInline muted></video></div>
+          <div className="row" style={{marginBottom:14}}>
+            <button className="btn btn-ghost" onClick={capturar} disabled={capturing}>{capturing?"Capturando…":"Capturar rosto"}</button>
+            {desc && <span className="cap-ok">✓ rosto capturado</span>}
+          </div>
+          <div className="field"><label>PIN de reserva (4 a 6 dígitos)</label>
+            <input value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="ex.: 1234" /></div>
+          <label className="consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)} />
+            <span>O funcionário autoriza o uso da sua biometria facial exclusivamente para o registro de ponto, conforme a LGPD. Guardamos apenas o descritor (números), nunca a foto.</span></label>
+          <div className="row">
+            <button className="btn btn-primary" onClick={salvar} disabled={!desc||!consent}>Salvar cadastro</button>
+            {msg && <span style={{fontSize:13.5,color:msg.startsWith("Erro")||msg.startsWith("Não")?"var(--bad)":"var(--ok)"}}>{msg}</span>}
+          </div>
+        </>}
+      </div></div>
+    </div>
+  );
+}
+
+function Relatorio(){
+  const [regs,setRegs]=useState([]); const [nomes,setNomes]=useState({}); const [loading,setLoading]=useState(true);
+  useEffect(()=>{ (async()=>{
+    if(sb){
+      const desde=new Date(Date.now()-30*864e5).toISOString();
+      const [r,c]=await Promise.all([ sb.from("registros_ponto").select("*").gte("momento",desde).order("momento",{ascending:true}), sb.from("colaboradores").select("id,nome") ]);
+      setRegs(r.data||[]); const m={}; (c.data||[]).forEach(x=>m[x.id]=x.nome); setNomes(m);
+    } else {
+      const t=(h)=>new Date(Date.now()-h*36e5).toISOString();
+      setRegs([
+        {colaborador_id:"1",tipo:"entrada",metodo:"facial",momento:t(9)},
+        {colaborador_id:"1",tipo:"saida",metodo:"facial",momento:t(1)},
+        {colaborador_id:"2",tipo:"entrada",metodo:"pin",momento:t(8)},
+        {colaborador_id:"2",tipo:"saida",metodo:"facial",momento:t(2)},
+      ]);
+      setNomes({"1":"Paula Ribeiro","2":"Bianca Souza"});
+    }
+    setLoading(false);
+  })(); },[]);
+
+  // agrupa por colaborador + dia
+  const grupos={};
+  regs.forEach(r=>{ const dia=new Date(r.momento).toLocaleDateString("pt-BR"); const k=r.colaborador_id+"|"+dia;
+    (grupos[k]=grupos[k]||{colab:r.colaborador_id,dia,itens:[]}).itens.push(r); });
+  const linhas=Object.values(grupos).map(g=>{
+    let total=0,open=null; g.itens.forEach(r=>{ if(r.tipo==="entrada") open=new Date(r.momento); else if(r.tipo==="saida"&&open){ total+=new Date(r.momento)-open; open=null; } });
+    return {...g, horas: total/36e5};
+  }).sort((a,b)=> (nomes[a.colab]||"").localeCompare(nomes[b.colab]||"") || a.dia.localeCompare(b.dia));
+
+  if(loading) return <div className="empty">Carregando…</div>;
+  if(linhas.length===0) return <div className="card"><div className="empty">Nenhum registro nos últimos 30 dias.</div></div>;
+
+  return (
+    <div className="card">
+      <table>
+        <thead><tr><th>Funcionário</th><th>Dia</th><th>Marcações</th><th>Horas</th></tr></thead>
+        <tbody>
+          {linhas.map((l,i)=>(
+            <tr key={i}>
+              <td style={{fontWeight:600}}>{nomes[l.colab]||"—"}</td>
+              <td className="mono">{l.dia}</td>
+              <td className="mono">{l.itens.map(r=>`${r.tipo==="entrada"?"▸":"◂"} ${fmtH(r.momento)}`).join("   ")}</td>
+              <td className="tot mono">{l.horas.toFixed(1)}h</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function App(){
+  const [tab,setTab]=useState("cadastro");
+  return (
+    <div className="wrap">
+      <div className="top">
+        <div className="brand"><h1>Ponto</h1><p>Cadastro biométrico e relatório de horas</p></div>
+        <span className={"mode "+(sb?"live":"demo")}>{sb?"● Conectado ao Supabase":"○ Modo demo — nada é salvo"}</span>
+      </div>
+      <div className="note">O registro em si é feito pelos funcionários no iPad (quiosque). Aqui você cadastra o rosto (com consentimento) e acompanha as horas. Guardamos só o descritor do rosto, nunca a foto.</div>
+      <div className="tabs">
+        <button className={tab==="cadastro"?"on":""} onClick={()=>setTab("cadastro")}>Cadastro</button>
+        <button className={tab==="relatorio"?"on":""} onClick={()=>setTab("relatorio")}>Relatório</button>
+      </div>
+      {tab==="cadastro" ? <Enroll/> : <Relatorio/>}
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

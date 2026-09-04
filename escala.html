@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Escala de Enfermagem</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  // Preencha para sincronizar a escala entre usuários (mesmo projeto Supabase).
+  // Em branco = fica só neste navegador (localStorage), como antes.
+  const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
+</script>
+<style>
+:root{
+  --bg:#eef2f3; --surface:#ffffff; --ink:#0e1f26; --muted:#5c6f77;
+  --line:#d7e0e2; --teal:#0d6b6e; --teal-d:#095255;
+  --sd:#b45309; --sd-bg:#fef3c7; --sn:#3730a3; --sn-bg:#e0e7ff;
+  --m:#0369a1; --m-bg:#e0f2fe; --t:#be123c; --t-bg:#ffe4e8;
+  --f:#64748b; --f-bg:#eef2f5; --fe:#0f766e; --fe-bg:#ccfbf1; --lc:#7c3aed; --lc-bg:#ede9fe;
+  --hol:#dc2626; --hol-bg:#fde8e8;
+  --ok:#15803d; --ok-bg:#dcfce7; --warn:#b45309; --warn-bg:#fef3c7; --bad:#b91c1c; --bad-bg:#fee2e2;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;font-size:14px;line-height:1.4}
+button{font-family:inherit;cursor:pointer}
+input,select{font-family:inherit;font-size:14px}
+.mono{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+.wrap{max-width:1560px;margin:0 auto;padding:20px}
+
+.topbar{display:flex;align-items:center;gap:18px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 20px;margin-bottom:16px}
+.logo-slot{width:64px;height:64px;flex:none;border:2px dashed var(--line);border-radius:12px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#f8fafa;cursor:pointer;transition:border-color .15s}
+.logo-slot:hover{border-color:var(--teal)}
+.logo-slot img{width:100%;height:100%;object-fit:contain}
+.logo-slot span{font-size:10px;color:var(--muted);text-align:center;line-height:1.2;padding:2px}
+.brand{flex:1;min-width:0}
+.brand .unit{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:17px;border:none;background:transparent;color:var(--ink);width:100%;padding:2px 0}
+.brand .unit:focus{outline:none;border-bottom:1px solid var(--teal)}
+.brand .title{font-size:12px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:#fff;color:var(--ink);padding:9px 14px;border-radius:9px;font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--teal);color:var(--teal-d)}
+.btn.primary{background:var(--teal);border-color:var(--teal);color:#fff}
+.btn.primary:hover{background:var(--teal-d)}
+.btn.ghost{color:var(--muted)}
+.btn.ghost:hover{color:var(--bad);border-color:var(--bad)}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:16px}
+.panel h2{font-family:'Space Grotesk',sans-serif;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 14px}
+.cfg{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end}
+.group{border:1px solid var(--line);border-radius:10px;padding:10px 14px 12px}
+.group.hl{border-color:#f0c9c9;background:#fffafa}
+.group .glab{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--teal-d);margin-bottom:8px}
+.group.hl .glab{color:var(--hol)}
+.group .grow{display:flex;gap:14px}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.field input,.field select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#fff}
+.field input{width:70px}
+.field input:focus,.field select:focus{outline:none;border-color:var(--teal)}
+.stat{background:#f1f6f6;border:1px solid var(--line);border-radius:10px;padding:8px 14px;min-width:96px}
+.stat .k{font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.stat .v{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:20px;color:var(--teal-d)}
+.toggle{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.chipx{display:inline-flex;align-items:center;gap:4px;background:var(--hol-bg);border:1px solid #f0c9c9;color:var(--hol);border-radius:20px;padding:4px 4px 4px 11px;font-size:12px;font-family:'JetBrains Mono',monospace;font-weight:700}
+.chipx button{border:none;background:transparent;color:var(--hol);cursor:pointer;font-size:15px;line-height:1;padding:0 4px}
+
+table.team{width:100%;border-collapse:collapse;font-size:13px}
+.team th{text-align:left;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:6px 8px;border-bottom:1px solid var(--line)}
+.team td{padding:5px 8px;border-bottom:1px solid var(--line)}
+.team input,.team select{border:1px solid var(--line);border-radius:7px;padding:6px 8px;background:#fff}
+.team input.nm{width:100%;min-width:150px}
+.team input.wk{width:64px;text-align:center}
+.team input:focus,.team select:focus{outline:none;border-color:var(--teal)}
+.team .alvo{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--teal-d)}
+.addrow{display:flex;gap:8px;margin-top:12px}
+.addrow input{flex:1;border:1px solid var(--line);border-radius:8px;padding:9px 12px}
+.addrow input:focus{outline:none;border-color:var(--teal)}
+
+.grid-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:#fff}
+table.sched{border-collapse:separate;border-spacing:0;width:100%;font-size:12px}
+.sched th,.sched td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:0;text-align:center;white-space:nowrap}
+.sched thead th{position:sticky;top:0;background:#f1f6f6;z-index:2;font-weight:600;padding:4px 4px;color:var(--muted)}
+.sched th.wknd,.sched td.wknd{background:#f8fafa}
+.sched th.hol,.sched td.hol{background:var(--hol-bg)}
+.sched th.hol .dnum{color:var(--hol)}
+.sched th.dnum{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink);min-width:34px}
+.sched th.dwd{font-size:9px;text-transform:uppercase;font-weight:700}
+.sched th .fer{font-size:8px;font-weight:700;color:var(--hol);letter-spacing:.03em}
+.name-col{position:sticky;left:0;background:#fff;z-index:1;text-align:left!important;padding:4px 10px!important;min-width:180px;border-right:2px solid var(--line)!important}
+thead .name-col{z-index:3;background:#f1f6f6}
+.nm-main{font-weight:600;font-size:12px;line-height:1.2}
+.nm-tags{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-top:2px}
+.tot-col{position:sticky;right:0;background:#fff;z-index:1;border-left:2px solid var(--line)!important;min-width:150px}
+thead .tot-col{z-index:3;background:#f1f6f6}
+.cell-sel{border:none;background:transparent;width:100%;height:36px;text-align:center;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;cursor:pointer;-webkit-appearance:none;appearance:none;color:var(--ink)}
+.cell-sel:focus{outline:2px solid var(--teal);outline-offset:-2px}
+.c-SD{background:var(--sd-bg);color:var(--sd)} .c-SN{background:var(--sn-bg);color:var(--sn)}
+.c-M{background:var(--m-bg);color:var(--m)} .c-T{background:var(--t-bg);color:var(--t)}
+.c-F{background:var(--f-bg);color:var(--f)} .c-FE{background:var(--fe-bg);color:var(--fe)} .c-LC{background:var(--lc-bg);color:var(--lc)}
+.tot-wrap{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:0 12px;height:36px}
+.tot-h{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px}
+.pill{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;padding:2px 7px;border-radius:20px;min-width:44px;text-align:center}
+.p-ok{background:var(--ok-bg);color:var(--ok)} .p-warn{background:var(--warn-bg);color:var(--warn)} .p-bad{background:var(--bad-bg);color:var(--bad)}
+tfoot td{background:#f8fafa;font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--muted);height:24px;font-size:11px}
+tfoot .cov-lbl{text-align:right!important;padding-right:10px!important;color:var(--ink);font-family:Inter,sans-serif;font-weight:600;font-size:11px}
+tfoot .cov-lbl small{font-family:'JetBrains Mono',monospace;color:var(--muted);font-weight:600}
+tfoot td.under{background:var(--bad-bg);color:var(--bad)}
+
+.bal-list{display:flex;flex-direction:column;gap:10px}
+.bal-row{display:grid;grid-template-columns:220px 1fr 130px;gap:12px;align-items:center}
+.bal-name{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-track{position:relative;height:22px;background:#f1f6f6;border-radius:6px;overflow:hidden;border:1px solid var(--line)}
+.bar-fill{position:absolute;left:0;top:0;bottom:0;border-radius:5px 0 0 5px;transition:width .2s}
+.bar-target{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink)}
+.bar-info{display:flex;gap:8px;align-items:center;justify-content:flex-end}
+
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:14px;font-size:12px;color:var(--muted);align-items:center}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.chip{width:28px;height:18px;border-radius:5px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;display:inline-flex;align-items:center;justify-content:center}
+.empty{padding:30px;text-align:center;color:var(--muted)}
+.hint{font-size:12px;color:var(--muted);margin-top:8px}
+.adv-list{display:flex;flex-direction:column;gap:9px}
+.adv{display:flex;gap:9px;align-items:flex-start;font-size:13px;line-height:1.45;padding:2px 0 2px 11px;border-left:3px solid var(--line)}
+.adv-ic{font-weight:700;flex:none}
+.adv-crit{border-color:var(--bad)} .adv-crit .adv-ic{color:var(--bad)}
+.adv-warn{border-color:var(--warn)} .adv-warn .adv-ic{color:var(--warn)}
+.adv-ok{border-color:var(--ok)} .adv-ok .adv-ic{color:var(--ok)}
+.adv-info{border-color:var(--teal)} .adv-info .adv-ic{color:var(--teal)}
+.file-in{display:none}
+.leave-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+
+@media print{
+  @page{size:landscape;margin:8mm}
+  body{background:#fff}
+  .noprint{display:none!important}
+  .wrap{max-width:none;padding:0}
+  .grid-scroll{overflow:visible;border:none}
+  .sched{font-size:8.5px}
+  .name-col,.tot-col,thead th{position:static}
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<input type="file" id="logoInput" class="file-in" accept="image/*" />
+<input type="file" id="jsonInput" class="file-in" accept="application/json" />
+
+<script type="text/babel">
+const {useState,useMemo,useEffect} = React;
+
+const SHIFTS={ SD:{h:12}, SN:{h:12}, M:{h:6}, T:{h:6}, F:{h:0}, FE:{h:0}, LC:{h:0} };
+const CELL_OPTS=[["","·"],["SD","SD"],["SN","SN"],["M","M"],["T","T"],["F","F"],["FE","FE"],["LC","LC"]];
+const MESES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+const WD=["D","S","T","Q","Q","S","S"];
+const ROLE={enf:"Enfermeiro",tec:"Técnico"};
+const MODE={misto:"Misto",diurno:"Só diurno",noturno:"Só noturno"};
+const uid=()=>Math.random().toString(36).slice(2,9);
+const daysInMonth=(y,m)=>new Date(y,m+1,0).getDate();
+const wdOf=(y,m,day)=>new Date(y,m,day).getDay();
+const isWknd=(y,m,day)=>{const w=wdOf(y,m,day);return w===0||w===6;};
+
+function normCover(c){
+  if(c&&c.semana&&c.fds)return c;
+  const base=(c&&c.SD)?c:{SD:{enf:1,tec:2},SN:{enf:1,tec:2}};
+  return {semana:base,fds:JSON.parse(JSON.stringify(base))};
+}
+const KEY="escala_enfermagem_v3";
+const sb=(SUPABASE_URL&&SUPABASE_ANON_KEY)?supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
+const load=()=>{try{const r=localStorage.getItem(KEY);return r?JSON.parse(r):null;}catch(e){return null;}};
+let _saveTimer=null;
+const persist=s=>{
+  try{localStorage.setItem(KEY,JSON.stringify(s));}catch(e){}
+  if(sb){ clearTimeout(_saveTimer); _saveTimer=setTimeout(()=>{
+    sb.from("escala_estado").upsert({id:1,dados:s,atualizado_em:new Date().toISOString()}).then(()=>{});
+  },800); }
+};
+
+function App(){
+  const now=new Date();
+  const init=load()||{};
+  const [unit,setUnit]=useState(init.unit??"Hospital Naval de Salvador — Enfermagem");
+  const [logo,setLogo]=useState(init.logo??null);
+  const [month,setMonth]=useState(init.month??now.getMonth());
+  const [year,setYear]=useState(init.year??now.getFullYear());
+  const [defWeekly,setDefWeekly]=useState(init.defWeekly??36);
+  const [diasSemana,setDiasSemana]=useState(init.diasSemana??6);
+  const [restRule,setRestRule]=useState(init.restRule??true);
+  const [cover,setCover]=useState(normCover(init.cover));
+  const [holidayMap,setHolidayMap]=useState(init.holidayMap??{});
+  const [emps,setEmps]=useState(init.emps??[]);
+  const [sched,setSched]=useState(init.sched??{});
+  const [newName,setNewName]=useState("");
+  const [holInput,setHolInput]=useState("");
+  const [lvEmp,setLvEmp]=useState(""); const [lvType,setLvType]=useState("FE");
+  const [lvFrom,setLvFrom]=useState(1); const [lvTo,setLvTo]=useState(1);
+
+  const dim=daysInMonth(year,month);
+  const holKey=year+"-"+month;
+  const holidays=holidayMap[holKey]||[];
+  const isHol=d=>holidays.includes(d);
+  const isFds=d=>isWknd(year,month,d)||isHol(d);
+  const dayType=d=>isFds(d)?"fds":"semana";
+  const req=(d,sh,ro)=>(cover[dayType(d)]&&cover[dayType(d)][sh]&&cover[dayType(d)][sh][ro])||0;
+
+  const diasContados=useMemo(()=>{let n=0;
+    for(let d=1;d<=dim;d++){const w=wdOf(year,month,d);
+      const off=diasSemana>=6 ? w===0 : (w===0||w===6);
+      if(!off && !holidays.includes(d)) n++;}
+    return n;},[dim,year,month,diasSemana,holidays]);
+
+  const empTarget=e=>Math.round((e.weekly||0)/(diasSemana||6)*diasContados);
+
+  useEffect(()=>{
+    if(!sb) return;
+    sb.from("escala_estado").select("dados").eq("id",1).maybeSingle().then(({data})=>{
+      const s=data&&data.dados; if(!s||!Object.keys(s).length) return;
+      setUnit(s.unit??unit);setLogo(s.logo??null);setMonth(s.month??month);setYear(s.year??year);
+      setDefWeekly(s.defWeekly??36);setDiasSemana(s.diasSemana??6);setRestRule(s.restRule??true);
+      setCover(normCover(s.cover));setHolidayMap(s.holidayMap??{});setEmps(s.emps??[]);setSched(s.sched??{});
+    });
+  },[]);
+
+  useEffect(()=>{persist({unit,logo,month,year,defWeekly,diasSemana,restRule,cover,holidayMap,emps,sched});},
+    [unit,logo,month,year,defWeekly,diasSemana,restRule,cover,holidayMap,emps,sched]);
+
+  useEffect(()=>{setSched(prev=>{const next={};let ch=false;
+    for(const id in prev){next[id]={};for(const d in prev[id]){if(+d<=dim)next[id][d]=prev[id][d];else ch=true;}}
+    return ch?next:prev;});},[dim]);
+
+  const totals=useMemo(()=>{const t={};emps.forEach(e=>{let h=0;const r=sched[e.id]||{};
+    for(const d in r)h+=SHIFTS[r[d]]?.h||0;t[e.id]=h;});return t;},[emps,sched]);
+
+  const coverage=useMemo(()=>{const c={};
+    for(let d=1;d<=dim;d++)c[d]={SD:{enf:0,tec:0},SN:{enf:0,tec:0}};
+    emps.forEach(e=>{const r=sched[e.id]||{};for(const d in r){const v=r[d];
+      if((v==="SD"||v==="SN")&&c[d])c[d][v][e.role]++;}});return c;},[emps,sched,dim]);
+
+  const stats=useMemo(()=>{const fds={},under=[];
+    emps.forEach(e=>{fds[e.id]=0;const r=sched[e.id]||{};
+      for(const d in r){if((r[d]==="SD"||r[d]==="SN")&&isFds(+d))fds[e.id]++;}});
+    for(let d=1;d<=dim;d++){let short=false;
+      for(const sh of["SD","SN"])for(const ro of["enf","tec"])if((coverage[d][sh][ro]||0)<req(d,sh,ro))short=true;
+      if(short)under.push(d);}
+    const fv=emps.map(e=>fds[e.id]);
+    return {fds,under,fmin:fv.length?Math.min(...fv):0,fmax:fv.length?Math.max(...fv):0};
+  },[emps,sched,coverage,dim,cover,holidayMap,year,month]);
+  const advice=useMemo(()=>{const out=[];if(emps.length===0)return out;
+    // 1. lacunas de cobertura, detalhadas
+    const short=[];
+    for(let d=1;d<=dim;d++)for(const sh of["SN","SD"])for(const ro of["enf","tec"]){
+      const miss=req(d,sh,ro)-(coverage[d][sh][ro]||0);if(miss>0)short.push({d,sh,ro,miss});}
+    if(short.length===0)out.push({sev:"ok",text:`Cobertura mínima atendida em todos os ${dim} dias.`});
+    else{const shown=short.slice(0,4).map(s=>`dia ${s.d} (${WD[wdOf(year,month,s.d)]}): falta${s.miss>1?"m":""} ${s.miss} ${s.ro==="enf"?"enf.":"téc."} no ${s.sh}`);
+      const dset=new Set(short.map(s=>s.d)).size;
+      out.push({sev:"crit",text:`Faltam profissionais em ${dset} dia(s) — ${shown.join("; ")}${short.length>4?`; e mais ${short.length-4} lacuna(s)`:""}.`});
+      out.push({sev:"info",text:`O que fazer: escalar mais gente nesses dias, cadastrar profissionais, ou reduzir a exigência de cobertura.`});}
+    // 2. capacidade da equipe x exigência (por função)
+    const maxShifts=restRule?Math.floor((dim+1)/2):dim;
+    [["enf","enfermeiro"],["tec","técnico"]].forEach(([ro,lbl])=>{
+      let demand=0;for(let d=1;d<=dim;d++)demand+=req(d,"SD",ro)+req(d,"SN",ro);
+      const n=emps.filter(e=>e.role===ro).length,supply=n*maxShifts;
+      if(n===0&&demand>0){out.push({sev:"crit",text:`Nenhum ${lbl} cadastrado, mas a cobertura exige ${demand} plantões de ${lbl} no mês.`});return;}
+      if(demand>supply)out.push({sev:"warn",text:`Exigência de ${lbl}s (${demand} plantões/mês) acima da capacidade da equipe (~${supply}${restRule?" com folga pós-12h":""}). Faltam ~${demand-supply} plantões — contratar ${Math.ceil((demand-supply)/maxShifts)} ${lbl}(s) ou reduzir cobertura.`});});
+    // 3. viabilidade por regime (quem pode cobrir noturno/diurno)
+    [["SN","noturno","diurno"],["SD","diurno","noturno"]].forEach(([sh,per,block])=>{
+      ["enf","tec"].forEach(ro=>{
+        let dem=false;for(let d=1;d<=dim;d++)if(req(d,sh,ro)>0){dem=true;break;}if(!dem)return;
+        const able=emps.filter(e=>e.role===ro&&e.mode!==block).length;
+        if(able===0)out.push({sev:"crit",text:`O ${sh} exige ${ro==="enf"?"enfermeiro":"técnico"}, mas ninguém dessa função pode fazer ${per} (todos "só ${block}"). Ajuste um regime para "misto".`});});});
+    // 4. carga fora do alvo
+    const over=emps.filter(e=>(totals[e.id]||0)-empTarget(e)>=24);
+    const underT=emps.filter(e=>empTarget(e)-(totals[e.id]||0)>=24);
+    if(over.length)out.push({sev:"warn",text:`Acima do alvo (+24h ou mais): ${over.map(e=>e.name).join(", ")} — redistribua plantões para colegas com folga.`});
+    if(underT.length)out.push({sev:"info",text:`Abaixo do alvo (−24h ou mais): ${underT.map(e=>e.name).join(", ")} — têm capacidade para assumir mais plantões.`});
+    if(!over.length&&!underT.length&&emps.some(e=>totals[e.id]))out.push({sev:"ok",text:`Cargas dentro de ±24h do alvo para toda a equipe.`});
+    // 5. justiça de fins de semana / feriados
+    if(emps.some(e=>totals[e.id])){
+      if(stats.fmax-stats.fmin<=1)out.push({sev:"ok",text:`Fins de semana/feriados bem distribuídos (${stats.fmin}–${stats.fmax} por pessoa).`});
+      else{const most=emps.filter(e=>stats.fds[e.id]===stats.fmax).map(e=>e.name),least=emps.filter(e=>stats.fds[e.id]===stats.fmin).map(e=>e.name);
+        out.push({sev:"warn",text:`Fins de semana/feriados desiguais (${stats.fmin}–${stats.fmax}): ${most.join(", ")} trabalha(m) mais; ${least.join(", ")} menos. Troque um plantão de fim de semana entre eles.`});}}
+    return out;
+  },[emps,sched,coverage,dim,cover,holidayMap,year,month,restRule,totals,stats]);
+
+  const maxH=Math.max(1,...emps.map(e=>Math.max(empTarget(e),totals[e.id]||0)));
+
+  function setLogoFile(f){const r=new FileReader();r.onload=e=>setLogo(e.target.result);r.readAsDataURL(f);}
+  useEffect(()=>{
+    const li=document.getElementById("logoInput"),ji=document.getElementById("jsonInput");
+    const lh=e=>{if(e.target.files[0])setLogoFile(e.target.files[0]);e.target.value="";};
+    const jh=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();
+      r.onload=ev=>{try{const s=JSON.parse(ev.target.result);
+        setUnit(s.unit??unit);setLogo(s.logo??null);setMonth(s.month??month);setYear(s.year??year);
+        setDefWeekly(s.defWeekly??36);setDiasSemana(s.diasSemana??6);setRestRule(s.restRule??true);
+        setCover(normCover(s.cover));setHolidayMap(s.holidayMap??{});setEmps(s.emps??[]);setSched(s.sched??{});
+      }catch(err){alert("Arquivo inválido.");}};
+      r.readAsText(f);e.target.value="";};
+    li.addEventListener("change",lh);ji.addEventListener("change",jh);
+    return()=>{li.removeEventListener("change",lh);ji.removeEventListener("change",jh);};
+  });
+
+  function addEmp(){const n=newName.trim();if(!n)return;const id=uid();
+    setEmps([...emps,{id,name:n,role:"enf",weekly:defWeekly,mode:"misto"}]);setNewName("");if(!lvEmp)setLvEmp(id);}
+  function rmEmp(id){setEmps(emps.filter(e=>e.id!==id));const s={...sched};delete s[id];setSched(s);if(lvEmp===id)setLvEmp("");}
+  function updEmp(id,k,v){setEmps(emps.map(e=>e.id===id?{...e,[k]:v}:e));}
+  function setCell(id,day,code){setSched(p=>{const r={...(p[id]||{})};if(code)r[day]=code;else delete r[day];return{...p,[id]:r};});}
+  function updCov(period,sh,ro,v){setCover(p=>({...p,[period]:{...p[period],[sh]:{...p[period][sh],[ro]:v}}}));}
+  function addHol(){const d=+holInput;if(!d||d<1||d>dim||holidays.includes(d))return;
+    setHolidayMap(p=>({...p,[holKey]:[...(p[holKey]||[]),d].sort((a,b)=>a-b)}));setHolInput("");}
+  function rmHol(d){setHolidayMap(p=>({...p,[holKey]:(p[holKey]||[]).filter(x=>x!==d)}));}
+  function applyLeave(){if(!lvEmp)return;const a=Math.min(lvFrom,lvTo),b=Math.max(lvFrom,lvTo);
+    setSched(p=>{const r={...(p[lvEmp]||{})};for(let d=a;d<=b;d++)r[d]=lvType;return{...p,[lvEmp]:r};});}
+
+  function generate(){
+    const next={};emps.forEach(e=>next[e.id]={});
+    emps.forEach(e=>{const r=sched[e.id]||{};for(const d in r){const v=r[d];
+      if(v==="FE"||v==="LC"||v==="M"||v==="T")next[e.id][d]=v;}});
+    const tgt={},hrs={},sdc={},snc={},fdc={};
+    emps.forEach(e=>{tgt[e.id]=empTarget(e);hrs[e.id]=0;sdc[e.id]=0;snc[e.id]=0;fdc[e.id]=0;
+      for(const d in next[e.id])hrs[e.id]+=SHIFTS[next[e.id][d]]?.h||0;});
+    const busy=(id,d)=>{const v=next[id][d];return v!=null&&v!=="";};
+    const worked12Prev=(id,d)=>{const v=next[id][d-1];return v==="SD"||v==="SN";};
+    const WF=0.18,WT=0.04; // pesos: justiça de fds e equilíbrio dia/noite
+    for(let d=1;d<=dim;d++){
+      const fds=isFds(d);
+      for(const shift of ["SN","SD"]){
+        for(const role of ["enf","tec"]){
+          const need=req(d,shift,role);
+          let have=emps.filter(e=>e.role===role&&next[e.id][d]===shift).length;
+          let toFill=need-have;if(toFill<=0)continue;
+          let cands=emps.filter(e=>{
+            if(e.role!==role)return false;
+            if(busy(e.id,d))return false;
+            if(restRule&&worked12Prev(e.id,d))return false;
+            if(e.mode==="diurno"&&shift==="SN")return false;
+            if(e.mode==="noturno"&&shift==="SD")return false;
+            return true;});
+          const score=e=>hrs[e.id]/(tgt[e.id]||1)+(fds?fdc[e.id]*WF:0)
+            +(e.mode==="misto"?(shift==="SD"?sdc[e.id]:snc[e.id])*WT:0);
+          cands.sort((a,b)=>{const sa=score(a),sb=score(b);return sa!==sb?sa-sb:hrs[a.id]-hrs[b.id];});
+          for(let i=0;i<toFill&&i<cands.length;i++){const e=cands[i];
+            next[e.id][d]=shift;hrs[e.id]+=SHIFTS[shift].h;
+            if(shift==="SD")sdc[e.id]++;else snc[e.id]++;if(fds)fdc[e.id]++;}
+        }
+      }
+    }
+    emps.forEach(e=>{for(let d=1;d<=dim;d++)if(!next[e.id][d])next[e.id][d]="F";});
+    setSched(next);
+  }
+  function clearShifts(){setSched(p=>{const n={};for(const id in p){n[id]={};for(const d in p[id]){const v=p[id][d];
+    if(v==="FE"||v==="LC"||v==="M"||v==="T")n[id][d]=v;}}return n;});}
+
+  function pill(h,target){const d=h-target;const cls=Math.abs(d)<12?"p-ok":Math.abs(d)<24?"p-warn":"p-bad";
+    return <span className={"pill "+cls}>{d===0?"ok":(d>0?"+":"")+d+"h"}</span>;}
+
+  function exportExcel(){
+    const wb=XLSX.utils.book_new();
+    const head=["Funcionário","Função","Regime"];
+    for(let d=1;d<=dim;d++)head.push(d+WD[wdOf(year,month,d)]+(isHol(d)?"*":""));
+    head.push("Total","Alvo","Δ");
+    const holLine=holidays.length?("Feriados: "+holidays.join(", ")+" (marcados com *)"):"Sem feriados marcados";
+    const aoa=[[unit],["Escala — "+MESES[month]+"/"+year+"  ·  "+holLine],[],head];
+    emps.forEach(e=>{const row=[e.name,ROLE[e.role],MODE[e.mode]];const s=sched[e.id]||{};
+      for(let d=1;d<=dim;d++)row.push(s[d]||"");const h=totals[e.id]||0,tg=empTarget(e);
+      row.push(h,tg,h-tg);aoa.push(row);});
+    aoa.push([]);
+    [["SD","enf"],["SD","tec"],["SN","enf"],["SN","tec"]].forEach(([sh,ro])=>{
+      const r=[sh+" "+ROLE[ro],"sem "+cover.semana[sh][ro],"fds "+cover.fds[sh][ro]];
+      for(let d=1;d<=dim;d++)r.push(coverage[d][sh][ro]||0);aoa.push(r);});
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"]=[{wch:22},{wch:12},{wch:11},...Array(dim).fill({wch:4}),{wch:6},{wch:6},{wch:5}];
+    XLSX.utils.book_append_sheet(wb,ws,"Escala");
+    const res=[["Funcionário","Função","Carga sem.","Regime","Alvo (h)","Total (h)","Δ","Situação"]];
+    emps.forEach(e=>{const h=totals[e.id]||0,tg=empTarget(e),d=h-tg;
+      res.push([e.name,ROLE[e.role],e.weekly+"h",MODE[e.mode],tg,h,d,d===0?"OK":d>0?"Acima":"Abaixo"]);});
+    const wr=XLSX.utils.aoa_to_sheet(res);wr["!cols"]=[{wch:22},{wch:12},{wch:10},{wch:11},{wch:8},{wch:8},{wch:6},{wch:9}];
+    XLSX.utils.book_append_sheet(wb,wr,"Resumo");
+    XLSX.writeFile(wb,"escala-"+MESES[month].toLowerCase()+"-"+year+".xlsx");
+  }
+  function exportJSON(){const blob=new Blob([JSON.stringify({unit,logo,month,year,defWeekly,diasSemana,restRule,cover,holidayMap,emps,sched},null,2)],{type:"application/json"});
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="escala-backup.json";a.click();}
+
+  const days=Array.from({length:dim},(_,i)=>i+1);
+
+  return (
+    <div className="wrap">
+      <div className="topbar">
+        <div className="logo-slot" onClick={()=>document.getElementById("logoInput").click()} title="Enviar logo">
+          {logo?<img src={logo} alt="logo"/>:<span>+ logo</span>}
+        </div>
+        <div className="brand">
+          <input className="unit" value={unit} onChange={e=>setUnit(e.target.value)} />
+          <div className="title">Gerador de Escala · Equipe de Enfermagem</div>
+        </div>
+        <div className="actions noprint">
+          <button className="btn" onClick={()=>document.getElementById("jsonInput").click()}>Abrir</button>
+          <button className="btn" onClick={exportJSON}>Salvar</button>
+          <button className="btn" onClick={()=>window.print()}>Imprimir / PDF</button>
+          <button className="btn" onClick={exportExcel}>Excel</button>
+          <button className="btn primary" onClick={generate}>⚡ Gerar escala</button>
+        </div>
+      </div>
+
+      <div className="panel noprint">
+        <h2>Período · carga horária · feriados</h2>
+        <div className="cfg">
+          <div className="field"><label>Mês</label>
+            <select value={month} onChange={e=>setMonth(+e.target.value)}>
+              {MESES.map((m,i)=><option key={i} value={i}>{m}</option>)}</select></div>
+          <div className="field"><label>Ano</label>
+            <input type="number" value={year} onChange={e=>setYear(+e.target.value)} style={{width:90}}/></div>
+          <div className="field"><label>Dias trab./semana</label>
+            <select value={diasSemana} onChange={e=>setDiasSemana(+e.target.value)}>
+              <option value={6}>6 (só domingo folga)</option>
+              <option value={5}>5 (seg a sex)</option></select></div>
+          <div className="field"><label>Carga padrão (novos)</label>
+            <input type="number" value={defWeekly} onChange={e=>setDefWeekly(+e.target.value||0)}/></div>
+          <div className="stat"><div className="k">Dias no mês</div><div className="v">{dim}</div></div>
+          <div className="stat"><div className="k">Dias contados</div><div className="v">{diasContados}</div></div>
+          <label className="toggle"><input type="checkbox" checked={restRule}
+            onChange={e=>setRestRule(e.target.checked)}/> Folga após plantão 12h</label>
+        </div>
+        <div className="cfg" style={{marginTop:14}}>
+          <div className="field" style={{minWidth:200}}><label>Feriados deste mês</label>
+            <div style={{display:"flex",gap:6}}>
+              <input type="number" min="1" max={dim} value={holInput} placeholder="dia"
+                onChange={e=>setHolInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addHol()}/>
+              <button className="btn" onClick={addHol}>+ feriado</button>
+            </div>
+            <div className="chips">
+              {holidays.length===0?<span style={{fontSize:12,color:"var(--muted)"}}>nenhum</span>:
+                holidays.map(d=><span className="chipx" key={d}>{d}/{month+1}
+                  <button onClick={()=>rmHol(d)}>×</button></span>)}
+            </div>
+          </div>
+        </div>
+        <div className="hint">Alvo mensal por pessoa = (carga semanal ÷ {diasSemana}) × dias contados ({diasContados}). Cada feriado marcado desconta um dia contado, reduzindo o alvo. Feriados também usam a cobertura de fim de semana.</div>
+      </div>
+
+      <div className="panel noprint">
+        <h2>Cobertura exigida pela chefia</h2>
+        <div className="cfg">
+          <div className="group"><div className="glab">Dias de semana</div><div className="grow">
+            <div className="field"><label>SD Enf.</label><input type="number" value={cover.semana.SD.enf} onChange={e=>updCov("semana","SD","enf",+e.target.value||0)}/></div>
+            <div className="field"><label>SD Téc.</label><input type="number" value={cover.semana.SD.tec} onChange={e=>updCov("semana","SD","tec",+e.target.value||0)}/></div>
+            <div className="field"><label>SN Enf.</label><input type="number" value={cover.semana.SN.enf} onChange={e=>updCov("semana","SN","enf",+e.target.value||0)}/></div>
+            <div className="field"><label>SN Téc.</label><input type="number" value={cover.semana.SN.tec} onChange={e=>updCov("semana","SN","tec",+e.target.value||0)}/></div>
+          </div></div>
+          <div className="group hl"><div className="glab">Fim de semana / feriado</div><div className="grow">
+            <div className="field"><label>SD Enf.</label><input type="number" value={cover.fds.SD.enf} onChange={e=>updCov("fds","SD","enf",+e.target.value||0)}/></div>
+            <div className="field"><label>SD Téc.</label><input type="number" value={cover.fds.SD.tec} onChange={e=>updCov("fds","SD","tec",+e.target.value||0)}/></div>
+            <div className="field"><label>SN Enf.</label><input type="number" value={cover.fds.SN.enf} onChange={e=>updCov("fds","SN","enf",+e.target.value||0)}/></div>
+            <div className="field"><label>SN Téc.</label><input type="number" value={cover.fds.SN.tec} onChange={e=>updCov("fds","SN","tec",+e.target.value||0)}/></div>
+          </div></div>
+        </div>
+      </div>
+
+      <div className="panel noprint">
+        <h2>Equipe · perfil de cada profissional</h2>
+        {emps.length===0?<div className="empty" style={{padding:"10px 0"}}>Nenhum profissional cadastrado ainda.</div>:
+        <table className="team"><thead><tr>
+          <th>Nome</th><th>Função</th><th>Carga semanal</th><th>Regime</th><th>Alvo mensal</th><th></th>
+        </tr></thead><tbody>
+          {emps.map(e=><tr key={e.id}>
+            <td><input className="nm" value={e.name} onChange={ev=>updEmp(e.id,"name",ev.target.value)}/></td>
+            <td><select value={e.role} onChange={ev=>updEmp(e.id,"role",ev.target.value)}>
+              <option value="enf">Enfermeiro</option><option value="tec">Técnico</option></select></td>
+            <td><input className="wk" type="number" value={e.weekly} onChange={ev=>updEmp(e.id,"weekly",+ev.target.value||0)}/> h</td>
+            <td><select value={e.mode} onChange={ev=>updEmp(e.id,"mode",ev.target.value)}>
+              <option value="misto">Misto</option><option value="diurno">Só diurno</option><option value="noturno">Só noturno</option></select></td>
+            <td className="alvo">{empTarget(e)}h</td>
+            <td><button className="btn ghost" style={{padding:"4px 10px"}} onClick={()=>rmEmp(e.id)}>Remover</button></td>
+          </tr>)}
+        </tbody></table>}
+        <div className="addrow">
+          <input value={newName} placeholder="Nome do profissional"
+            onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addEmp()}/>
+          <button className="btn primary" onClick={addEmp}>Adicionar</button>
+        </div>
+      </div>
+
+      <div className="panel noprint">
+        <h2>Afastamentos · férias, licenças e folgas</h2>
+        <div className="leave-row">
+          <div className="field"><label>Profissional</label>
+            <select value={lvEmp} onChange={e=>setLvEmp(e.target.value)} style={{minWidth:180}}>
+              <option value="">— selecione —</option>
+              {emps.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
+          <div className="field"><label>Tipo</label>
+            <select value={lvType} onChange={e=>setLvType(e.target.value)}>
+              <option value="FE">Férias</option><option value="LC">Licença</option><option value="F">Folga</option></select></div>
+          <div className="field"><label>Do dia</label>
+            <input type="number" min="1" max={dim} value={lvFrom} onChange={e=>setLvFrom(+e.target.value||1)}/></div>
+          <div className="field"><label>Até o dia</label>
+            <input type="number" min="1" max={dim} value={lvTo} onChange={e=>setLvTo(+e.target.value||1)}/></div>
+          <button className="btn primary" onClick={applyLeave} style={{marginBottom:1}}>Aplicar</button>
+        </div>
+        <div className="hint">Afastamentos são preservados ao clicar em “Gerar escala” — o automático nunca escala alguém de férias/licença.</div>
+      </div>
+
+      <div className="grid-scroll">
+        {emps.length===0?<div className="empty">Cadastre a equipe e clique em “Gerar escala”.</div>:
+        <table className="sched">
+          <thead><tr>
+            <th className="name-col">Profissional</th>
+            {days.map(d=>{const hol=isHol(d);const wk=isWknd(year,month,d);
+              return <th key={d} className={hol?"hol":wk?"wknd":""}>
+                <div className="dwd">{WD[wdOf(year,month,d)]}</div>
+                <div className="dnum">{d}</div>
+                {hol&&<div className="fer">FER</div>}</th>;})}
+            <th className="tot-col">Carga / Balanço</th>
+          </tr></thead>
+          <tbody>
+            {emps.map(e=>{const r=sched[e.id]||{};const h=totals[e.id]||0;const tg=empTarget(e);
+              return <tr key={e.id}>
+                <td className="name-col">
+                  <div className="nm-main">{e.name}</div>
+                  <div className="nm-tags">{e.role==="enf"?"ENF":"TÉC"} · {e.weekly}h · {e.mode==="misto"?"misto":e.mode==="diurno"?"diurno":"noturno"}</div>
+                </td>
+                {days.map(d=>{const code=r[d]||"";const hol=isHol(d);const wk=isWknd(year,month,d);
+                  return <td key={d} className={hol?"hol":wk?"wknd":""}>
+                    <select className={"cell-sel "+(code?"c-"+code:"")} value={code}
+                      onChange={ev=>setCell(e.id,d,ev.target.value)}>
+                      {CELL_OPTS.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>
+                  </td>;})}
+                <td className="tot-col"><div className="tot-wrap">
+                  <span className="tot-h mono">{h}h</span>{pill(h,tg)}</div></td>
+              </tr>;})}
+          </tbody>
+          <tfoot>
+            {[["SD","enf"],["SD","tec"],["SN","enf"],["SN","tec"]].map(([sh,ro])=>(
+              <tr key={sh+ro}>
+                <td className="name-col cov-lbl">{sh} {ro==="enf"?"Enf.":"Téc."} <small>· sem {cover.semana[sh][ro]} / fds {cover.fds[sh][ro]}</small></td>
+                {days.map(d=>{const hol=isHol(d);const wk=isWknd(year,month,d);const c=coverage[d][sh][ro]||0;const need=req(d,sh,ro);
+                  return <td key={d} className={(hol?"hol ":wk?"wknd ":"")+(c<need?"under":"")}>{c||""}</td>;})}
+                <td className="tot-col"></td>
+              </tr>))}
+          </tfoot>
+        </table>}
+      </div>
+
+      <div className="legend noprint">
+        <span><i className="chip c-SD">SD</i>Diurno 12h</span>
+        <span><i className="chip c-SN">SN</i>Noturno 12h</span>
+        <span><i className="chip c-M">M</i>Manhã 6h</span>
+        <span><i className="chip c-T">T</i>Tarde 6h</span>
+        <span><i className="chip c-F">F</i>Folga</span>
+        <span><i className="chip c-FE">FE</i>Férias</span>
+        <span><i className="chip c-LC">LC</i>Licença</span>
+        <button className="btn ghost" style={{marginLeft:"auto"}} onClick={clearShifts}>Limpar plantões</button>
+      </div>
+
+      {emps.length>0&&<div className="panel noprint" style={{marginTop:16}}>
+        <h2>Diagnóstico e orientações</h2>
+        <div className="adv-list">
+          {advice.map((a,i)=><div className={"adv adv-"+a.sev} key={i}>
+            <span className="adv-ic">{a.sev==="crit"?"⚠":a.sev==="warn"?"⚠":a.sev==="ok"?"✓":"→"}</span>
+            <span>{a.text}</span></div>)}
+        </div>
+        <div className="hint">Estas orientações atualizam sozinhas conforme você edita a escala, a equipe ou a cobertura.</div>
+      </div>}
+
+      {emps.length>0&&<div className="panel noprint" style={{marginTop:16}}>
+        <h2>Balanço de carga horária</h2>
+        <div className="bal-list">
+          {emps.map(e=>{const h=totals[e.id]||0;const tg=empTarget(e);const d=h-tg;
+            const cls=Math.abs(d)<12?"var(--ok)":Math.abs(d)<24?"var(--warn)":"var(--bad)";
+            return <div className="bal-row" key={e.id}>
+              <div className="bal-name">{e.name} <span style={{color:"var(--muted)",fontWeight:400,fontSize:11}}>· alvo {tg}h · {stats.fds[e.id]||0} fds/fer</span></div>
+              <div className="bar-track">
+                <div className="bar-fill" style={{width:Math.min(100,h/maxH*100)+"%",background:cls}}></div>
+                <div className="bar-target" style={{left:(tg/maxH*100)+"%"}}></div></div>
+              <div className="bar-info"><span className="tot-h mono">{h}h</span>{pill(h,tg)}</div>
+            </div>;})}
+        </div>
+        <div className="hint">Linha preta = alvo individual. Verde: ±12h (uma diária) · Amarelo: até ±24h · Vermelho: acima disso.</div>
+      </div>}
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

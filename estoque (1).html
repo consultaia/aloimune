@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Estoque</title>
+
+<!-- ==========================================================================
+     ESTOQUE  (Painel + modo Inventário para alimentação rápida)
+     Stack: HTML único + React 18 (CDN) + Supabase (CDN). Sem build. GitHub Pages.
+     Mesmo projeto Supabase dos outros módulos. Rode estoque-schema.sql antes.
+     Sem chaves -> modo demo (dados em memória, nada é salvo).
+     ========================================================================== -->
+<script>
+  const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  :root{
+    --ink:#12212B; --surface:#F5F7F8; --card:#FFFFFF; --line:#E1E7EA;
+    --muted:#5C6B75; --primary:#0E7C7B; --primary-ink:#0A5A59;
+    --ok:#2E7D5B; --ok-bg:#E7F4EE; --warn:#B26B00; --warn-bg:#FAEED4;
+    --bad:#C0392B; --bad-bg:#FBE5E2; --pend:#454AA6; --pend-bg:#E9E9F7;
+    --perm:#5C6B75; --perm-bg:#EDF0F2;
+    --radius:12px; --shadow:0 1px 2px rgba(18,33,43,.06), 0 8px 24px rgba(18,33,43,.05);
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{font-family:Inter,system-ui,sans-serif; color:var(--ink); background:var(--surface); font-size:15px; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1100px; margin:0 auto; padding:24px 20px 100px}
+
+  .top{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:18px}
+  .brand h1{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:26px; margin:0; letter-spacing:-.01em}
+  .brand p{margin:2px 0 0; color:var(--muted); font-size:13.5px}
+  .mode{font-size:12px; font-weight:600; padding:5px 10px; border-radius:999px; white-space:nowrap}
+  .mode.demo{background:var(--warn-bg); color:var(--warn)}
+  .mode.live{background:var(--ok-bg); color:var(--ok)}
+
+  .tabs{display:inline-flex; background:#EEF1F3; border-radius:10px; padding:3px; margin-bottom:18px}
+  .tabs button{font:inherit; font-weight:600; font-size:14px; border:none; background:none; color:var(--muted); padding:7px 16px; border-radius:8px; cursor:pointer}
+  .tabs button.on{background:var(--card); color:var(--ink); box-shadow:var(--shadow)}
+
+  .tiles{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:20px}
+  .tile{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:12px 14px; cursor:pointer; text-align:left; border-left-width:4px; transition:transform .08s ease, box-shadow .12s}
+  .tile:hover{transform:translateY(-1px); box-shadow:var(--shadow)}
+  .tile.active{box-shadow:0 0 0 2px var(--primary) inset}
+  .tile .n{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:28px; line-height:1; font-variant-numeric:tabular-nums}
+  .tile .l{font-size:12px; color:var(--muted); margin-top:6px; font-weight:500}
+  .t-bad{border-left-color:var(--bad)} .t-bad .n{color:var(--bad)}
+  .t-warn{border-left-color:var(--warn)} .t-warn .n{color:var(--warn)}
+  .t-pend{border-left-color:var(--pend)} .t-pend .n{color:var(--pend)}
+  .t-ok{border-left-color:var(--ok)} .t-ok .n{color:var(--ok)}
+
+  .toolbar{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px}
+  .toolbar input,.toolbar select{font:inherit; padding:9px 12px; border:1px solid var(--line); border-radius:9px; background:var(--card); color:var(--ink)}
+  .toolbar input{flex:1; min-width:180px}
+  .btn{font:inherit; font-weight:600; padding:9px 15px; border-radius:9px; border:1px solid transparent; cursor:pointer}
+  .btn-primary{background:var(--primary); color:#fff} .btn-primary:hover{background:var(--primary-ink)}
+  .btn-ghost{background:var(--card); border-color:var(--line); color:var(--ink)} .btn-ghost:hover{border-color:var(--muted)}
+  .btn-sm{padding:5px 10px; font-size:13px; font-weight:500}
+  .btn:disabled{opacity:.5; cursor:default}
+
+  .panel{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden}
+  table{width:100%; border-collapse:collapse}
+  thead th{text-align:left; font-size:11.5px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); font-weight:600; padding:11px 14px; border-bottom:1px solid var(--line); background:#FBFCFC}
+  tbody td{padding:12px 14px; border-bottom:1px solid var(--line); vertical-align:middle}
+  .nome{font-weight:600}
+  .meta{font-size:12.5px; color:var(--muted); margin-top:2px}
+  .cat{display:inline-block; font-size:11px; font-weight:600; color:var(--primary-ink); background:var(--ok-bg); padding:2px 7px; border-radius:6px; margin-right:6px}
+  .ctrl{display:inline-block; font-size:11px; font-weight:700; color:#7A3E00; background:#FBE7CF; padding:2px 7px; border-radius:6px; margin-left:2px}
+  .qty{font-variant-numeric:tabular-nums; font-weight:600}
+  .qty small{font-weight:400; color:var(--muted)}
+  .bar{height:7px; border-radius:999px; background:#EEF1F3; margin-top:6px; overflow:hidden; max-width:150px}
+  .bar > span{display:block; height:100%; border-radius:999px}
+  .bar.critico > span{background:var(--bad)} .bar.baixo > span{background:var(--warn)} .bar.ok > span{background:var(--ok)}
+
+  .pill{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:4px 10px; border-radius:999px; white-space:nowrap}
+  .pill::before{content:""; width:7px; height:7px; border-radius:50%; background:currentColor}
+  .p-critico{color:var(--bad); background:var(--bad-bg)} .p-baixo{color:var(--warn); background:var(--warn-bg)} .p-ok{color:var(--ok); background:var(--ok-bg)}
+  .p-vencido{color:var(--bad); background:var(--bad-bg)} .p-a_vencer{color:var(--warn); background:var(--warn-bg)}
+  .p-vigente{color:var(--ok); background:var(--ok-bg)} .p-permanente{color:var(--perm); background:var(--perm-bg)}
+  .dash{color:var(--muted)}
+  .row-actions{display:flex; gap:6px; justify-content:flex-end}
+  .lotes-box{background:#FBFCFC; padding:10px 14px 14px}
+  .lotes-box h4{margin:4px 0 8px; font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted)}
+  .lote-line{display:flex; align-items:center; gap:12px; padding:6px 0; border-bottom:1px dashed var(--line); font-variant-numeric:tabular-nums}
+  .lote-line:last-child{border-bottom:none}
+  .lote-line .ln{font-weight:600; min-width:80px}
+  .lote-line .lq{margin-left:auto}
+  .empty{padding:48px 20px; text-align:center; color:var(--muted)}
+  .empty b{color:var(--ink); display:block; margin-bottom:4px; font-size:16px}
+
+  /* Inventário */
+  .inv-item{border-bottom:1px solid var(--line); padding:14px}
+  .inv-head{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+  .inv-head .nome{font-size:15px}
+  .inv-total{margin-left:auto; font-variant-numeric:tabular-nums; color:var(--muted); font-size:13px}
+  .inv-lote{display:grid; grid-template-columns:1.2fr 1.2fr .9fr auto; gap:8px; margin-top:8px; align-items:center}
+  .inv-lote input{font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; width:100%}
+  .inv-lote .rm{background:none; border:none; color:var(--muted); cursor:pointer; font-size:18px; line-height:1}
+  .inv-add{margin-top:8px}
+  .inv-newrow{display:grid; grid-template-columns:1.4fr 1fr .7fr .7fr 1fr auto; gap:8px; align-items:center; margin-top:8px}
+  .inv-newrow input,.inv-newrow select{font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; width:100%}
+  .savebar{position:sticky; bottom:0; background:var(--card); border-top:1px solid var(--line); padding:12px 16px; display:flex; justify-content:space-between; align-items:center; gap:12px}
+  .savebar .note{color:var(--muted); font-size:13px}
+  .hint{font-size:12.5px; color:var(--muted); margin:10px 2px 0}
+
+  .overlay{position:fixed; inset:0; background:rgba(18,33,43,.45); display:flex; align-items:flex-start; justify-content:center; padding:40px 16px; overflow:auto; z-index:50}
+  .modal{background:var(--card); border-radius:16px; width:100%; max-width:520px; box-shadow:var(--shadow); padding:22px}
+  .modal h2{font-family:"Space Grotesk",sans-serif; margin:0 0 4px; font-size:19px}
+  .modal .mt{color:var(--muted); font-size:13px; margin:0 0 16px}
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  .field{display:flex; flex-direction:column; gap:5px}
+  .field.full{grid-column:1/-1}
+  .field label{font-size:12.5px; font-weight:600; color:var(--muted)}
+  .field input,.field select{font:inherit; padding:9px 11px; border:1px solid var(--line); border-radius:9px; background:#fff; color:var(--ink)}
+  .check{display:flex; align-items:center; gap:8px} .check input{width:auto}
+  .modal-actions{display:flex; justify-content:space-between; margin-top:18px; gap:10px}
+  .err{background:var(--bad-bg); color:var(--bad); padding:9px 12px; border-radius:9px; font-size:13px; margin-bottom:12px}
+
+  @media (max-width:720px){
+    .tiles{grid-template-columns:repeat(2,1fr)}
+    .inv-lote{grid-template-columns:1fr 1fr; }
+    .inv-newrow{grid-template-columns:1fr 1fr}
+    .grid{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
+
+/* MOTOR DE VALIDADE (mesmo do cofre) — por lote, baseado em data. */
+function computeStatus(item, hoje = new Date()) {
+  if (!item.validade) return { status: "permanente", dias: null };
+  const [y,m,d] = item.validade.split("-").map(Number);
+  const alvo = new Date(y, m-1, d);
+  const base = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+  const dias = Math.round((alvo - base) / 86400000);
+  if (dias < 0) return { status:"vencido", dias };
+  if (dias <= (item.aviso_dias ?? 60)) return { status:"a_vencer", dias };
+  return { status:"vigente", dias };
+}
+window.computeStatus = computeStatus;
+
+/* MOTOR DE QUANTIDADE — régua do Janan: amarelo <=50%, vermelho <=20% do ideal. */
+function statusQuantidade(atual, ideal, amareloPct = 50, vermelhoPct = 20) {
+  if (!ideal || ideal <= 0) return { status:"ok", pct:null };
+  const pct = (atual / ideal) * 100;
+  if (pct <= vermelhoPct) return { status:"critico", pct };
+  if (pct <= amareloPct) return { status:"baixo", pct };
+  return { status:"ok", pct };
+}
+window.statusQuantidade = statusQuantidade;
+
+const RANK_VAL = { vencido:0, a_vencer:1, vigente:2, permanente:3 };
+const VAL_LABEL = { vencido:"Vencido", a_vencer:"A vencer", vigente:"Vigente", permanente:"Sem validade" };
+const CATS = ["Medicamentos","Descartáveis","Coleta/laboratório","Imunobiológicos","Insumos de FIV","Escritório","Outros"];
+
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+function demoData() {
+  const rel = (n)=>{ const x=new Date(); x.setDate(x.getDate()+n); return x.toISOString().slice(0,10); };
+  const insumos = [
+    { id:"i1", nome:"Tubo a vácuo EDTA", categoria:"Coleta/laboratório", unidade:"un", estoque_ideal:200, amarelo_pct:50, vermelho_pct:20, aviso_dias:60, controlado:false },
+    { id:"i2", nome:"Seringa 3 mL", categoria:"Descartáveis", unidade:"un", estoque_ideal:100, amarelo_pct:50, vermelho_pct:20, aviso_dias:60, controlado:false },
+    { id:"i3", nome:"Meio de cultura para transferência", categoria:"Insumos de FIV", unidade:"mL", estoque_ideal:50, amarelo_pct:50, vermelho_pct:20, aviso_dias:60, controlado:false },
+    { id:"i4", nome:"Midazolam 5 mg/mL", categoria:"Medicamentos", unidade:"amp", estoque_ideal:60, amarelo_pct:50, vermelho_pct:20, aviso_dias:90, controlado:true },
+    { id:"i5", nome:"Imunobiológico (vacina)", categoria:"Imunobiológicos", unidade:"dose", estoque_ideal:80, amarelo_pct:50, vermelho_pct:20, aviso_dias:45, controlado:false },
+    { id:"i6", nome:"Luva de procedimento M", categoria:"Descartáveis", unidade:"cx", estoque_ideal:40, amarelo_pct:50, vermelho_pct:20, aviso_dias:60, controlado:false },
+    { id:"i7", nome:"Álcool 70%", categoria:"Descartáveis", unidade:"L", estoque_ideal:30, amarelo_pct:50, vermelho_pct:20, aviso_dias:60, controlado:false },
+  ];
+  const lotes = [
+    { id:"a", insumo_id:"i1", lote:"L2405", validade:rel(400), quantidade:30 },
+    { id:"b", insumo_id:"i2", lote:"S881", validade:rel(40), quantidade:25 },
+    { id:"c", insumo_id:"i2", lote:"S902", validade:rel(500), quantidade:15 },
+    { id:"d", insumo_id:"i3", lote:"MC13", validade:rel(-3), quantidade:12 },
+    { id:"e", insumo_id:"i3", lote:"MC20", validade:rel(120), quantidade:30 },
+    { id:"f", insumo_id:"i4", lote:"MZ77", validade:rel(210), quantidade:48 },
+    { id:"g", insumo_id:"i5", lote:"VC55", validade:rel(30), quantidade:60 },
+    { id:"h", insumo_id:"i6", lote:"LV01", validade:rel(600), quantidade:34 },
+    { id:"j", insumo_id:"i7", lote:"AL10", validade:rel(300), quantidade:22 },
+  ];
+  return { insumos, lotes };
+}
+
+function fmtDate(s){ if(!s) return "—"; const [y,m,d]=s.split("-"); return `${d}/${m}/${y}`; }
+const uid = () => "tmp-" + Math.random().toString(36).slice(2,9);
+
+function resumir(insumo, lotes) {
+  const total = lotes.reduce((s,l)=> s + Number(l.quantidade||0), 0);
+  const q = statusQuantidade(total, insumo.estoque_ideal, insumo.amarelo_pct, insumo.vermelho_pct);
+  let pior = null, proxLote = null;
+  lotes.filter(l => Number(l.quantidade) > 0).forEach(l => {
+    const st = computeStatus({ validade:l.validade, aviso_dias:insumo.aviso_dias }).status;
+    if (pior === null || RANK_VAL[st] < RANK_VAL[pior]) { pior = st; proxLote = l; }
+    else if (RANK_VAL[st] === RANK_VAL[pior] && l.validade && proxLote?.validade && l.validade < proxLote.validade) proxLote = l;
+  });
+  return { total, q, validadeStatus: pior || "permanente", proxLote };
+}
+
+function App(){
+  const [insumos, setInsumos] = useState([]);
+  const [lotes, setLotes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const somenteInv = new URLSearchParams(location.search).get("somente")==="inventario";
+  const [modo, setModo] = useState(somenteInv?"inventario":"painel");
+  const [q, setQ] = useState(""); const [cat, setCat] = useState(""); const [filtro, setFiltro] = useState("");
+  const [expand, setExpand] = useState(null);
+  const [editInsumo, setEditInsumo] = useState(null);
+  const [editLote, setEditLote] = useState(null);
+
+  async function load(){
+    setLoading(true);
+    if (sb){
+      const [i,l] = await Promise.all([ sb.from("insumos").select("*").eq("ativo", true), sb.from("lotes").select("*") ]);
+      if (i.error||l.error) alert("Erro Supabase: "+(i.error?.message||l.error?.message));
+      setInsumos(i.data||[]); setLotes(l.data||[]);
+    } else { const d=demoData(); setInsumos(d.insumos); setLotes(d.lotes); }
+    setLoading(false);
+  }
+  useEffect(()=>{ load(); },[]);
+
+  const lotesPor = useMemo(()=>{
+    const m={}; insumos.forEach(i=>m[i.id]=[]);
+    lotes.forEach(l=>{ (m[l.insumo_id]=m[l.insumo_id]||[]).push(l); });
+    return m;
+  },[insumos,lotes]);
+
+  const linhas = useMemo(()=> insumos.map(i=>({ insumo:i, lotes:lotesPor[i.id]||[], ...resumir(i, lotesPor[i.id]||[]) })), [insumos,lotesPor]);
+
+  const counts = useMemo(()=>{
+    const c={ critico:0, baixo:0, vencimento:0, controlado:0 };
+    linhas.forEach(x=>{
+      if (x.q.status==="critico") c.critico++;
+      if (x.q.status==="baixo") c.baixo++;
+      if (x.validadeStatus==="vencido"||x.validadeStatus==="a_vencer") c.vencimento++;
+      if (x.insumo.controlado) c.controlado++;
+    });
+    return c;
+  },[linhas]);
+
+  const view = useMemo(()=>{
+    let l = linhas;
+    if (cat) l = l.filter(x=>x.insumo.categoria===cat);
+    if (filtro==="critico") l = l.filter(x=>x.q.status==="critico");
+    else if (filtro==="baixo") l = l.filter(x=>x.q.status==="baixo");
+    else if (filtro==="vencimento") l = l.filter(x=>x.validadeStatus==="vencido"||x.validadeStatus==="a_vencer");
+    else if (filtro==="controlado") l = l.filter(x=>x.insumo.controlado);
+    if (q.trim()){ const t=q.toLowerCase(); l = l.filter(x=>x.insumo.nome.toLowerCase().includes(t)); }
+    return l;
+  },[linhas,cat,filtro,q]);
+
+  async function salvarInsumo(f){
+    const p={ nome:f.nome, categoria:f.categoria||null, unidade:f.unidade||"un",
+      estoque_ideal:Number(f.estoque_ideal)||0, amarelo_pct:Number(f.amarelo_pct)||50,
+      vermelho_pct:Number(f.vermelho_pct)||20, aviso_dias:Number(f.aviso_dias)||60, controlado:!!f.controlado };
+    if(!p.nome.trim()) return "Dê um nome ao insumo.";
+    if(sb){ const r=f.id? await sb.from("insumos").update(p).eq("id",f.id) : await sb.from("insumos").insert(p);
+      if(r.error) return r.error.message; await load(); }
+    else setInsumos(prev=> f.id? prev.map(i=>i.id===f.id?{...i,...p}:i):[...prev,{...p,id:uid()}]);
+    setEditInsumo(null); return null;
+  }
+  async function salvarLote(f){
+    const p={ insumo_id:f.insumo_id, lote:f.lote||null, validade:f.validade||null, quantidade:Number(f.quantidade)||0 };
+    if(sb){ const r=f.id? await sb.from("lotes").update(p).eq("id",f.id) : await sb.from("lotes").insert(p);
+      if(r.error) return r.error.message; await load(); }
+    else setLotes(prev=> f.id? prev.map(l=>l.id===f.id?{...l,...p}:l):[...prev,{...p,id:uid()}]);
+    setEditLote(null); return null;
+  }
+  async function removerLote(id){
+    if(!confirm("Remover este lote?")) return;
+    if(sb){ const {error}=await sb.from("lotes").delete().eq("id",id); if(error) return alert(error.message); await load(); }
+    else setLotes(prev=>prev.filter(l=>l.id!==id));
+  }
+
+  /* ---- salvamento em lote do modo Inventário ---- */
+  async function salvarInventario(draft){
+    // draft: { novosInsumos:[{tmpId, nome, categoria, unidade, estoque_ideal, lotes:[...]}],
+    //          lotesUpsert:[{id?, insumo_id, lote, validade, quantidade}], lotesRemover:[id] }
+    if (sb){
+      // 1) novos insumos + seus lotes
+      for (const ni of draft.novosInsumos){
+        const { data, error } = await sb.from("insumos").insert({
+          nome:ni.nome, categoria:ni.categoria||null, unidade:ni.unidade||"un",
+          estoque_ideal:Number(ni.estoque_ideal)||0, amarelo_pct:50, vermelho_pct:20, aviso_dias:60, controlado:false
+        }).select().single();
+        if (error) return error.message;
+        const novosLotes = (ni.lotes||[]).filter(l=>l.quantidade!=="" || l.validade || l.lote)
+          .map(l=>({ insumo_id:data.id, lote:l.lote||null, validade:l.validade||null, quantidade:Number(l.quantidade)||0 }));
+        if (novosLotes.length){ const r=await sb.from("lotes").insert(novosLotes); if(r.error) return r.error.message; }
+      }
+      // 2) lotes novos/alterados em insumos existentes
+      const upsertNovos = draft.lotesUpsert.filter(l=>!l.id).map(l=>({ insumo_id:l.insumo_id, lote:l.lote||null, validade:l.validade||null, quantidade:Number(l.quantidade)||0 }));
+      if (upsertNovos.length){ const r=await sb.from("lotes").insert(upsertNovos); if(r.error) return r.error.message; }
+      for (const l of draft.lotesUpsert.filter(l=>l.id)){
+        const r=await sb.from("lotes").update({ lote:l.lote||null, validade:l.validade||null, quantidade:Number(l.quantidade)||0 }).eq("id",l.id);
+        if(r.error) return r.error.message;
+      }
+      // 3) remoções
+      if (draft.lotesRemover.length){ const r=await sb.from("lotes").delete().in("id", draft.lotesRemover); if(r.error) return r.error.message; }
+      await load();
+    } else {
+      let ni=[...insumos], nl=[...lotes];
+      for (const n of draft.novosInsumos){
+        const id=uid(); ni.push({ id, nome:n.nome, categoria:n.categoria||"Outros", unidade:n.unidade||"un", estoque_ideal:Number(n.estoque_ideal)||0, amarelo_pct:50, vermelho_pct:20, aviso_dias:60, controlado:false });
+        (n.lotes||[]).filter(l=>l.quantidade!=="" || l.validade || l.lote).forEach(l=> nl.push({ id:uid(), insumo_id:id, lote:l.lote||null, validade:l.validade||null, quantidade:Number(l.quantidade)||0 }));
+      }
+      nl = nl.filter(l=> !draft.lotesRemover.includes(l.id));
+      draft.lotesUpsert.forEach(l=>{
+        if (l.id){ nl = nl.map(x=> x.id===l.id ? { ...x, lote:l.lote, validade:l.validade||null, quantidade:Number(l.quantidade)||0 } : x); }
+        else nl.push({ id:uid(), insumo_id:l.insumo_id, lote:l.lote||null, validade:l.validade||null, quantidade:Number(l.quantidade)||0 });
+      });
+      setInsumos(ni); setLotes(nl);
+    }
+    return null;
+  }
+
+  const tiles=[["critico","Estoque crítico","t-bad"],["baixo","Estoque baixo","t-warn"],["vencimento","Validade vencendo","t-pend"],["controlado","Controlados","t-ok"]];
+
+  return (
+    <div className="wrap">
+      <div className="top">
+        <div className="brand"><h1>Estoque</h1><p>Quantidade e validade de insumos, por lote (FEFO)</p></div>
+        <span className={"mode "+(sb?"live":"demo")}>{sb?"● Conectado ao Supabase":"○ Modo demo — nada é salvo"}</span>
+      </div>
+
+      {!somenteInv &&
+      <div className="tabs">
+        <button className={modo==="painel"?"on":""} onClick={()=>setModo("painel")}>Painel</button>
+        <button className={modo==="inventario"?"on":""} onClick={()=>setModo("inventario")}>Inventário</button>
+      </div>}
+
+      {modo==="painel" ? (
+        <>
+          <div className="tiles">
+            {tiles.map(([k,l,cls])=>(
+              <button key={k} className={"tile "+cls+(filtro===k?" active":"")} onClick={()=>setFiltro(filtro===k?"":k)}>
+                <div className="n">{counts[k]}</div><div className="l">{l}</div>
+              </button>
+            ))}
+          </div>
+          <div className="toolbar">
+            <input placeholder="Buscar insumo…" value={q} onChange={e=>setQ(e.target.value)} />
+            <select value={cat} onChange={e=>setCat(e.target.value)}>
+              <option value="">Todas as categorias</option>
+              {CATS.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+            <button className="btn btn-primary" onClick={()=>setEditInsumo({ categoria:"Descartáveis", unidade:"un", estoque_ideal:0, amarelo_pct:50, vermelho_pct:20, aviso_dias:60, controlado:false })}>+ Novo insumo</button>
+          </div>
+          <div className="panel">
+            {loading ? <div className="empty">Carregando…</div>
+            : view.length===0 ? <div className="empty"><b>Nada por aqui</b>{q||cat||filtro?"Ajuste os filtros.":"Adicione o primeiro insumo."}</div>
+            : (
+              <table>
+                <thead><tr><th>Insumo</th><th>Quantidade</th><th>Validade (próx. lote)</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                  {view.map(x=>{
+                    const aberto = expand===x.insumo.id;
+                    const pctW = x.q.pct==null?100:Math.max(4,Math.min(100,x.q.pct));
+                    return (
+                      <React.Fragment key={x.insumo.id}>
+                        <tr>
+                          <td>
+                            <div className="nome">{x.insumo.nome}{x.insumo.controlado && <span className="ctrl">controlado</span>}</div>
+                            <div className="meta"><span className="cat">{x.insumo.categoria||"—"}</span></div>
+                          </td>
+                          <td>
+                            <div className="qty">{x.total} <small>/ {x.insumo.estoque_ideal} {x.insumo.unidade}</small></div>
+                            <div className={"bar "+x.q.status}><span style={{width:pctW+"%"}}></span></div>
+                          </td>
+                          <td><div className="val-date">{x.proxLote? fmtDate(x.proxLote.validade) : <span className="dash">—</span>}</div></td>
+                          <td>
+                            <span className={"pill p-"+x.q.status}>{x.q.status==="critico"?"Crítico":x.q.status==="baixo"?"Baixo":"OK"}{x.q.pct!=null?` · ${Math.round(x.q.pct)}%`:""}</span>{" "}
+                            {(x.validadeStatus==="vencido"||x.validadeStatus==="a_vencer") && <span className={"pill p-"+x.validadeStatus} style={{marginTop:4}}>{VAL_LABEL[x.validadeStatus]}</span>}
+                          </td>
+                          <td>
+                            <div className="row-actions">
+                              <button className="btn btn-ghost btn-sm" onClick={()=>setEditLote({ insumo_id:x.insumo.id, quantidade:0 })}>+ Entrada</button>
+                              <button className="btn btn-ghost btn-sm" onClick={()=>setExpand(aberto?null:x.insumo.id)}>{aberto?"Fechar":`Lotes (${x.lotes.length})`}</button>
+                              <button className="btn btn-ghost btn-sm" onClick={()=>setEditInsumo(x.insumo)}>Editar</button>
+                            </div>
+                          </td>
+                        </tr>
+                        {aberto &&
+                          <tr><td colSpan="5" style={{padding:0}}>
+                            <div className="lotes-box">
+                              <h4>Lotes de {x.insumo.nome}</h4>
+                              {x.lotes.length===0 ? <div className="dash">Sem lotes. Use “+ Entrada”.</div> :
+                                x.lotes.slice().sort((a,b)=>(a.validade||"9999").localeCompare(b.validade||"9999")).map(l=>{
+                                  const st=computeStatus({validade:l.validade,aviso_dias:x.insumo.aviso_dias}).status;
+                                  return (
+                                    <div className="lote-line" key={l.id}>
+                                      <span className="ln">{l.lote||"—"}</span>
+                                      <span className={"pill p-"+st}>{fmtDate(l.validade)}</span>
+                                      <span className="lq qty">{l.quantidade} {x.insumo.unidade}</span>
+                                      <button className="btn btn-ghost btn-sm" onClick={()=>setEditLote({ ...l })}>Ajustar</button>
+                                      <button className="btn btn-ghost btn-sm" onClick={()=>removerLote(l.id)}>Remover</button>
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          </td></tr>}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
+      ) : (
+        <Inventario insumos={insumos} lotesPor={lotesPor} onSave={salvarInventario} loading={loading} />
+      )}
+
+      {editInsumo && <InsumoModal insumo={editInsumo} onClose={()=>setEditInsumo(null)} onSave={salvarInsumo} />}
+      {editLote && <LoteModal lote={editLote} onClose={()=>setEditLote(null)} onSave={salvarLote} />}
+    </div>
+  );
+}
+
+/* =====================  MODO INVENTÁRIO  =====================
+   Tudo editável numa tela só. Ajuste as quantidades dos lotes, adicione lotes
+   e insumos novos, e salve tudo de uma vez. Ideal para contagem física e
+   alimentação inicial. Enter/Tab andam pelos campos. */
+function Inventario({ insumos, lotesPor, onSave, loading }){
+  const [drafts, setDrafts] = useState({});   // insumoId -> [{id?, lote, validade, quantidade, _rm}]
+  const [novos, setNovos] = useState([]);     // insumos novos
+  const [busca, setBusca] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(()=>{
+    const d={}; insumos.forEach(i=>{
+      d[i.id] = (lotesPor[i.id]||[]).map(l=>({ id:l.id, lote:l.lote||"", validade:l.validade||"", quantidade:String(l.quantidade ?? "") }));
+    });
+    setDrafts(d); setNovos([]);
+  }, [insumos, lotesPor]);
+
+  const setLote=(iid, idx, k, v)=> setDrafts(d=>{ const arr=[...(d[iid]||[])]; arr[idx]={...arr[idx],[k]:v}; return {...d,[iid]:arr}; });
+  const addLote=(iid)=> setDrafts(d=>({ ...d, [iid]:[...(d[iid]||[]), { lote:"", validade:"", quantidade:"" }] }));
+  const rmLote=(iid, idx)=> setDrafts(d=>{ const arr=[...(d[iid]||[])]; if(arr[idx].id) arr[idx]={...arr[idx],_rm:!arr[idx]._rm}; else arr.splice(idx,1); return {...d,[iid]:arr}; });
+
+  const addNovo=()=> setNovos(n=>[...n, { tmpId:uid(), nome:"", categoria:"Descartáveis", unidade:"un", estoque_ideal:"", lotes:[{ lote:"", validade:"", quantidade:"" }] }]);
+  const setNovo=(tmpId,k,v)=> setNovos(n=>n.map(x=>x.tmpId===tmpId?{...x,[k]:v}:x));
+  const setNovoLote=(tmpId,k,v)=> setNovos(n=>n.map(x=>x.tmpId===tmpId?{...x,lotes:[{...x.lotes[0],[k]:v}]}:x));
+  const rmNovo=(tmpId)=> setNovos(n=>n.filter(x=>x.tmpId!==tmpId));
+
+  const lista = insumos.filter(i=> !busca.trim() || i.nome.toLowerCase().includes(busca.toLowerCase()));
+  const dirty = useMemo(()=>{
+    let n=0;
+    Object.values(drafts).forEach(arr=>arr.forEach(l=>{ if(l._rm) n++; else n++; }));
+    return novos.length>0 || n>0;
+  },[drafts,novos]);
+
+  async function salvar(){
+    setSaving(true); setMsg("");
+    const lotesUpsert=[], lotesRemover=[];
+    Object.entries(drafts).forEach(([iid,arr])=> arr.forEach(l=>{
+      if (l._rm){ if(l.id) lotesRemover.push(l.id); return; }
+      lotesUpsert.push({ id:l.id, insumo_id:iid, lote:l.lote, validade:l.validade, quantidade:l.quantidade===""?0:l.quantidade });
+    }));
+    const novosInsumos = novos.filter(n=>n.nome.trim()).map(n=>({ nome:n.nome, categoria:n.categoria, unidade:n.unidade, estoque_ideal:n.estoque_ideal, lotes:n.lotes }));
+    const err = await onSave({ novosInsumos, lotesUpsert, lotesRemover });
+    setSaving(false);
+    setMsg(err ? ("Erro: "+err) : "Inventário salvo.");
+    if(!err) setTimeout(()=>setMsg(""), 2500);
+  }
+
+  if (loading) return <div className="panel"><div className="empty">Carregando…</div></div>;
+
+  return (
+    <div className="panel">
+      <div style={{padding:"12px 14px", borderBottom:"1px solid var(--line)"}}>
+        <input className="" placeholder="Filtrar insumo…" value={busca} onChange={e=>setBusca(e.target.value)}
+               style={{width:"100%", font:"inherit", padding:"9px 12px", border:"1px solid var(--line)", borderRadius:9}} />
+        <div className="hint">Ajuste as quantidades, adicione lotes ou insumos e salve tudo de uma vez. Quantidade vazia conta como 0.</div>
+      </div>
+
+      {lista.map(i=>{
+        const arr = drafts[i.id]||[];
+        const total = arr.filter(l=>!l._rm).reduce((s,l)=> s + (Number(l.quantidade)||0), 0);
+        return (
+          <div className="inv-item" key={i.id}>
+            <div className="inv-head">
+              <span className="nome">{i.nome}{i.controlado && <span className="ctrl">controlado</span>}</span>
+              <span className="cat">{i.categoria||"—"}</span>
+              <span className="inv-total">total: {total} {i.unidade} · ideal {i.estoque_ideal}</span>
+            </div>
+            {arr.map((l,idx)=>(
+              <div className="inv-lote" key={l.id||idx} style={l._rm?{opacity:.4}:null}>
+                <input placeholder="Lote" value={l.lote} onChange={e=>setLote(i.id,idx,"lote",e.target.value)} disabled={l._rm} />
+                <input type="date" value={l.validade} onChange={e=>setLote(i.id,idx,"validade",e.target.value)} disabled={l._rm} />
+                <input type="number" step="any" inputMode="decimal" placeholder="Qtd" value={l.quantidade} onChange={e=>setLote(i.id,idx,"quantidade",e.target.value)} disabled={l._rm} />
+                <button className="rm" title={l._rm?"Desfazer":"Remover"} onClick={()=>rmLote(i.id,idx)}>{l._rm?"↩":"×"}</button>
+              </div>
+            ))}
+            <button className="btn btn-ghost btn-sm inv-add" onClick={()=>addLote(i.id)}>+ lote</button>
+          </div>
+        );
+      })}
+
+      <div className="inv-item">
+        <div className="inv-head"><span className="nome">Novos insumos</span></div>
+        {novos.map(n=>(
+          <div className="inv-newrow" key={n.tmpId}>
+            <input placeholder="Nome do insumo" value={n.nome} onChange={e=>setNovo(n.tmpId,"nome",e.target.value)} />
+            <select value={n.categoria} onChange={e=>setNovo(n.tmpId,"categoria",e.target.value)}>{CATS.map(c=><option key={c}>{c}</option>)}</select>
+            <input placeholder="Unid." value={n.unidade} onChange={e=>setNovo(n.tmpId,"unidade",e.target.value)} />
+            <input type="number" placeholder="Ideal" value={n.estoque_ideal} onChange={e=>setNovo(n.tmpId,"estoque_ideal",e.target.value)} />
+            <input type="number" placeholder="Qtd inicial" value={n.lotes[0].quantidade} onChange={e=>setNovoLote(n.tmpId,"quantidade",e.target.value)} />
+            <button className="rm" title="Remover" onClick={()=>rmNovo(n.tmpId)}>×</button>
+          </div>
+        ))}
+        <button className="btn btn-ghost btn-sm inv-add" onClick={addNovo}>+ novo insumo</button>
+      </div>
+
+      <div className="savebar">
+        <span className="note">{msg || (dirty ? "Alterações não salvas." : "Nada alterado.")}</span>
+        <button className="btn btn-primary" onClick={salvar} disabled={saving || !dirty}>{saving?"Salvando…":"Salvar inventário"}</button>
+      </div>
+    </div>
+  );
+}
+
+function InsumoModal({ insumo, onClose, onSave }){
+  const [f,setF]=useState({ id:insumo.id, nome:insumo.nome||"", categoria:insumo.categoria||"Descartáveis",
+    unidade:insumo.unidade||"un", estoque_ideal:insumo.estoque_ideal??0, amarelo_pct:insumo.amarelo_pct??50,
+    vermelho_pct:insumo.vermelho_pct??20, aviso_dias:insumo.aviso_dias??60, controlado:insumo.controlado||false });
+  const [err,setErr]=useState(""); const [s,setS]=useState(false);
+  const set=(k,v)=>setF(x=>({...x,[k]:v}));
+  async function submit(){ setS(true); const e=await onSave(f); setS(false); if(e) setErr(e); }
+  return (
+    <div className="overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}>
+      <h2>{insumo.id?"Editar insumo":"Novo insumo"}</h2>
+      <p className="mt">Amarelo e vermelho são % do estoque ideal (padrão 50% / 20%).</p>
+      {err && <div className="err">{err}</div>}
+      <div className="grid">
+        <div className="field full"><label>Nome</label><input value={f.nome} onChange={e=>set("nome",e.target.value)} /></div>
+        <div className="field"><label>Categoria</label><select value={f.categoria} onChange={e=>set("categoria",e.target.value)}>{CATS.map(c=><option key={c}>{c}</option>)}</select></div>
+        <div className="field"><label>Unidade</label><input value={f.unidade} onChange={e=>set("unidade",e.target.value)} placeholder="un, cx, amp…" /></div>
+        <div className="field"><label>Estoque ideal (100%)</label><input type="number" value={f.estoque_ideal} onChange={e=>set("estoque_ideal",e.target.value)} /></div>
+        <div className="field"><label>Avisar validade (dias)</label><input type="number" value={f.aviso_dias} onChange={e=>set("aviso_dias",e.target.value)} /></div>
+        <div className="field"><label>Amarelo (%)</label><input type="number" value={f.amarelo_pct} onChange={e=>set("amarelo_pct",e.target.value)} /></div>
+        <div className="field"><label>Vermelho (%)</label><input type="number" value={f.vermelho_pct} onChange={e=>set("vermelho_pct",e.target.value)} /></div>
+        <div className="field full check"><input type="checkbox" id="ctrl" checked={f.controlado} onChange={e=>set("controlado",e.target.checked)} /><label htmlFor="ctrl" style={{margin:0}}>Medicamento controlado (Portaria 344)</label></div>
+      </div>
+      <div className="modal-actions"><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={submit} disabled={s}>{s?"Salvando…":"Salvar"}</button></div>
+    </div></div>
+  );
+}
+
+function LoteModal({ lote, onClose, onSave }){
+  const [f,setF]=useState({ id:lote.id, insumo_id:lote.insumo_id, lote:lote.lote||"", validade:lote.validade||"", quantidade:lote.quantidade??0 });
+  const [err,setErr]=useState(""); const [s,setS]=useState(false);
+  const set=(k,v)=>setF(x=>({...x,[k]:v}));
+  async function submit(){ setS(true); const e=await onSave(f); setS(false); if(e) setErr(e); }
+  return (
+    <div className="overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:420}}>
+      <h2>{lote.id?"Ajustar lote":"Nova entrada"}</h2>
+      <p className="mt">Consumo é ajustar a quantidade; zerou, pode remover o lote.</p>
+      {err && <div className="err">{err}</div>}
+      <div className="grid">
+        <div className="field"><label>Lote</label><input value={f.lote} onChange={e=>set("lote",e.target.value)} /></div>
+        <div className="field"><label>Validade</label><input type="date" value={f.validade} onChange={e=>set("validade",e.target.value)} /></div>
+        <div className="field full"><label>Quantidade</label><input type="number" step="any" value={f.quantidade} onChange={e=>set("quantidade",e.target.value)} autoFocus /></div>
+      </div>
+      <div className="modal-actions"><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={submit} disabled={s}>{s?"Salvando…":"Salvar"}</button></div>
+    </div></div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

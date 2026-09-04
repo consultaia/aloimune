@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Apresentação à Chefia</title>
+
+<!-- ==========================================================================
+     APRESENTAÇÃO À CHEFIA  (slides + gráficos Chart.js + exportar PDF)
+     Stack: HTML único + React 18 (CDN) + Supabase + Chart.js + html2canvas + jsPDF.
+     Sem build. GitHub Pages. Mesmo projeto Supabase.
+     Lê produtividade, agenda, documentos, estoque e cadeia de frio (só leitura).
+     Sem chaves -> modo demo (dados de exemplo, nada é lido do banco).
+     ========================================================================== -->
+<script>
+  const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
+  const NOME_CLINICA = "Clínica";   // aparece na capa
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+  :root{
+    --ink:#12212B; --surface:#EEF2F3; --card:#FFFFFF; --line:#E1E7EA;
+    --muted:#5C6B75; --primary:#0E7C7B; --primary-ink:#0A5A59;
+    --ok:#2E7D5B; --warn:#B26B00; --bad:#C0392B; --blue:#1F6FB2;
+  }
+  *{box-sizing:border-box} html,body{margin:0; height:100%}
+  body{font-family:Inter,system-ui,sans-serif; color:var(--ink); background:var(--surface); -webkit-font-smoothing:antialiased}
+
+  .toolbar{display:flex; align-items:center; gap:12px; padding:12px 18px; background:var(--card); border-bottom:1px solid var(--line)}
+  .toolbar .t{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:16px}
+  .toolbar .sp{flex:1}
+  .toolbar .count{color:var(--muted); font-size:13px; font-variant-numeric:tabular-nums}
+  .btn{font:inherit; font-weight:600; padding:9px 15px; border-radius:9px; border:1px solid transparent; cursor:pointer}
+  .btn-primary{background:var(--primary); color:#fff} .btn-primary:hover{background:var(--primary-ink)}
+  .btn-ghost{background:var(--card); border:1px solid var(--line); color:var(--ink)} .btn-ghost:hover{border-color:var(--muted)}
+  .btn:disabled{opacity:.5; cursor:default}
+
+  .stagewrap{display:flex; justify-content:center; align-items:flex-start; padding:22px 12px; overflow:hidden}
+  .stage{width:1280px; height:720px; transform-origin:top center; background:var(--card); border-radius:16px;
+         box-shadow:0 12px 40px rgba(18,33,43,.14); overflow:hidden; flex-shrink:0}
+
+  .nav{display:flex; align-items:center; justify-content:center; gap:16px; padding:6px 0 20px}
+  .dots{display:flex; gap:7px}
+  .dot{width:9px; height:9px; border-radius:50%; background:#C6D0D4; border:none; cursor:pointer; padding:0}
+  .dot.on{background:var(--primary)}
+  .navbtn{font:inherit; font-weight:600; border:1px solid var(--line); background:var(--card); border-radius:9px; padding:8px 14px; cursor:pointer}
+
+  /* Slide interno */
+  .slide{width:100%; height:100%; padding:56px 64px; display:flex; flex-direction:column}
+  .slide .kicker{font-size:15px; font-weight:600; color:var(--primary); letter-spacing:.02em; text-transform:uppercase}
+  .slide h2{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:34px; margin:6px 0 22px}
+  .chart-holder{flex:1; position:relative; min-height:0}
+  .cap{height:100%; display:flex; flex-direction:column; justify-content:center}
+  .cap .logo{width:64px; height:64px; border-radius:16px; background:var(--primary); color:#fff; display:flex; align-items:center; justify-content:center; font-family:"Space Grotesk"; font-weight:700; font-size:30px; margin-bottom:24px}
+  .cap h1{font-family:"Space Grotesk",sans-serif; font-size:52px; margin:0 0 10px; letter-spacing:-.01em}
+  .cap p{font-size:20px; color:var(--muted); margin:0}
+
+  .kpis{display:grid; grid-template-columns:repeat(3,1fr); gap:20px; flex:1; align-content:center}
+  .kpi{background:var(--surface); border-radius:14px; padding:26px}
+  .kpi .l{font-size:15px; color:var(--muted); font-weight:500}
+  .kpi .v{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:40px; margin-top:8px; font-variant-numeric:tabular-nums}
+  .kpi .s{font-size:14px; color:var(--muted); margin-top:4px}
+  .kpi.bad .v{color:var(--bad)} .kpi.warn .v{color:var(--warn)} .kpi.ok .v{color:var(--ok)} .kpi.blue .v{color:var(--blue)}
+
+  .overlay{position:fixed; inset:0; background:rgba(18,33,43,.78); color:#fff; display:flex; align-items:center; justify-content:center; z-index:100; font-family:"Space Grotesk"; font-size:20px}
+  .center{padding:80px; text-align:center; color:var(--muted)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo, useRef } = React;
+
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const C = { primary:"#0E7C7B", blue:"#1F6FB2", ok:"#2E7D5B", warn:"#B26B00", bad:"#C0392B", muted:"#8A97A0", ink:"#12212B" };
+const MESES = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+const brl = (n)=> (n||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL",maximumFractionDigits:0});
+const brlk = (n)=> Math.abs(n)>=1000 ? "R$ "+(n/1000).toLocaleString("pt-BR",{maximumFractionDigits:1})+"k" : brl(n);
+
+if (window.Chart){ Chart.defaults.font.family="Inter"; Chart.defaults.color="#5C6B75"; Chart.defaults.animation=false; Chart.defaults.plugins.legend.labels.boxWidth=14; }
+
+/* ---------------- dados ---------------- */
+function ultimosMeses(n){
+  const arr=[]; const d=new Date();
+  for(let i=n-1;i>=0;i--){ const x=new Date(d.getFullYear(), d.getMonth()-i, 1);
+    arr.push({ key:`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}`, label:`${MESES[x.getMonth()]}/${String(x.getFullYear()).slice(2)}` }); }
+  return arr;
+}
+function statusData(s, av=60, hoje=new Date()){
+  if(!s) return "permanente"; const [y,m,d]=s.split("-").map(Number);
+  const dias=Math.round((new Date(y,m-1,d)-new Date(hoje.getFullYear(),hoje.getMonth(),hoje.getDate()))/86400000);
+  return dias<0?"vencido":dias<=av?"a_vencer":"vigente";
+}
+
+function demo(){
+  const at=[], ag=[]; const d=new Date();
+  const profs=["Dra. Marina","Dr. André","Enf. Paula"];
+  const tipos=["Consulta","Coleta","Procedimento","Ciclo FIV","Consulta imuno"];
+  const valBase={ "Consulta":450,"Coleta":180,"Procedimento":1100,"Ciclo FIV":19000,"Consulta imuno":500 };
+  for(let mi=5; mi>=0; mi--){
+    const base=new Date(d.getFullYear(), d.getMonth()-mi, 10);
+    const qtd=10+((6-mi)*2);
+    for(let k=0;k<qtd;k++){
+      const tipo=tipos[(k+mi)%tipos.length];
+      const dia=new Date(base); dia.setDate(1+((k*2)%26));
+      const st = k%5===0?"realizado" : k%5===1?"faturado" : "recebido";
+      at.push({ data:dia.toISOString().slice(0,10), valor:valBase[tipo]*(1+((k%3)*0.05)), status:st, profissional:profs[k%profs.length], tipo });
+    }
+  }
+  // agenda últimos 6 meses: realizados e algumas faltas
+  for(let i=0;i<120;i++){ const dia=new Date(d); dia.setDate(d.getDate()-i);
+    ag.push({ data:dia.toISOString().slice(0,10), status: i%9===0?"faltou":"realizado" }); }
+  const documentos=[
+    {validade:null,aviso_dias:60,obrigatorio:true,arquivo_url:"x"},
+    {validade:new Date(Date.now()+65*864e5).toISOString().slice(0,10),aviso_dias:90},
+    {validade:new Date(Date.now()+30*864e5).toISOString().slice(0,10),aviso_dias:90},
+    {validade:new Date(Date.now()-5*864e5).toISOString().slice(0,10),aviso_dias:60},
+    {validade:new Date(Date.now()+400*864e5).toISOString().slice(0,10),aviso_dias:60},
+  ];
+  return { at, ag, documentos, estCritico:2, gelExc:1 };
+}
+
+function agregar(raw){
+  const meses=ultimosMeses(6);
+  const producao={}, recebido={};
+  meses.forEach(m=>{ producao[m.key]=0; recebido[m.key]=0; });
+  let aFaturar=0, aReceber=0, recebidoTot=0;
+  const porProf={}, porTipo={};
+  raw.at.forEach(r=>{
+    const mk=(r.data||"").slice(0,7); const v=Number(r.valor||0);
+    if(mk in producao){ producao[mk]+=v; if(r.status==="recebido") recebido[mk]+=v; }
+    if(r.status==="realizado") aFaturar+=v; else if(r.status==="faturado") aReceber+=v; else if(r.status==="recebido") recebidoTot+=v;
+    porProf[r.profissional||"—"]=(porProf[r.profissional||"—"]||0)+v;
+    porTipo[r.tipo||"—"]=(porTipo[r.tipo||"—"]||0)+v;
+  });
+  const realizadosAg=raw.ag.filter(a=>a.status==="realizado").length;
+  const faltasAg=raw.ag.filter(a=>a.status==="faltou").length;
+  const doc={ vigente:0, a_vencer:0, vencido:0 };
+  raw.documentos.forEach(dd=>{ const s=statusData(dd.validade, dd.aviso_dias||60); if(s in doc) doc[s]++; });
+  return {
+    meses, producao, recebido, aFaturar, aReceber, recebidoTot,
+    porProf:Object.entries(porProf).sort((a,b)=>b[1]-a[1]),
+    porTipo:Object.entries(porTipo).sort((a,b)=>b[1]-a[1]),
+    realizadosAg, faltasAg,
+    noShow: (realizadosAg+faltasAg)? Math.round(faltasAg/(realizadosAg+faltasAg)*100):0,
+    doc, estCritico:raw.estCritico||0, gelExc:raw.gelExc||0,
+    total6:Object.values(producao).reduce((a,b)=>a+b,0),
+  };
+}
+
+/* ---------------- gráfico util ---------------- */
+function useChart(cfgFn, dep){
+  const ref=useRef(null); const chart=useRef(null);
+  useEffect(()=>{
+    if(!ref.current || !window.Chart) return;
+    chart.current = new Chart(ref.current.getContext("2d"), cfgFn());
+    return ()=>{ chart.current && chart.current.destroy(); };
+  }, dep||[]);
+  return ref;
+}
+const yMoney = { ticks:{ callback:(v)=>brlk(v) } };
+
+/* ---------------- slides ---------------- */
+function SCapa({ m }){
+  const hoje=new Date().toLocaleDateString("pt-BR");
+  return (
+    <div className="slide"><div className="cap">
+      <div className="logo">{(NOME_CLINICA||"C").slice(0,1)}</div>
+      <h1>{NOME_CLINICA}</h1>
+      <p>Apresentação de indicadores à chefia · gerado em {hoje}</p>
+      <p style={{marginTop:18, fontSize:16}}>Período: últimos 6 meses ({m.meses[0].label} – {m.meses[5].label})</p>
+    </div></div>
+  );
+}
+function SProducao({ m }){
+  const ref=useChart(()=>({
+    type:"line",
+    data:{ labels:m.meses.map(x=>x.label), datasets:[
+      { label:"Produção", data:m.meses.map(x=>m.producao[x.key]), borderColor:C.primary, backgroundColor:"rgba(14,124,123,.12)", fill:true, tension:.3, borderWidth:3, pointRadius:4 },
+      { label:"Recebido", data:m.meses.map(x=>m.recebido[x.key]), borderColor:C.blue, backgroundColor:"transparent", tension:.3, borderWidth:3, pointRadius:4 },
+    ]},
+    options:{ maintainAspectRatio:false, responsive:true, scales:{ y:{ ...yMoney, beginAtZero:true } }, plugins:{ legend:{ position:"bottom" } } }
+  }),[]);
+  return (<div className="slide"><div className="kicker">Faturamento</div><h2>Produção e recebimento por mês</h2>
+    <div className="chart-holder"><canvas ref={ref}></canvas></div></div>);
+}
+function SFaturamento({ m }){
+  const ref=useChart(()=>({
+    type:"bar",
+    data:{ labels:["A faturar","A receber","Recebido"], datasets:[{ data:[m.aFaturar,m.aReceber,m.recebidoTot], backgroundColor:[C.warn,C.blue,C.ok], borderRadius:8, barThickness:120 }]},
+    options:{ maintainAspectRatio:false, responsive:true, scales:{ y:{ ...yMoney, beginAtZero:true } }, plugins:{ legend:{ display:false } } }
+  }),[]);
+  return (<div className="slide"><div className="kicker">Faturamento</div><h2>Situação do faturamento (6 meses)</h2>
+    <div className="chart-holder"><canvas ref={ref}></canvas></div></div>);
+}
+function SProfissional({ m }){
+  const top=m.porProf.slice(0,6);
+  const ref=useChart(()=>({
+    type:"bar",
+    data:{ labels:top.map(x=>x[0]), datasets:[{ data:top.map(x=>x[1]), backgroundColor:C.primary, borderRadius:8 }]},
+    options:{ indexAxis:"y", maintainAspectRatio:false, responsive:true, scales:{ x:{ ...yMoney, beginAtZero:true } }, plugins:{ legend:{ display:false } } }
+  }),[]);
+  return (<div className="slide"><div className="kicker">Produtividade</div><h2>Produção por profissional (R$, 6 meses)</h2>
+    <div className="chart-holder"><canvas ref={ref}></canvas></div></div>);
+}
+function STipo({ m }){
+  const top=m.porTipo.slice(0,6);
+  const cores=[C.primary,C.blue,C.ok,C.warn,C.bad,C.muted];
+  const ref=useChart(()=>({
+    type:"doughnut",
+    data:{ labels:top.map(x=>x[0]), datasets:[{ data:top.map(x=>x[1]), backgroundColor:cores, borderWidth:2, borderColor:"#fff" }]},
+    options:{ maintainAspectRatio:false, responsive:true, cutout:"58%", plugins:{ legend:{ position:"right" }, tooltip:{ callbacks:{ label:(c)=>` ${c.label}: ${brl(c.parsed)}` } } } }
+  }),[]);
+  return (<div className="slide"><div className="kicker">Produtividade</div><h2>Produção por tipo de atendimento</h2>
+    <div className="chart-holder"><canvas ref={ref}></canvas></div></div>);
+}
+function SAgenda({ m }){
+  const ref=useChart(()=>({
+    type:"bar",
+    data:{ labels:["Comparecimento"], datasets:[
+      { label:"Realizados", data:[m.realizadosAg], backgroundColor:C.ok, borderRadius:8 },
+      { label:"Faltas", data:[m.faltasAg], backgroundColor:C.bad, borderRadius:8 },
+    ]},
+    options:{ maintainAspectRatio:false, responsive:true, scales:{ y:{ beginAtZero:true } }, plugins:{ legend:{ position:"bottom" } } }
+  }),[]);
+  return (<div className="slide"><div className="kicker">Agenda</div><h2>Comparecimento e faltas</h2>
+    <div className="chart-holder" style={{display:"grid", gridTemplateColumns:"1fr 300px", gap:24}}>
+      <div style={{position:"relative"}}><canvas ref={ref}></canvas></div>
+      <div style={{display:"flex", flexDirection:"column", justifyContent:"center"}}>
+        <div className="kpi bad" style={{background:"#FBE5E2"}}><div className="l">Taxa de falta (no-show)</div><div className="v">{m.noShow}%</div><div className="s">{m.faltasAg} faltas em {m.realizadosAg+m.faltasAg} agendamentos</div></div>
+      </div>
+    </div></div>);
+}
+function SRegulatorio({ m }){
+  return (<div className="slide"><div className="kicker">Governança</div><h2>Situação regulatória e operacional</h2>
+    <div className="kpis">
+      <div className="kpi ok"><div className="l">Documentos em dia</div><div className="v">{m.doc.vigente}</div><div className="s">vigentes</div></div>
+      <div className="kpi warn"><div className="l">Documentos vencendo</div><div className="v">{m.doc.a_vencer}</div><div className="s">precisam de renovação</div></div>
+      <div className="kpi bad"><div className="l">Documentos vencidos</div><div className="v">{m.doc.vencido}</div><div className="s">ação imediata</div></div>
+      <div className="kpi bad"><div className="l">Estoque crítico</div><div className="v">{m.estCritico}</div><div className="s">itens no vermelho</div></div>
+      <div className="kpi bad"><div className="l">Geladeiras em excursão</div><div className="v">{m.gelExc}</div><div className="s">fora da temperatura</div></div>
+      <div className="kpi blue"><div className="l">Produção no período</div><div className="v" style={{fontSize:30}}>{brl(m.total6)}</div><div className="s">últimos 6 meses</div></div>
+    </div></div>);
+}
+
+const SLIDES = [SCapa, SProducao, SFaturamento, SProfissional, STipo, SAgenda, SRegulatorio];
+
+/* ---------------- app ---------------- */
+function App(){
+  const [metrics,setMetrics]=useState(null);
+  const [erro,setErro]=useState(false);
+  const [idx,setIdx]=useState(0);
+  const [scale,setScale]=useState(1);
+  const [exporting,setExporting]=useState(false);
+  const stageRef=useRef(null);
+
+  useEffect(()=>{ (async()=>{
+    if(!sb){ setMetrics(agregar(demo())); return; }
+    try{
+      const [at,ag,doc,ins,lot,pts,le] = await Promise.all([
+        sb.from("atendimentos").select("data,valor,status,profissional,tipo"),
+        sb.from("agendamentos").select("data,status"),
+        sb.from("documentos").select("validade,aviso_dias"),
+        sb.from("insumos").select("*"), sb.from("lotes").select("*"),
+        sb.from("pontos_frio").select("*").eq("ativo",true),
+        sb.from("leituras").select("*").order("medido_em",{ascending:false}).limit(400),
+      ]);
+      // estoque crítico
+      const lp={}; (ins.data||[]).forEach(i=>lp[i.id]=[]); (lot.data||[]).forEach(l=>{(lp[l.insumo_id]=lp[l.insumo_id]||[]).push(l);});
+      let estCritico=0;
+      (ins.data||[]).forEach(i=>{ const tot=(lp[i.id]||[]).reduce((s,l)=>s+Number(l.quantidade||0),0);
+        if(i.estoque_ideal>0 && (tot/i.estoque_ideal*100)<=(i.vermelho_pct||20)) estCritico++; });
+      // geladeiras em excursão
+      const lep={}; (pts.data||[]).forEach(p=>lep[p.id]=[]); (le.data||[]).forEach(l=>{(lep[l.ponto_id]=lep[l.ponto_id]||[]).push(l);});
+      let gelExc=0;
+      (pts.data||[]).forEach(p=>{ const o=[...(lep[p.id]||[])].sort((a,b)=>new Date(b.medido_em)-new Date(a.medido_em)); const u=o[0];
+        if(u && (Math.max(u.temp_atual,u.temp_max??-1e9)>p.temp_max || Math.min(u.temp_atual,u.temp_min??1e9)<p.temp_min)) gelExc++; });
+      setMetrics(agregar({ at:at.data||[], ag:ag.data||[], documentos:doc.data||[], estCritico, gelExc }));
+    }catch(e){ setErro(true); }
+  })(); },[]);
+
+  useEffect(()=>{
+    function fit(){
+      const w=Math.min(window.innerWidth-40, 1280);
+      const h=window.innerHeight-190;
+      setScale(Math.min(w/1280, h/720, 1));
+    }
+    fit(); window.addEventListener("resize",fit); return ()=>window.removeEventListener("resize",fit);
+  },[]);
+
+  useEffect(()=>{
+    function key(e){ if(e.key==="ArrowRight") setIdx(i=>Math.min(SLIDES.length-1,i+1)); if(e.key==="ArrowLeft") setIdx(i=>Math.max(0,i-1)); }
+    window.addEventListener("keydown",key); return ()=>window.removeEventListener("keydown",key);
+  },[]);
+
+  const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+  async function exportarPDF(){
+    if(!window.jspdf || !window.html2canvas){ alert("Bibliotecas de PDF ainda carregando, tente de novo em instantes."); return; }
+    setExporting(true);
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation:"landscape", unit:"px", format:[1280,720] });
+    const guardaScale=scale; setScale(1);
+    for(let i=0;i<SLIDES.length;i++){
+      setIdx(i); await sleep(500);
+      const canvas = await html2canvas(stageRef.current, { scale:2, backgroundColor:"#ffffff", width:1280, height:720, windowWidth:1280, windowHeight:720 });
+      const img=canvas.toDataURL("image/png");
+      if(i>0) pdf.addPage([1280,720],"landscape");
+      pdf.addImage(img,"PNG",0,0,1280,720);
+    }
+    pdf.save(`apresentacao-${(NOME_CLINICA||"clinica").toLowerCase().replace(/\s+/g,"-")}.pdf`);
+    setScale(guardaScale); setExporting(false); setIdx(0);
+  }
+
+  if(erro) return <div className="center">Não consegui carregar os dados. Confira os schemas e as chaves do Supabase.</div>;
+  if(!metrics) return <div className="center">Preparando os indicadores…</div>;
+
+  const Slide = SLIDES[idx];
+  return (
+    <>
+      <div className="toolbar">
+        <span className="t">Apresentação à Chefia</span>
+        <span className="count">{idx+1} / {SLIDES.length}</span>
+        <span className="sp"></span>
+        <button className="btn btn-ghost" onClick={()=>setIdx(i=>Math.max(0,i-1))} disabled={idx===0}>‹ Anterior</button>
+        <button className="btn btn-ghost" onClick={()=>setIdx(i=>Math.min(SLIDES.length-1,i+1))} disabled={idx===SLIDES.length-1}>Próximo ›</button>
+        <button className="btn btn-primary" onClick={exportarPDF}>Exportar PDF</button>
+      </div>
+
+      <div className="stagewrap" style={{height:720*scale+44}}>
+        <div className="stage" ref={stageRef} style={{transform:`scale(${scale})`}}>
+          <Slide m={metrics} />
+        </div>
+      </div>
+
+      <div className="nav">
+        <button className="navbtn" onClick={()=>setIdx(i=>Math.max(0,i-1))}>‹</button>
+        <div className="dots">
+          {SLIDES.map((_,i)=><button key={i} className={"dot"+(i===idx?" on":"")} onClick={()=>setIdx(i)}></button>)}
+        </div>
+        <button className="navbtn" onClick={()=>setIdx(i=>Math.min(SLIDES.length-1,i+1))}>›</button>
+      </div>
+
+      {exporting && <div className="overlay">Gerando PDF…</div>}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
