@@ -179,7 +179,8 @@ function App(){
     const p={ nome:f.nome, funcao:f.funcao||null, admissao:f.admissao||null,
       ferias_vencimento:f.ferias_vencimento||null, ferias_agendada:f.ferias_agendada||null,
       exame_periodico:f.exame_periodico||null, conselho:f.conselho||null, conselho_validade:f.conselho_validade||null,
-      nr32_validade:f.nr32_validade||null, aviso_dias:Number(f.aviso_dias)||30 };
+      nr32_validade:f.nr32_validade||null, aviso_dias:Number(f.aviso_dias)||30,
+      carga_horaria:f.carga_horaria===""?null:Number(f.carga_horaria), regime:f.regime||null };
     if(!p.nome.trim()) return "Informe o nome.";
     if(sb){ const r=f.id? await sb.from("colaboradores").update(p).eq("id",f.id) : await sb.from("colaboradores").insert(p);
       if(r.error) return r.error.message; await load(); }
@@ -249,7 +250,8 @@ function App(){
 function ColabModal({ c, onClose, onSave }){
   const [f,setF]=useState({ id:c.id, nome:c.nome||"", funcao:c.funcao||"", admissao:c.admissao||"",
     ferias_vencimento:c.ferias_vencimento||"", ferias_agendada:c.ferias_agendada||"", exame_periodico:c.exame_periodico||"",
-    conselho:c.conselho||"", conselho_validade:c.conselho_validade||"", nr32_validade:c.nr32_validade||"", aviso_dias:c.aviso_dias??30 });
+    conselho:c.conselho||"", conselho_validade:c.conselho_validade||"", nr32_validade:c.nr32_validade||"", aviso_dias:c.aviso_dias??30,
+    carga_horaria:c.carga_horaria??"", regime:c.regime||"int5" });
   const [err,setErr]=useState(""); const [s,setS]=useState(false);
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
   async function submit(){ setS(true); const e=await onSave(f); setS(false); if(e) setErr(e); }
@@ -269,6 +271,15 @@ function ColabModal({ c, onClose, onSave }){
         <div className="field"><label>Registro no conselho</label><input value={f.conselho} onChange={e=>set("conselho",e.target.value)} placeholder="CRM 12345" /></div>
         <div className="field"><label>Registro — validade</label><input type="date" value={f.conselho_validade} onChange={e=>set("conselho_validade",e.target.value)} /></div>
         <div className="field"><label>NR-32 — validade</label><input type="date" value={f.nr32_validade} onChange={e=>set("nr32_validade",e.target.value)} /></div>
+        <div className="field"><label>Carga horária (horas/semana)</label><input type="number" value={f.carga_horaria} onChange={e=>set("carga_horaria",e.target.value)} placeholder="ex.: 44" /></div>
+        <div className="field"><label>Regime de trabalho</label>
+          <select value={f.regime} onChange={e=>set("regime",e.target.value)}>
+            <option value="int5">Integral (seg–sex)</option>
+            <option value="int6">Integral + sábado (seg–sáb)</option>
+            <option value="manha">Só manhã (seg–sáb)</option>
+            <option value="tarde">Só tarde (seg–sex)</option>
+            <option value="custom">Personalizado (preencho na mão)</option>
+          </select></div>
       </div>
       <div className="modal-actions"><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={submit} disabled={s}>{s?"Salvando…":"Salvar"}</button></div>
     </div></div>
