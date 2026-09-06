@@ -95,6 +95,29 @@
   .err{background:var(--bad-bg); color:var(--bad); padding:9px 12px; border-radius:9px; font-size:13px; margin-bottom:12px}
 
   @media (max-width:720px){ .tiles{grid-template-columns:repeat(2,1fr)} .grid{grid-template-columns:1fr} .slot .acts{justify-content:flex-start} }
+
+  .vmode{display:inline-flex;background:#EEF1F3;border-radius:9px;padding:3px}
+  .vmode button{font:inherit;font-weight:600;font-size:13px;border:none;background:none;color:var(--muted);padding:6px 12px;border-radius:7px;cursor:pointer}
+  .vmode button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+  .wkscroll{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--card)}
+  .wk{display:grid;grid-template-columns:52px repeat(6,minmax(120px,1fr));min-width:780px}
+  .wk-head{padding:8px 6px;text-align:center;font-size:11px;color:var(--muted);border-bottom:1px solid var(--line);border-left:1px solid var(--line);background:#FBFCFC;text-transform:uppercase;letter-spacing:.03em}
+  .wk-head b{display:block;font-family:"Space Grotesk";font-size:16px;color:var(--ink);text-transform:none;letter-spacing:0}
+  .wk-head.hoje{background:var(--blue-bg)} .wk-head.hoje b{color:var(--blue)}
+  .wk-head .cnt{font-size:10px;color:var(--muted)}
+  .wk-gutter{position:relative;height:660px;background:#FBFCFC}
+  .wk-hour{position:absolute;right:6px;font-size:10.5px;color:var(--muted);transform:translateY(-7px);font-variant-numeric:tabular-nums}
+  .wk-col{position:relative;height:660px;border-left:1px solid var(--line);
+    background-image:repeating-linear-gradient(to bottom, transparent 0 59px, var(--line) 59px 60px)}
+  .wk-col.hoje{background-color:#F4F9FC}
+  .wk-ev{position:absolute;left:3px;right:3px;border-radius:7px;padding:3px 6px;font-size:11.5px;line-height:1.25;overflow:hidden;cursor:pointer;color:#fff;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+  .wk-ev b{display:block;font-size:11px;font-variant-numeric:tabular-nums}
+  .wk-ev.cancelado{opacity:.35;text-decoration:line-through}
+  .wk-ev.faltou{outline:2px solid var(--bad);outline-offset:-2px}
+  .wk-ev.realizado{opacity:.7}
+  .wk-legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--muted)}
+  .wk-legend span{display:inline-flex;align-items:center;gap:5px}
+  .wk-legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
 </style>
 </head>
 <body>
@@ -132,6 +155,9 @@ function App(){
   const profLock = params.get("profissional") || "";        // trava o filtro num profissional
   const [rows,setRows]=useState([]); const [loading,setLoading]=useState(true);
   const [dia,setDia]=useState(hojeStr());
+  const [modo,setModo]=useState("dia"); // 'dia' | 'semana'
+  const segunda = (s)=>{ const [y,m,d]=s.split("-").map(Number); const w=new Date(y,m-1,d).getDay(); return addDias(s, -((w+6)%7)); };
+  const diasSemana = useMemo(()=>{ const ini=segunda(dia); return Array.from({length:6},(_,i)=>addDias(ini,i)); },[dia]);
   const [prof,setProf]=useState(profLock);
   const [edit,setEdit]=useState(null);
 
@@ -161,14 +187,14 @@ function App(){
   },[rows,dia,prof]);
 
   const counts = useMemo(()=>{
-    const base=rows.filter(r=>r.data===dia);
+    const base = modo==="semana" ? rows.filter(r=>diasSemana.includes(r.data)) : rows.filter(r=>r.data===dia);
     return {
       total: base.filter(r=>r.status!=="cancelado").length,
       confirmar: base.filter(r=>r.status==="agendado").length,
       realizados: base.filter(r=>r.status==="realizado").length,
       faltas: base.filter(r=>r.status==="faltou").length,
     };
-  },[rows,dia]);
+  },[rows,dia,modo,diasSemana]);
 
   async function mudar(r, status){
     if(sb){ const {error}=await sb.from("agendamentos").update({status}).eq("id",r.id); if(error) return alert(error.message); await load(); }
@@ -196,9 +222,13 @@ function App(){
       </div>
 
       <div className="daybar">
-        <button className="navbtn" onClick={()=>setDia(addDias(dia,-1))}>‹</button>
-        <span className="daylabel">{rotuloData(dia)}</span>
-        <button className="navbtn" onClick={()=>setDia(addDias(dia,1))}>›</button>
+        <div className="vmode">
+          <button className={modo==="dia"?"on":""} onClick={()=>setModo("dia")}>Dia</button>
+          <button className={modo==="semana"?"on":""} onClick={()=>setModo("semana")}>Semana</button>
+        </div>
+        <button className="navbtn" onClick={()=>setDia(addDias(dia, modo==="semana"?-7:-1))}>‹</button>
+        <span className="daylabel">{modo==="semana" ? `${diasSemana[0].slice(8,10)}/${diasSemana[0].slice(5,7)} – ${diasSemana[5].slice(8,10)}/${diasSemana[5].slice(5,7)}` : rotuloData(dia)}</span>
+        <button className="navbtn" onClick={()=>setDia(addDias(dia, modo==="semana"?7:1))}>›</button>
         <button className="today" onClick={()=>setDia(hojeStr())}>Hoje</button>
         <input type="date" value={dia} onChange={e=>setDia(e.target.value)} style={{font:"inherit",padding:"8px 10px",border:"1px solid var(--line)",borderRadius:9,background:"var(--card)"}} />
         <div className="sp"></div>
@@ -206,7 +236,7 @@ function App(){
       </div>
 
       <div className="tiles">
-        <div className="tile t-blue"><div className="n">{counts.total}</div><div className="l">Agendados no dia</div></div>
+        <div className="tile t-blue"><div className="n">{counts.total}</div><div className="l">{modo==="semana"?"Agendados na semana":"Agendados no dia"}</div></div>
         <div className="tile t-warn"><div className="n">{counts.confirmar}</div><div className="l">A confirmar</div></div>
         <div className="tile t-ok"><div className="n">{counts.realizados}</div><div className="l">Realizados</div></div>
         <div className="tile t-bad"><div className="n">{counts.faltas}</div><div className="l">Faltas</div></div>
@@ -219,6 +249,9 @@ function App(){
         </select>
       </div>
 
+      {modo==="semana" ? (
+        <SemanaGrid rows={rows} dias={diasSemana} prof={prof} onEdit={setEdit} onNovo={(d,h)=>setEdit({ data:d, hora:h, duracao_min:30, tipo:"Consulta", status:"agendado" })} />
+      ) : (
       <div className="panel">
         {loading ? <div className="empty">Carregando…</div>
         : doDia.length===0 ? <div className="empty"><b>Dia livre</b>Nenhum agendamento. Use “+ Agendar”.</div>
@@ -245,8 +278,51 @@ function App(){
             </div>
           ))}
       </div>
+      )}
 
       {edit && <AgModal ag={edit} profs={profs} onClose={()=>setEdit(null)} onSave={salvar} />}
+    </div>
+  );
+}
+
+/* Visão semanal: colunas seg–sáb, linhas 07–18, blocos por profissional */
+const H_INI=7, H_FIM=18;
+function corProf(nome){ let h=0; for(const c of (nome||"")) h=(h*31+c.charCodeAt(0))%360; return `hsl(${h} 45% 42%)`; }
+function SemanaGrid({ rows, dias, prof, onEdit, onNovo }){
+  const hoje=hojeStr();
+  const porDia = dias.map(d => rows.filter(r=> r.data===d && (!prof || r.profissional===prof)));
+  const profsVis = Array.from(new Set(rows.filter(r=>dias.includes(r.data)).map(r=>r.profissional).filter(Boolean)));
+  const horas = Array.from({length:H_FIM-H_INI+1},(_,i)=>H_INI+i);
+  const top = (hora)=>{ if(!hora) return 0; const [h,m]=hora.split(":").map(Number); return Math.max(0,(h*60+m - H_INI*60)); };
+  return (
+    <div>
+      <div className="wkscroll">
+        <div className="wk">
+          <div className="wk-head" style={{borderLeft:"none"}}></div>
+          {dias.map((d,i)=>{ const [y,m,dd]=d.split("-").map(Number); const w=new Date(y,m-1,dd).getDay();
+            return <div key={d} className={"wk-head"+(d===hoje?" hoje":"")}>{DIAS[w].slice(0,3)}<b>{String(dd).padStart(2,"0")}</b><span className="cnt">{porDia[i].filter(r=>r.status!=="cancelado").length} agend.</span></div>; })}
+          <div className="wk-gutter">
+            {horas.map(h=><div key={h} className="wk-hour" style={{top:(h-H_INI)*60}}>{String(h).padStart(2,"0")}:00</div>)}
+          </div>
+          {dias.map((d,i)=>(
+            <div key={d} className={"wk-col"+(d===hoje?" hoje":"")}
+                 onDoubleClick={(e)=>{ const r=e.currentTarget.getBoundingClientRect(); const min=Math.floor((e.clientY-r.top)/30)*30; const h=H_INI+Math.floor(min/60), mi=min%60; onNovo(d, `${String(h).padStart(2,"0")}:${String(mi).padStart(2,"0")}`); }}>
+              {porDia[i].map(r=>(
+                <div key={r.id} className={"wk-ev "+r.status} title={`${r.tipo||""} · ${r.paciente||""} · ${r.profissional||""}`}
+                     style={{ top:top(r.hora), height:Math.max(22,(r.duracao_min||30)), background:corProf(r.profissional) }}
+                     onClick={()=>onEdit(r)}>
+                  <b>{r.hora?r.hora.slice(0,5):"—"} · {r.paciente||r.tipo}</b>
+                  <span>{r.profissional||""}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="wk-legend">
+        {profsVis.map(p=><span key={p}><i style={{background:corProf(p)}}></i>{p}</span>)}
+        <span style={{marginLeft:"auto"}}>Clique no bloco para editar · duplo clique num horário vazio para agendar</span>
+      </div>
     </div>
   );
 }
