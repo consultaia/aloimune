@@ -145,17 +145,18 @@ function Enroll(){
     if(modelo!=="ok"){ setMsg("Reconhecimento indisponível — você pode salvar só com o PIN."); return; }
     const v=videoRef.current;
     if(!v || v.videoWidth===0){ setMsg("A câmera ainda não está enviando imagem."); return; }
-    setCapturing(true); setMsg("Capturando… olhe para a câmera.");
+    setCapturing(true); setMsg("Detectando rosto…");
+    const opts=new faceapi.TinyFaceDetectorOptions({ inputSize:320, scoreThreshold:0.4 });
     const amostras=[];
     try{
-      for(let i=0;i<5;i++){
-        const det=await faceapi.detectSingleFace(v,new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
-        if(det) amostras.push(Array.from(det.descriptor));
-        await new Promise(r=>setTimeout(r,350));
+      for(let i=0;i<12 && amostras.length<3;i++){
+        const det=await faceapi.detectSingleFace(v,opts).withFaceLandmarks().withFaceDescriptor();
+        if(det){ amostras.push(Array.from(det.descriptor)); setMsg("Capturando… "+amostras.length+"/3"); }
+        if(amostras.length<3) await new Promise(r=>setTimeout(r,120));
       }
     }catch(e){ setCapturing(false); setMsg("Erro ao ler o rosto: "+(e.message||String(e))); return; }
     setCapturing(false);
-    if(amostras.length<2){ setMsg("Não consegui ver o rosto direito. Aproxime, melhore a luz e tente de novo."); return; }
+    if(amostras.length<2){ setMsg("Não consegui ver o rosto. Aproxime o rosto, melhore a luz e tente de novo."); return; }
     const media=amostras[0].map((_,k)=> amostras.reduce((s,a)=>s+a[k],0)/amostras.length);
     setDesc(media); setMsg("Rosto capturado ✓");
   }
