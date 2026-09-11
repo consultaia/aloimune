@@ -74,6 +74,14 @@
   .empty{padding:40px;text-align:center;color:var(--muted)}
   .tot{font-family:"Space Grotesk";font-weight:700}
   @media(max-width:720px){ .cols{grid-template-columns:1fr} }
+  .overlay{position:fixed;inset:0;background:rgba(18,33,43,.45);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;z-index:50}
+  .modal{background:var(--card);border-radius:16px;width:100%;max-width:520px;box-shadow:var(--shadow);padding:22px}
+  .modal h2{font-family:"Space Grotesk";margin:0 0 16px;font-size:19px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .field.full{grid-column:1/-1}
+  .err{background:var(--bad-bg);color:var(--bad);padding:9px 12px;border-radius:9px;font-size:13px;margin-bottom:12px}
+  .modal-actions{display:flex;justify-content:space-between;align-items:center;margin-top:18px;gap:10px}
+  .mono{font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -275,6 +283,139 @@ function Relatorio(){
   );
 }
 
+
+/* ===== ESPELHO / TRATAMENTO DE PONTO ===== */
+const MESES_P=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+function Espelho(){
+  const now=new Date();
+  const [ano,setAno]=useState(now.getFullYear()); const [mes,setMes]=useState(now.getMonth());
+  const [colabs,setColabs]=useState([]); const [selC,setSelC]=useState("");
+  const [regs,setRegs]=useState([]); const [loading,setLoading]=useState(true); const [edit,setEdit]=useState(null);
+
+  async function load(){
+    setLoading(true);
+    if(sb){
+      const ini=new Date(ano,mes,1).toISOString(), fim=new Date(ano,mes+1,1).toISOString();
+      const [r,c]=await Promise.all([
+        sb.from("registros_ponto").select("*").gte("momento",ini).lt("momento",fim).order("momento",{ascending:true}),
+        sb.from("colaboradores").select("id,nome").eq("ativo",true).order("nome"),
+      ]);
+      if(r.error) alert(r.error.message);
+      setRegs(r.data||[]); setColabs(c.data||[]);
+    } else {
+      const t=(d,h,mi)=>new Date(now.getFullYear(),now.getMonth(),d,h,mi).toISOString();
+      setColabs([{id:"1",nome:"Paula Ribeiro"},{id:"2",nome:"Bianca Souza"}]);
+      setRegs([ {id:"a",colaborador_id:"1",tipo:"entrada",metodo:"facial",momento:t(2,7,58)},
+                {id:"b",colaborador_id:"1",tipo:"saida",metodo:"facial",momento:t(2,17,3)},
+                {id:"c",colaborador_id:"2",tipo:"entrada",metodo:"pin",momento:t(2,8,10)} ]);
+    }
+    setLoading(false);
+  }
+  useEffect(()=>{ load(); },[ano,mes]);
+  function mudarMes(k){ let m=mes+k,y=ano; if(m<0){m=11;y--;} if(m>11){m=0;y++;} setMes(m); setAno(y); }
+
+  const nomes=Object.fromEntries(colabs.map(c=>[c.id,c.nome]));
+  const filtr=regs.filter(r=> !selC || r.colaborador_id===selC);
+  const grupos={};
+  filtr.forEach(r=>{ const dia=r.momento.slice(0,10); const k=r.colaborador_id+"|"+dia;
+    (grupos[k]=grupos[k]||{colab:r.colaborador_id,dia,itens:[]}).itens.push(r); });
+  const linhas=Object.values(grupos).map(g=>{
+    const its=[...g.itens].sort((a,b)=>a.momento.localeCompare(b.momento));
+    let total=0,open=null,ok=true;
+    its.forEach(r=>{ if(r.tipo==="entrada"){ if(open)ok=false; open=new Date(r.momento);} else { if(!open)ok=false; else { total+=(new Date(r.momento)-open)/36e5; open=null; } } });
+    if(open) ok=false;
+    return {...g,its,horas:total,ok};
+  }).sort((a,b)=> (nomes[a.colab]||"").localeCompare(nomes[b.colab]||"") || b.dia.localeCompare(a.dia));
+
+  async function salvar(f){
+    if(!f.colaborador_id||!f.data||!f.hora) return "Preencha funcionário, data e hora.";
+    const momento=new Date(f.data+"T"+(f.hora.length===5?f.hora:f.hora+":00")).toISOString();
+    if(sb){ const payload={colaborador_id:f.colaborador_id,tipo:f.tipo,momento,metodo:f.id?"ajuste":"ajuste"};
+      const r=f.id? await sb.from("registros_ponto").update(payload).eq("id",f.id) : await sb.from("registros_ponto").insert(payload);
+      if(r.error) return r.error.message; await load(); }
+    else setRegs(p=> f.id? p.map(x=>x.id===f.id?{...x,tipo:f.tipo,momento}:x):[...p,{id:"n"+Date.now(),colaborador_id:f.colaborador_id,tipo:f.tipo,metodo:"ajuste",momento}]);
+    setEdit(null); return null;
+  }
+  async function excluir(r){ if(!confirm("Excluir esta batida?")) return;
+    if(sb){ const e=await sb.from("registros_ponto").delete().eq("id",r.id); if(e.error) return alert(e.error.message); await load(); }
+    else setRegs(p=>p.filter(x=>x.id!==r.id)); }
+
+  const fmtH=(iso)=>new Date(iso).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+  const fmtD=(iso)=>{ const [y,m,d]=iso.slice(0,10).split("-"); return d+"/"+m; };
+  const abrirEdit=(r)=> setEdit({ id:r.id, colaborador_id:r.colaborador_id, tipo:r.tipo, data:r.momento.slice(0,10), hora:r.momento.slice(11,16) });
+
+  return (
+    <div>
+      <div className="note">Espelho de ponto: cada batida registrada. Clique numa batida para corrigir o horário, ou use os botões para incluir/apagar (esquecimento, atestado, ajuste). Toda alteração fica com método "ajuste".</div>
+      <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",marginBottom:14}}>
+        <button className="btn btn-ghost btn-sm" onClick={()=>mudarMes(-1)}>‹</button>
+        <b style={{fontFamily:"'Space Grotesk'",minWidth:130,textAlign:"center"}}>{MESES_P[mes]} {ano}</b>
+        <button className="btn btn-ghost btn-sm" onClick={()=>mudarMes(1)}>›</button>
+        <select value={selC} onChange={e=>setSelC(e.target.value)} style={{font:"inherit",padding:"8px 10px",border:"1px solid var(--line)",borderRadius:9}}>
+          <option value="">Todos os funcionários</option>
+          {colabs.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
+        </select>
+        <div style={{flex:1}}></div>
+        <button className="btn btn-primary btn-sm" onClick={()=>setEdit({ colaborador_id:selC||colabs[0]?.id||"", tipo:"entrada", data:new Date().toISOString().slice(0,10), hora:"08:00" })}>+ Nova batida</button>
+      </div>
+
+      <div className="card">
+        {loading ? <div className="empty">Carregando…</div> :
+         linhas.length===0 ? <div className="empty">Sem batidas neste mês.</div> :
+         <table>
+           <thead><tr><th>Funcionário</th><th>Dia</th><th>Batidas</th><th>Horas</th><th>Situação</th><th></th></tr></thead>
+           <tbody>
+             {linhas.map((l,i)=>(
+               <tr key={i}>
+                 <td style={{fontWeight:600}}>{nomes[l.colab]||"—"}</td>
+                 <td className="mono">{fmtD(l.dia)}</td>
+                 <td><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                   {l.its.map(r=>(
+                     <button key={r.id} onClick={()=>abrirEdit(r)} title="corrigir"
+                       style={{font:"inherit",cursor:"pointer",border:"1px solid var(--line)",borderRadius:20,padding:"3px 9px",background:r.tipo==="entrada"?"var(--ok-bg)":"#FBEFD6",color:r.tipo==="entrada"?"var(--ok)":"var(--warn)",fontWeight:600,fontSize:12.5}}>
+                       {r.tipo==="entrada"?"▸":"◂"} {fmtH(r.momento)}{r.metodo==="ajuste"?" ✎":""}
+                     </button>
+                   ))}
+                 </div></td>
+                 <td className="mono" style={{fontWeight:600}}>{l.horas.toFixed(1)}h</td>
+                 <td>{l.ok ? <span style={{color:"var(--ok)",fontWeight:600,fontSize:12.5}}>ok</span> : <span style={{color:"var(--bad)",fontWeight:600,fontSize:12.5}}>⚠ revisar</span>}</td>
+                 <td style={{textAlign:"right"}}><button className="btn btn-ghost btn-sm" onClick={()=>setEdit({ colaborador_id:l.colab, tipo:"saida", data:l.dia, hora:"18:00" })}>+ batida</button></td>
+               </tr>
+             ))}
+           </tbody>
+         </table>}
+      </div>
+      {edit && <BatidaModal b={edit} colabs={colabs} onClose={()=>setEdit(null)} onSave={salvar} onDel={excluir} />}
+    </div>
+  );
+}
+
+function BatidaModal({ b, colabs, onClose, onSave, onDel }){
+  const [f,setF]=useState({ id:b.id, colaborador_id:b.colaborador_id||"", tipo:b.tipo||"entrada", data:b.data, hora:b.hora });
+  const [err,setErr]=useState(""); const [s,setS]=useState(false);
+  const set=(k,v)=>setF(x=>({...x,[k]:v}));
+  async function submit(){ setS(true); const e=await onSave(f); setS(false); if(e) setErr(e); }
+  return (
+    <div className="overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:440}}>
+      <h2>{b.id?"Corrigir batida":"Nova batida"}</h2>
+      {err && <div className="err">{err}</div>}
+      <div className="grid">
+        <div className="field full"><label>Funcionário</label>
+          <select value={f.colaborador_id} onChange={e=>set("colaborador_id",e.target.value)}>
+            <option value="">— selecione —</option>{colabs.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
+          </select></div>
+        <div className="field"><label>Tipo</label><select value={f.tipo} onChange={e=>set("tipo",e.target.value)}><option value="entrada">Entrada</option><option value="saida">Saída</option></select></div>
+        <div className="field"><label>Data</label><input type="date" value={f.data} onChange={e=>set("data",e.target.value)} /></div>
+        <div className="field"><label>Hora</label><input type="time" value={f.hora} onChange={e=>set("hora",e.target.value)} /></div>
+      </div>
+      <div className="modal-actions">
+        <div>{b.id && <button className="btn btn-ghost" onClick={()=>{ onDel({id:b.id}); onClose(); }} style={{color:"var(--bad)"}}>Excluir</button>}</div>
+        <div style={{display:"flex",gap:8}}><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={submit} disabled={s}>{s?"Salvando…":"Salvar"}</button></div>
+      </div>
+    </div></div>
+  );
+}
+
 function App(){
   const [tab,setTab]=useState("cadastro");
   return (
@@ -286,9 +427,10 @@ function App(){
       <div className="note">O registro em si é feito pelos funcionários no iPad (quiosque). Aqui você cadastra o rosto (com consentimento) e acompanha as horas. Guardamos só o descritor do rosto, nunca a foto.</div>
       <div className="tabs">
         <button className={tab==="cadastro"?"on":""} onClick={()=>setTab("cadastro")}>Cadastro</button>
+        <button className={tab==="espelho"?"on":""} onClick={()=>setTab("espelho")}>Espelho</button>
         <button className={tab==="relatorio"?"on":""} onClick={()=>setTab("relatorio")}>Relatório</button>
       </div>
-      {tab==="cadastro" ? <Enroll/> : <Relatorio/>}
+      {tab==="cadastro" ? <Enroll/> : tab==="espelho" ? <Espelho/> : <Relatorio/>}
     </div>
   );
 }
