@@ -101,20 +101,23 @@ function Enroll(){
   }
   useEffect(()=>{ load(); },[]);
   useEffect(()=>{ (async()=>{
+    // 1) CÂMERA primeiro (independente do modelo) — assim o vídeo aparece já
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+      const v=videoRef.current;
+      if(v){
+        v.srcObject=stream; v.setAttribute("playsinline",""); v.muted=true;
+        v.onloadedmetadata=()=>{ v.play().catch(()=>{}); };
+        setTimeout(()=>v.play().catch(()=>{}),400);
+      }
+    }catch(e){ setMsg("Câmera: "+(e.name||e.message||e)+". Verifique a permissão e se outro app está usando a câmera."); }
+    // 2) MODELO de reconhecimento (pode demorar; não trava o vídeo)
     try{
       await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
       await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
       await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-      const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"},audio:false});
-      const v=videoRef.current;
-      if(v){
-        v.srcObject=stream; v.setAttribute("playsinline",""); v.muted=true;
-        await new Promise(res=>{ if(v.readyState>=2) return res();
-          v.onloadedmetadata=()=>res(); setTimeout(res,1500); });
-        try{ await v.play(); }catch(e){ setTimeout(()=>v.play().catch(()=>{}),300); }
-      }
       setReady(true);
-    }catch(e){ setMsg("Não consegui iniciar câmera/reconhecimento. Verifique permissões e internet."); }
+    }catch(e){ setMsg("Reconhecimento facial não carregou: "+(e.message||e)+". Você ainda pode cadastrar só com PIN."); }
   })(); },[]);
 
   function escolher(c){ setSel(c); setDesc(null); setPin(bio[c.id]?"":""); setConsent(false); setMsg(""); }
