@@ -74,6 +74,13 @@
   .login button{width:100%;font:inherit;font-weight:700;padding:13px;border:none;border-radius:11px;background:var(--teal);color:#04231f;cursor:pointer}
   .err{background:rgba(224,96,59,.15);color:var(--bad);padding:10px;border-radius:10px;font-size:13px;margin-bottom:12px}
   .link{background:none;border:none;color:var(--teal);font:inherit;cursor:pointer;margin-top:18px;font-size:15px}
+  .repouso{position:fixed;inset:0;background:#04120f;display:flex;align-items:center;justify-content:center;z-index:60;cursor:pointer;animation:fade .4s ease}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+  .repouso .rin{text-align:center;color:#3a6b62}
+  .repouso .zz{font-size:16px;color:#1f5a50;animation:pulse 2.2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.3}50%{opacity:.9}}
+  .repouso .rt{margin-top:16px;font-family:"Space Grotesk";font-weight:700;font-size:22px;color:#6aa89d}
+  .repouso .rs{margin-top:6px;font-size:12px;color:#2f5951;letter-spacing:.05em;text-transform:uppercase}
 </style>
 </head>
 <body>
@@ -118,6 +125,10 @@ function Kiosk(){
   const enrolled=useRef([]);                     // [{colaborador_id, nome, descritor:[...]}]
   const scanning=useRef(false);
   const timer=useRef(null);
+  const [dormindo,setDormindo]=useState(false);
+  const ultimaAtiv=useRef(Date.now());
+  const motionTimer=useRef(null); const prevFrame=useRef(null); const motionCanvas=useRef(null);
+  const atividade=()=>{ ultimaAtiv.current=Date.now(); };
 
   const [camOn,setCamOn]=useState(false); const [precisaToque,setPrecisaToque]=useState(false);
   async function ligarCamera(){
@@ -148,6 +159,29 @@ function Kiosk(){
     setFase("scan"); loopScan();
   }
 
+  function dormir(){
+    clearInterval(timer.current); scanning.current=false;
+    setPessoa(null); setPin(""); setErro(""); setFeito(null); setFase("scan");
+    setDormindo(true); iniciarMovimento();
+  }
+  function acordar(){
+    clearInterval(motionTimer.current); prevFrame.current=null; atividade();
+    setDormindo(false); setFase("scan"); loopScan();
+  }
+  function iniciarMovimento(){
+    clearInterval(motionTimer.current);
+    if(!motionCanvas.current){ const c=document.createElement("canvas"); c.width=32; c.height=24; motionCanvas.current=c; }
+    prevFrame.current=null;
+    motionTimer.current=setInterval(()=>{
+      const v=videoRef.current; if(!v||v.videoWidth===0) return;
+      const c=motionCanvas.current, ctx=c.getContext("2d");
+      ctx.drawImage(v,0,0,c.width,c.height);
+      const cur=ctx.getImageData(0,0,c.width,c.height).data;
+      if(prevFrame.current){ let d=0; for(let i=0;i<cur.length;i+=4) d+=Math.abs(cur[i]-prevFrame.current[i]);
+        if(d/(cur.length/4) > 12){ acordar(); return; } }
+      prevFrame.current=cur;
+    }, 700);
+  }
   function loopScan(){
     clearInterval(timer.current);
     timer.current=setInterval(async ()=>{
@@ -156,7 +190,7 @@ function Kiosk(){
       try{
         const det=await faceapi.detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize:320, scoreThreshold:0.4 }))
           .withFaceLandmarks().withFaceDescriptor();
-        if(det){
+        if(det){ atividade();
           const live=Array.from(det.descriptor);
           let best=null, bestD=99;
           enrolled.current.forEach(r=>{ const d=dist(live,r.descritor); if(d<bestD){bestD=d;best=r;} });
@@ -168,6 +202,7 @@ function Kiosk(){
   }
 
   async function reconhecer(r, metodo){
+    atividade();
     clearInterval(timer.current);
     let sug="entrada";
     if(sb){ const { data }=await sb.from("registros_ponto").select("tipo").eq("colaborador_id",r.colaborador_id).order("momento",{ascending:false}).limit(1).maybeSingle();
@@ -180,7 +215,7 @@ function Kiosk(){
     if(sb){ const { error }=await sb.from("registros_ponto").insert({ colaborador_id:pessoa.colaborador_id, tipo, metodo:pessoa.metodo });
       if(error){ setErro(error.message); setFase("erro"); return; } }
     setFeito({ nome:pessoa.nome, tipo }); setFase("feito");
-    setTimeout(()=>{ setPessoa(null); setPin(""); setFeito(null); setFase("scan"); loopScan(); }, 3000);
+    setTimeout(()=>{ setPessoa(null); setPin(""); setFeito(null); atividade(); setFase("scan"); loopScan(); }, 3000);
   }
 
   async function enviarPin(){
@@ -195,14 +230,16 @@ function Kiosk(){
     else { setPin(""); setErro("PIN não encontrado."); setTimeout(()=>setErro(""),2500); }
   }
 
-  useEffect(()=>{ iniciar(); return ()=>clearInterval(timer.current); },[]);
+  useEffect(()=>{ iniciar(); return ()=>{ clearInterval(timer.current); clearInterval(motionTimer.current); }; },[]);
+  useEffect(()=>{ const id=setInterval(()=>{ if(!dormindo && fase!=="carregando" && Date.now()-ultimaAtiv.current>30000) dormir(); },2000); return ()=>clearInterval(id); },[dormindo,fase]);
 
   const camCls = fase==="confirmar"||fase==="feito" ? "ok" : erro && fase!=="pin" ? "bad" : "";
 
   return (
-    <div className="kiosk">
+    <div className="kiosk" onClick={()=>{ if(dormindo) acordar(); else atividade(); }} onTouchStart={()=>{ if(dormindo) acordar(); else atividade(); }}>
       <div className="brand"><span className="logo">C</span> Ponto</div>
       <Relogio/>
+      {dormindo && <div className="repouso"><div className="rin"><div className="zz">●</div><div className="rt">Toque para bater o ponto</div><div className="rs">recepção · ponto eletrônico</div></div></div>}
 
       {fase==="pin" ? (
         <>
