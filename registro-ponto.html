@@ -4,6 +4,14 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>Ponto — Registro</title>
+<link rel="manifest" href="manifest-ponto.json" />
+<meta name="theme-color" content="#0d1b22" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<script>if("serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});}</script>
+
 
 <!-- ==========================================================================
      QUIOSQUE DE PONTO (iPad)  —  reconhecimento facial + PIN de reserva
