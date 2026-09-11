@@ -105,8 +105,8 @@ function Enroll(){
 
   async function load(){
     if(sb){
-      const [c,b]=await Promise.all([ sb.from("colaboradores").select("id,nome,funcao").eq("ativo",true).order("nome"), sb.from("ponto_biometria").select("colaborador_id,pin") ]);
-      setColabs(c.data||[]); const m={}; (b.data||[]).forEach(r=>m[r.colaborador_id]=r); setBio(m);
+      const [c,b]=await Promise.all([ sb.from("colaboradores").select("id,nome,funcao").eq("ativo",true).order("nome"), sb.from("ponto_biometria").select("colaborador_id,pin,consentimento_em,descritor") ]);
+      setColabs(c.data||[]); const m={}; (b.data||[]).forEach(r=>m[r.colaborador_id]={pin:r.pin,tem_desc:Array.isArray(r.descritor)&&r.descritor.length>0,consent:r.consentimento_em}); setBio(m);
     } else {
       setColabs([{id:"1",nome:"Paula Ribeiro",funcao:"Enfermeira"},{id:"2",nome:"Bianca Souza",funcao:"Recepcionista"}]); setBio({});
     }
@@ -212,9 +212,14 @@ function Enroll(){
         {cam==="on" && <div style={{fontSize:12,color:"var(--muted)",marginTop:6,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>Câmera ativa · {camInfo} <button className="btn btn-ghost btn-sm" onClick={desligarCamera}>desligar</button></div>}
 
         {!sel ? <div className="empty" style={{padding:"18px 0"}}>Selecione um funcionário à esquerda para cadastrar.</div> : <>
-          <div style={{fontWeight:600,fontSize:16,margin:"14px 0 10px"}}>{sel.nome}</div>
+          <div style={{fontWeight:600,fontSize:16,margin:"14px 0 6px"}}>{sel.nome}</div>
+          {bio[sel.id] && <div style={{background:"var(--ok-bg)",border:"1px solid #CDE7DD",color:"var(--primary-ink)",borderRadius:10,padding:"9px 12px",fontSize:13,marginBottom:12,lineHeight:1.5}}>
+            ✓ Já cadastrado · biometria: {bio[sel.id].tem_desc?"sim":"não (só PIN)"} · PIN: {bio[sel.id].pin?"definido":"não"}<br/>
+            {bio[sel.id].consent ? "Autorização (LGPD) registrada em "+new Date(bio[sel.id].consent).toLocaleDateString("pt-BR")+" às "+new Date(bio[sel.id].consent).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "Sem data de autorização registrada."}<br/>
+            <span style={{color:"var(--muted)"}}>Para trocar o rosto ou o PIN, capture de novo abaixo e salve — isto substitui o cadastro atual.</span>
+          </div>}
           <div className="row" style={{marginBottom:14}}>
-            <button className="btn btn-ghost" onClick={capturar} disabled={capturing||cam!=="on"}>{capturing?"Capturando…":"Capturar rosto"}</button>
+            <button className="btn btn-ghost" onClick={capturar} disabled={capturing||cam!=="on"}>{capturing?"Capturando…":(bio[sel.id]&&bio[sel.id].tem_desc?"Recadastrar rosto":"Capturar rosto")}</button>
             {desc && <span className="cap-ok">✓ rosto capturado</span>}
           </div>
           <div className="field"><label>PIN de reserva (4 a 6 dígitos)</label>
