@@ -106,7 +106,13 @@ function Enroll(){
       await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
       await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
       const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"},audio:false});
-      if(videoRef.current){ videoRef.current.srcObject=stream; await videoRef.current.play(); }
+      const v=videoRef.current;
+      if(v){
+        v.srcObject=stream; v.setAttribute("playsinline",""); v.muted=true;
+        await new Promise(res=>{ if(v.readyState>=2) return res();
+          v.onloadedmetadata=()=>res(); setTimeout(res,1500); });
+        try{ await v.play(); }catch(e){ setTimeout(()=>v.play().catch(()=>{}),300); }
+      }
       setReady(true);
     }catch(e){ setMsg("Não consegui iniciar câmera/reconhecimento. Verifique permissões e internet."); }
   })(); },[]);
@@ -152,7 +158,7 @@ function Enroll(){
       <div className="card"><div className="enroll">
         {!sel ? <div className="empty">Selecione um funcionário para cadastrar o rosto.</div> : <>
           <div style={{fontWeight:600,fontSize:16,marginBottom:12}}>{sel.nome}</div>
-          <div className={"camwrap "+(desc?"ok":"")}><video ref={videoRef} playsInline muted></video></div>
+          <div className={"camwrap "+(desc?"ok":"")}><video ref={videoRef} autoPlay playsInline muted></video></div>
           <div className="row" style={{marginBottom:14}}>
             <button className="btn btn-ghost" onClick={capturar} disabled={capturing}>{capturing?"Capturando…":"Capturar rosto"}</button>
             {desc && <span className="cap-ok">✓ rosto capturado</span>}
