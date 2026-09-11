@@ -119,17 +119,27 @@ function Kiosk(){
   const scanning=useRef(false);
   const timer=useRef(null);
 
+  const [camOn,setCamOn]=useState(false); const [precisaToque,setPrecisaToque]=useState(false);
+  async function ligarCamera(){
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({ video:{ facingMode:"user" }, audio:false });
+      const v=videoRef.current;
+      if(v){ v.srcObject=stream; v.muted=true; v.playsInline=true; v.setAttribute("playsinline","");
+        try{ await v.play(); }catch(_){ }
+        let n=0; const chk=()=>{ n++; if(v.videoWidth>0){ setCamOn(true); setPrecisaToque(false); }
+          else if(n<25){ setTimeout(chk,150); } else { setPrecisaToque(true); } };
+        chk();
+      }
+    }catch(e){ setErro("Não consegui a câmera ("+(e.name||"")+"). Toque em 'Ligar câmera' ou use o PIN."); setPrecisaToque(true); }
+  }
   async function iniciar(){
     try{
       await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
       await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
       await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
     }catch(e){ setErro("Não consegui carregar o reconhecimento facial. Verifique a internet. Você ainda pode usar o PIN."); }
-    // câmera
-    try{
-      const stream=await navigator.mediaDevices.getUserMedia({ video:{ facingMode:"user" }, audio:false });
-      if(videoRef.current){ videoRef.current.srcObject=stream; await videoRef.current.play(); }
-    }catch(e){ setErro("Não consegui acessar a câmera. Use o PIN, ou libere a câmera nas permissões."); }
+    // câmera (com confirmação de imagem; se o navegador exigir toque, mostra o botão)
+    await ligarCamera();
     // rostos cadastrados
     if(sb){
       const { data }=await sb.from("ponto_biometria").select("colaborador_id,nome,descritor");
@@ -210,7 +220,8 @@ function Kiosk(){
       ) : (
         <>
           <div className={"camwrap "+camCls}>
-            <video ref={videoRef} playsInline muted></video>
+            <video ref={videoRef} autoPlay playsInline muted></video>
+            {precisaToque && <button className="b b-sec" style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",zIndex:5}} onClick={ligarCamera}>Ligar câmera</button>}
             {fase==="scan" && <div className="scanline"></div>}
           </div>
 
