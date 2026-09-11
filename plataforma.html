@@ -67,6 +67,11 @@
   .hi{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:24px; margin:0 0 2px}
   .hi + p{color:var(--muted); margin:0 0 22px}
 
+  .hometabs{display:inline-flex;background:#EEF1F3;border-radius:10px;padding:3px;margin-bottom:18px}
+  .hometabs button{font:inherit;font-weight:600;font-size:14px;border:none;background:none;color:var(--muted);padding:8px 16px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+  .hometabs button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+  .htbadge{background:#C6D0D4;color:#12212B;font-size:11px;font-weight:700;min-width:20px;height:20px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px}
+  .htbadge.crit{background:var(--bad);color:#fff}
   .att{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:8px; margin-bottom:24px; box-shadow:var(--shadow)}
   .att h3{font-size:12.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:10px 12px 8px}
   .att-item{display:flex; align-items:center; gap:12px; padding:13px 12px; border-radius:10px; cursor:pointer; text-align:left; width:100%; border:none; background:none; font:inherit}
@@ -317,38 +322,50 @@ function Home({ onAbrir, papel }){
     return {cls:"ok", t:"Tudo certo"};
   };
 
+  const [aba,setAba]=useState("inicio"); // 'inicio' | 'atencao'
+  const nCrit=att.filter(a=>a.sev==="bad").length;
+  const nTotal=att.length;
   return (
     <div className="home">
       <h2 className="hi">Bom te ver por aqui</h2>
       <p>Este é o resumo da clínica agora.</p>
 
-      <div className="att">
-        <h3>Precisa de atenção</h3>
-        {att.length===0
-          ? <div className="allok"><span className="dot"></span>Está tudo em dia. Nada pendente no momento.</div>
-          : att.map((a,i)=>(
-              <button key={i} className="att-item" onClick={()=>onAbrir(a.mod)}>
-                <span className={"dot "+a.sev}></span>
-                <span className="txt">{a.txt}</span>
-                <span className="go">›</span>
-              </button>
-            ))}
+      <div className="hometabs">
+        <button className={aba==="inicio"?"on":""} onClick={()=>setAba("inicio")}>Início</button>
+        <button className={aba==="atencao"?"on":""} onClick={()=>setAba("atencao")}>
+          Precisa de atenção
+          {nTotal>0 && <span className={"htbadge"+(nCrit>0?" crit":"")}>{nTotal}</span>}
+        </button>
       </div>
 
-      <div className="cards">
-        {MODULOS.filter(m=> !m.soloGestor || papel==="gestor").map(m=>{
-          const s=statusModulo(m.key);
-          return (
-            <button key={m.key} className="mcard" onClick={()=>onAbrir(m.key)}>
-              <span className="ic"><Icon name={m.ic}/></span>
-              <span>
-                <span className="mnome">{m.nome}</span>
-                <span className={"mstat "+s.cls} style={{display:"block"}}>{s.t}</span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      {aba==="inicio" ? (
+        <div className="cards">
+          {MODULOS.filter(m=> !m.soloGestor || papel==="gestor").map(m=>{
+            const s=statusModulo(m.key);
+            return (
+              <button key={m.key} className="mcard" onClick={()=>onAbrir(m.key)}>
+                <span className="ic"><Icon name={m.ic}/></span>
+                <span>
+                  <span className="mnome">{m.nome}</span>
+                  <span className={"mstat "+s.cls} style={{display:"block"}}>{s.t}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="att">
+          {att.length===0
+            ? <div className="allok"><span className="dot"></span>Está tudo em dia. Nada pendente no momento.</div>
+            : att.map((a,i)=>(
+                <button key={i} className="att-item" onClick={()=>onAbrir(a.mod)}>
+                  <span className={"dot "+a.sev}></span>
+                  <span className="txt">{a.txt}</span>
+                  <span className="go">›</span>
+                </button>
+              ))}
+        </div>
+      )}
     </div>
   );
 }
