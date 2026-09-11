@@ -154,7 +154,7 @@ function Kiosk(){
       if(scanning.current || !videoRef.current || !faceapi.nets.faceRecognitionNet.isLoaded) return;
       scanning.current=true;
       try{
-        const det=await faceapi.detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+        const det=await faceapi.detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize:320, scoreThreshold:0.4 }))
           .withFaceLandmarks().withFaceDescriptor();
         if(det){
           const live=Array.from(det.descriptor);
@@ -229,7 +229,7 @@ function Kiosk(){
 
           {fase==="scan" && <>
             <div className="msg">Olhe para a câmera</div>
-            <div className="sub">{erro || "O reconhecimento é automático. Se não funcionar, use o PIN."}</div>
+            <div className="sub">{erro || (enrolled.current.length===0 ? "Nenhum rosto cadastrado ainda — use o PIN por enquanto." : "O reconhecimento é automático. Se não funcionar, use o PIN.")}</div>
           </>}
 
           {fase==="confirmar" && pessoa && <>
