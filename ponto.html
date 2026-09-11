@@ -86,64 +86,91 @@ const fmtH=(iso)=>new Date(iso).toLocaleTimeString("pt-BR",{hour:"2-digit",minut
 
 function Enroll(){
   const videoRef=useRef(null);
+  const streamRef=useRef(null);
   const [colabs,setColabs]=useState([]); const [bio,setBio]=useState({});
-  const [sel,setSel]=useState(null); const [ready,setReady]=useState(false);
+  const [sel,setSel]=useState(null);
+  const [modelo,setModelo]=useState("carregando"); // carregando | ok | erro
+  const [cam,setCam]=useState("off");               // off | ligando | on | erro
+  const [camInfo,setCamInfo]=useState("");
   const [desc,setDesc]=useState(null); const [pin,setPin]=useState(""); const [consent,setConsent]=useState(false);
   const [msg,setMsg]=useState(""); const [capturing,setCapturing]=useState(false);
 
   async function load(){
     if(sb){
-      const [c,b]=await Promise.all([ sb.from("colaboradores").select("id,nome,funcao").eq("ativo",true), sb.from("ponto_biometria").select("colaborador_id,pin") ]);
+      const [c,b]=await Promise.all([ sb.from("colaboradores").select("id,nome,funcao").eq("ativo",true).order("nome"), sb.from("ponto_biometria").select("colaborador_id,pin") ]);
       setColabs(c.data||[]); const m={}; (b.data||[]).forEach(r=>m[r.colaborador_id]=r); setBio(m);
     } else {
       setColabs([{id:"1",nome:"Paula Ribeiro",funcao:"Enfermeira"},{id:"2",nome:"Bianca Souza",funcao:"Recepcionista"}]); setBio({});
     }
   }
   useEffect(()=>{ load(); },[]);
+
+  // Carrega o modelo de reconhecimento uma vez (independente da câmera).
   useEffect(()=>{ (async()=>{
-    // 1) CÂMERA primeiro (independente do modelo) — assim o vídeo aparece já
-    try{
-      const stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
-      const v=videoRef.current;
-      if(v){
-        v.srcObject=stream; v.setAttribute("playsinline",""); v.muted=true;
-        v.onloadedmetadata=()=>{ v.play().catch(()=>{}); };
-        setTimeout(()=>v.play().catch(()=>{}),400);
-      }
-    }catch(e){ setMsg("Câmera: "+(e.name||e.message||e)+". Verifique a permissão e se outro app está usando a câmera."); }
-    // 2) MODELO de reconhecimento (pode demorar; não trava o vídeo)
     try{
       await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
       await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
       await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-      setReady(true);
-    }catch(e){ setMsg("Reconhecimento facial não carregou: "+(e.message||e)+". Você ainda pode cadastrar só com PIN."); }
-  })(); },[]);
+      setModelo("ok");
+    }catch(e){ setModelo("erro"); console.log("modelo:", String(e)); }
+  })();
+  return ()=>{ if(streamRef.current) streamRef.current.getTracks().forEach(t=>t.stop()); };
+  },[]);
 
-  function escolher(c){ setSel(c); setDesc(null); setPin(bio[c.id]?"":""); setConsent(false); setMsg(""); }
+  // A câmera é ligada por um CLIQUE (gesto do usuário nunca é bloqueado pelo navegador).
+  async function ligarCamera(){
+    setCam("ligando"); setCamInfo(""); setMsg("");
+    try{
+      if(streamRef.current){ streamRef.current.getTracks().forEach(t=>t.stop()); streamRef.current=null; }
+      const stream=await navigator.mediaDevices.getUserMedia({ video:{ width:{ideal:640}, height:{ideal:480}, facingMode:"user" }, audio:false });
+      streamRef.current=stream;
+      const v=videoRef.current;
+      v.srcObject=stream; v.muted=true; v.playsInline=true; v.setAttribute("playsinline","");
+      try{ await v.play(); }catch(_){ }
+      let n=0;
+      const conferir=()=>{ n++;
+        if(v.videoWidth>0){ setCam("on"); setCamInfo(v.videoWidth+"×"+v.videoHeight); }
+        else if(n<25){ setTimeout(conferir,150); }
+        else { setCam("erro"); setCamInfo("A câmera ligou mas não enviou imagem. Feche apps que usam a câmera (Zoom/Teams/Meet) ou tente outro navegador."); }
+      };
+      conferir();
+    }catch(e){ setCam("erro"); setCamInfo((e.name?e.name+": ":"")+(e.message||String(e))); }
+  }
+  function desligarCamera(){ if(streamRef.current){ streamRef.current.getTracks().forEach(t=>t.stop()); streamRef.current=null; } if(videoRef.current) videoRef.current.srcObject=null; setCam("off"); }
+
+  function escolher(c){ setSel(c); setDesc(null); setPin(""); setConsent(false); setMsg(""); }
 
   async function capturar(){
-    if(!ready){ setMsg("Reconhecimento ainda carregando…"); return; }
-    setCapturing(true); setMsg("");
+    if(cam!=="on"){ setMsg("Ligue a câmera primeiro."); return; }
+    if(modelo!=="ok"){ setMsg("Reconhecimento indisponível — você pode salvar só com o PIN."); return; }
+    const v=videoRef.current;
+    if(!v || v.videoWidth===0){ setMsg("A câmera ainda não está enviando imagem."); return; }
+    setCapturing(true); setMsg("Capturando… olhe para a câmera.");
     const amostras=[];
-    for(let i=0;i<4;i++){
-      const det=await faceapi.detectSingleFace(videoRef.current,new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
-      if(det) amostras.push(Array.from(det.descriptor));
-      await new Promise(r=>setTimeout(r,400));
-    }
+    try{
+      for(let i=0;i<5;i++){
+        const det=await faceapi.detectSingleFace(v,new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+        if(det) amostras.push(Array.from(det.descriptor));
+        await new Promise(r=>setTimeout(r,350));
+      }
+    }catch(e){ setCapturing(false); setMsg("Erro ao ler o rosto: "+(e.message||String(e))); return; }
     setCapturing(false);
-    if(amostras.length<2){ setMsg("Não consegui ver o rosto direito. Melhore a luz e tente de novo."); return; }
+    if(amostras.length<2){ setMsg("Não consegui ver o rosto direito. Aproxime, melhore a luz e tente de novo."); return; }
     const media=amostras[0].map((_,k)=> amostras.reduce((s,a)=>s+a[k],0)/amostras.length);
-    setDesc(media); setMsg("Rosto capturado.");
+    setDesc(media); setMsg("Rosto capturado ✓");
   }
 
   async function salvar(){
-    if(!sel||!desc||!consent) return;
+    if(!sel){ setMsg("Selecione um funcionário."); return; }
+    if(!consent){ setMsg("Marque o consentimento."); return; }
+    if(!desc && !pin){ setMsg("Cadastre o rosto OU informe um PIN de reserva."); return; }
     const payload={ colaborador_id:sel.id, nome:sel.nome, descritor:desc, pin:pin||null, consentimento_em:new Date().toISOString() };
     if(sb){ const { error }=await sb.from("ponto_biometria").upsert(payload); if(error){ setMsg("Erro: "+error.message); return; } await load(); }
     else setBio(p=>({...p,[sel.id]:{colaborador_id:sel.id,pin}}));
     setMsg("Cadastro salvo para "+sel.nome+"."); setDesc(null); setConsent(false); setPin("");
   }
+
+  const erroMsg = (t)=> t && (t.startsWith("Erro")||t.startsWith("Não")||t.startsWith("Ligue")||t.startsWith("A câmera")||t.startsWith("Marque")||t.startsWith("Selecione")||t.startsWith("Reconhecimento"));
 
   return (
     <div className="cols">
@@ -159,11 +186,26 @@ function Enroll(){
       </div>
 
       <div className="card"><div className="enroll">
-        {!sel ? <div className="empty">Selecione um funcionário para cadastrar o rosto.</div> : <>
-          <div style={{fontWeight:600,fontSize:16,marginBottom:12}}>{sel.nome}</div>
-          <div className={"camwrap "+(desc?"ok":"")}><video ref={videoRef} autoPlay playsInline muted></video></div>
+        <div style={{fontSize:12.5,marginBottom:10,color:modelo==="erro"?"var(--bad)":"var(--muted)"}}>
+          Reconhecimento facial: {modelo==="carregando"?"carregando…":modelo==="ok"?"pronto ✓":"indisponível — dá para cadastrar só com PIN"}
+        </div>
+
+        <div className="camwrap" style={{position:"relative"}}>
+          <video ref={videoRef} autoPlay playsInline muted style={{width:"100%",height:"100%",objectFit:"cover",transform:"scaleX(-1)",display:cam==="on"?"block":"none"}}></video>
+          {cam!=="on" &&
+            <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,color:"#fff",textAlign:"center",padding:16}}>
+              {cam==="ligando" ? <span>Ligando a câmera…</span> :
+                <><span style={{fontSize:13,opacity:.85}}>{cam==="erro"?"Não consegui abrir a câmera":"Câmera desligada"}</span>
+                  <button className="btn btn-primary" onClick={ligarCamera}>Ligar câmera</button></>}
+            </div>}
+        </div>
+        {cam==="erro" && <div style={{fontSize:12.5,color:"var(--bad)",marginTop:6,lineHeight:1.4}}>{camInfo}</div>}
+        {cam==="on" && <div style={{fontSize:12,color:"var(--muted)",marginTop:6,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>Câmera ativa · {camInfo} <button className="btn btn-ghost btn-sm" onClick={desligarCamera}>desligar</button></div>}
+
+        {!sel ? <div className="empty" style={{padding:"18px 0"}}>Selecione um funcionário à esquerda para cadastrar.</div> : <>
+          <div style={{fontWeight:600,fontSize:16,margin:"14px 0 10px"}}>{sel.nome}</div>
           <div className="row" style={{marginBottom:14}}>
-            <button className="btn btn-ghost" onClick={capturar} disabled={capturing}>{capturing?"Capturando…":"Capturar rosto"}</button>
+            <button className="btn btn-ghost" onClick={capturar} disabled={capturing||cam!=="on"}>{capturing?"Capturando…":"Capturar rosto"}</button>
             {desc && <span className="cap-ok">✓ rosto capturado</span>}
           </div>
           <div className="field"><label>PIN de reserva (4 a 6 dígitos)</label>
@@ -171,14 +213,15 @@ function Enroll(){
           <label className="consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)} />
             <span>O funcionário autoriza o uso da sua biometria facial exclusivamente para o registro de ponto, conforme a LGPD. Guardamos apenas o descritor (números), nunca a foto.</span></label>
           <div className="row">
-            <button className="btn btn-primary" onClick={salvar} disabled={!desc||!consent}>Salvar cadastro</button>
-            {msg && <span style={{fontSize:13.5,color:msg.startsWith("Erro")||msg.startsWith("Não")?"var(--bad)":"var(--ok)"}}>{msg}</span>}
+            <button className="btn btn-primary" onClick={salvar} disabled={!consent||(!desc&&!pin)}>Salvar cadastro</button>
+            {msg && <span style={{fontSize:13.5,color:erroMsg(msg)?"var(--bad)":"var(--ok)"}}>{msg}</span>}
           </div>
         </>}
       </div></div>
     </div>
   );
 }
+
 
 function Relatorio(){
   const [regs,setRegs]=useState([]); const [nomes,setNomes]=useState({}); const [loading,setLoading]=useState(true);
