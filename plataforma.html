@@ -392,7 +392,7 @@ function App(){
     return (
       <>
         <div className="bar"><span className="logo">C</span><span className="title">Ponto — Quiosque</span><span className="sp"></span>{sair}</div>
-        <iframe className="frame" src="registro-ponto.html" title="Ponto"></iframe>
+        <iframe className="frame" allow="camera; microphone" src="registro-ponto.html" title="Ponto"></iframe>
       </>
     );
   }
@@ -415,7 +415,7 @@ function App(){
           </div>
           <span className="sp"></span>{sair}
         </div>
-        <iframe className="frame"
+        <iframe className="frame" allow="camera; microphone"
           src={mv==="disponibilidade" ? ("profissionais.html?meu="+meuProf.id) : ("agenda.html?profissional="+encodeURIComponent(meuProf.nome))}
           title={mv==="disponibilidade"?"Disponibilidade":"Agenda"}></iframe>
       </>
@@ -435,7 +435,7 @@ function App(){
           </div>
           <span className="sp"></span>{sair}
         </div>
-        <iframe className="frame" src={fv==="agenda" ? "agenda.html?somente=ver" : "estoque.html?somente=inventario"} title={fv==="agenda"?"Agenda":"Inventário"}></iframe>
+        <iframe className="frame" allow="camera; microphone" src={fv==="agenda" ? "agenda.html" : "estoque.html?somente=inventario"} title={fv==="agenda"?"Agenda":"Inventário"}></iframe>
       </>
     );
   }
@@ -454,7 +454,7 @@ function App(){
       </div>
       {view==="home"
         ? <Home onAbrir={setView} papel={papel} />
-        : <iframe className="frame" src={mod.src} title={mod.nome}></iframe>}
+        : <iframe className="frame" allow="camera; microphone" src={mod.src} title={mod.nome}></iframe>}
     </>
   );
 }
