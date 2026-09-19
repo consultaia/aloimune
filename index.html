@@ -4,6 +4,14 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Plataforma da Clínica</title>
+<link rel="manifest" href="manifest-plataforma.json" />
+<meta name="theme-color" content="#0E7C7B" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<script>if("serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});}</script>
+
 
 <!-- ==========================================================================
      PLATAFORMA (casca única)  —  login + home + módulos
@@ -17,8 +25,10 @@
        Todos ficam na mesma pasta do GitHub Pages. Esta página é a porta de entrada.
      ========================================================================== -->
 <script>
-  const SUPABASE_URL = "";
-  const SUPABASE_ANON_KEY = "";
+  const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
+  // Login por código: cada funcionário tem um código de 6 dígitos (criado na tela
+  // Acessos). O código vira a conta f<codigo>@clinica.local automaticamente.
 </script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -57,6 +67,11 @@
   .hi{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:24px; margin:0 0 2px}
   .hi + p{color:var(--muted); margin:0 0 22px}
 
+  .hometabs{display:inline-flex;background:#EEF1F3;border-radius:10px;padding:3px;margin-bottom:18px}
+  .hometabs button{font:inherit;font-weight:600;font-size:14px;border:none;background:none;color:var(--muted);padding:8px 16px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+  .hometabs button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+  .htbadge{background:#C6D0D4;color:#12212B;font-size:11px;font-weight:700;min-width:20px;height:20px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px}
+  .htbadge.crit{background:var(--bad);color:#fff}
   .att{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:8px; margin-bottom:24px; box-shadow:var(--shadow)}
   .att h3{font-size:12.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:10px 12px 8px}
   .att-item{display:flex; align-items:center; gap:12px; padding:13px 12px; border-radius:10px; cursor:pointer; text-align:left; width:100%; border:none; background:none; font:inherit}
@@ -105,6 +120,8 @@
 <script type="text/babel">
 const { useState, useEffect, useMemo } = React;
 
+const VERSAO_PLATAFORMA="v19.09-b";
+console.log("PLATAFORMA "+VERSAO_PLATAFORMA);
 const configurado = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const sb = configurado ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
@@ -127,8 +144,11 @@ const MODULOS = [
   { key:"geladeiras",   nome:"Equipamentos", src:"cadeia-frio.html",   ic:"temp" },
   { key:"estoque",      nome:"Estoque",    src:"estoque.html",        ic:"box" },
   { key:"atendimentos", nome:"Atendimentos", src:"produtividade.html", ic:"chart" },
+  { key:"financeiro",  nome:"Financeiro",  src:"financeiro.html",       ic:"money" },
   { key:"equipe",       nome:"Equipe (RH)", src:"rh.html",             ic:"people" },
   { key:"escala",       nome:"Escala",     src:"escala.html",          ic:"grid" },
+  { key:"ponto",        nome:"Ponto",      src:"ponto.html",           ic:"clock" },
+  { key:"acessos",      nome:"Acessos",    src:"acessos.html",         ic:"key", soloGestor:true },
   { key:"profissionais",nome:"Profissionais", src:"profissionais.html", ic:"steth" },
   { key:"agenda",       nome:"Agenda",     src:"agenda.html",          ic:"calendar" },
   { key:"apresentacao", nome:"Apresentação", src:"apresentacao.html",  ic:"slides" },
@@ -140,19 +160,25 @@ function Icon({ name }){
     box:"M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10",
     temp:"M12 3a2 2 0 0 1 2 2v8a4 4 0 1 1-4 0V5a2 2 0 0 1 2-2z",
     chart:"M4 20V10 M10 20V4 M16 20v-7 M22 20H2",
+    money:"M12 1v22 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
     people:"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75",
     calendar:"M3 5h18v16H3z M3 9h18 M8 3v4 M16 3v4",
     slides:"M3 4h18v12H3z M8 20h8 M12 16v4",
     steth:"M6 3v5a4 4 0 0 0 8 0V3 M10 12v3a5 5 0 0 0 10 0v-1 M19 11a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",
     grid:"M3 4h18v16H3z M3 10h18 M3 15h18 M9 4v16",
+    clock:"M12 8v4l3 2 M12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20z",
+    key:"M15 7a4 4 0 1 1-4 4 M11 11l-8 8v3h3l1-1v-2h2v-2h2l1-1",
   }[name];
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={p}/></svg>;
 }
 
 /* ================= LOGIN ================= */
 function Login({ onIn }){
+  const [modo,setModo]=useState("email"); // 'email' | 'codigo'
   const [email,setEmail]=useState(""); const [senha,setSenha]=useState("");
+  const [codigo,setCodigo]=useState("");
   const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
+
   async function entrar(){
     setErr(""); setBusy(true);
     const { error } = await sb.auth.signInWithPassword({ email, password:senha });
@@ -160,6 +186,37 @@ function Login({ onIn }){
     if(error){ setErr("E-mail ou senha incorretos."); return; }
     onIn && onIn();
   }
+  async function entrarCodigo(){
+    if(codigo.length<6){ setErr("O código tem 6 dígitos."); return; }
+    setErr(""); setBusy(true);
+    const { error } = await sb.auth.signInWithPassword({ email:"f"+codigo+"@clinica.local", password:codigo });
+    setBusy(false);
+    if(error){ setErr("Código incorreto."); setCodigo(""); return; }
+    onIn && onIn();
+  }
+
+  if(modo==="codigo"){
+    return (
+      <div className="login-wrap"><div className="login">
+        <div className="logo">C</div>
+        <h1>Entrada da equipe</h1>
+        <p>Digite seu código.</p>
+        {err && <div className="err">{err}</div>}
+        <div style={{fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:34,letterSpacing:14,textAlign:"center",minHeight:44}}>{"•".repeat(codigo.length)}</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginTop:8}}>
+          {[1,2,3,4,5,6,7,8,9].map(n=>(
+            <button key={n} onClick={()=>{setErr("");setCodigo(c=>(c+n).slice(0,6));}}
+              style={{font:"inherit",fontWeight:700,fontSize:24,padding:"16px 0",borderRadius:12,border:"1px solid var(--line)",background:"#fff",cursor:"pointer"}}>{n}</button>
+          ))}
+          <button onClick={()=>setCodigo("")} style={{font:"inherit",fontSize:22,padding:"16px 0",borderRadius:12,border:"1px solid var(--line)",background:"#fff",cursor:"pointer"}}>↺</button>
+          <button onClick={()=>{setErr("");setCodigo(c=>(c+"0").slice(0,6));}} style={{font:"inherit",fontWeight:700,fontSize:24,padding:"16px 0",borderRadius:12,border:"1px solid var(--line)",background:"#fff",cursor:"pointer"}}>0</button>
+          <button onClick={entrarCodigo} disabled={busy} style={{font:"inherit",fontWeight:700,fontSize:20,padding:"16px 0",borderRadius:12,border:"none",background:"var(--primary)",color:"#fff",cursor:"pointer"}}>OK</button>
+        </div>
+        <button className="link" style={{background:"none",border:"none",color:"var(--muted)",font:"inherit",cursor:"pointer",marginTop:18}} onClick={()=>{setModo("email");setErr("");}}>entrar com e-mail e senha</button>
+      </div></div>
+    );
+  }
+
   return (
     <div className="login-wrap"><div className="login">
       <div className="logo">C</div>
@@ -172,13 +229,15 @@ function Login({ onIn }){
       <label>Senha</label>
       <input type="password" value={senha} onChange={e=>setSenha(e.target.value)} onKeyDown={e=>e.key==="Enter"&&entrar()} placeholder="••••••••" />
       <button className="enter" onClick={entrar} disabled={busy||!configurado}>{busy?"Entrando…":"Entrar"}</button>
+      <button className="link" style={{background:"none",border:"none",color:"var(--primary)",font:"inherit",fontWeight:600,cursor:"pointer",marginTop:18,display:"block",width:"100%",textAlign:"center"}} onClick={()=>{setModo("codigo");setErr("");}}>Sou da equipe — entrar com código</button>
     </div></div>
   );
 }
 
 /* ================= HOME ================= */
-function Home({ onAbrir }){
+function Home({ onAbrir, papel }){
   const [res,setRes]=useState(null);
+  const [aba,setAba]=useState("inicio"); // 'inicio' | 'atencao' — hook antes de qualquer return
   useEffect(()=>{ (async()=>{
     try{
       const [docs, ins, lot, pts, le6, at, col, ag] = await Promise.all([
@@ -235,66 +294,84 @@ function Home({ onAbrir }){
     }catch(e){ setRes({ erro:true }); }
   })(); },[]);
 
-  if(!res) return <div className="center">Carregando o resumo…</div>;
-  if(res.erro) return <div className="center">Não consegui carregar os dados. Confira se os schemas foram criados no Supabase e se as chaves estão preenchidas.</div>;
-
-  // painel de atenção
+  // Tudo abaixo roda em TODA renderização (sem return antecipado) — evita erro de hooks.
+  const pronto = !!(res && !res.erro);
   const att=[];
-  if(res.geladeiras.bad) att.push({ sev:"bad", txt:`${res.geladeiras.bad} equipamento(s) fora da temperatura`, mod:"geladeiras" });
-  if(res.documentos.bad) att.push({ sev:"bad", txt:`${res.documentos.bad} documento(s) vencido(s)`, mod:"documentos" });
-  if(res.estoque.bad) att.push({ sev:"bad", txt:`${res.estoque.bad} item(ns) de estoque no vermelho`, mod:"estoque" });
-  if(res.geladeiras.warn) att.push({ sev:"warn", txt:`${res.geladeiras.warn} equipamento(s) com leitura atrasada`, mod:"geladeiras" });
-  if(res.documentos.warn) att.push({ sev:"warn", txt:`${res.documentos.warn} documento(s) vencendo em breve`, mod:"documentos" });
-  if(res.estoque.warn) att.push({ sev:"warn", txt:`${res.estoque.warn} item(ns) de estoque para repor ou vencendo`, mod:"estoque" });
-  if(res.equipe.bad) att.push({ sev:"bad", txt:`${res.equipe.bad} pendência(s) vencida(s) na equipe (férias, exame ou registro)`, mod:"equipe" });
-  if(res.equipe.warn) att.push({ sev:"warn", txt:`${res.equipe.warn} pendência(s) da equipe vencendo em breve`, mod:"equipe" });
-  if(res.atendimentos.blueN) att.push({ sev:"blue", txt:`${brl(res.atendimentos.blueV)} a faturar (${res.atendimentos.blueN} atendimentos)`, mod:"atendimentos" });
-  if(res.agenda.warn) att.push({ sev:"warn", txt:`${res.agenda.warn} agendamento(s) de hoje a confirmar`, mod:"agenda" });
-
+  if(pronto){
+    if(res.geladeiras.bad) att.push({ sev:"bad", txt:`${res.geladeiras.bad} equipamento(s) fora da temperatura`, mod:"geladeiras" });
+    if(res.documentos.bad) att.push({ sev:"bad", txt:`${res.documentos.bad} documento(s) vencido(s)`, mod:"documentos" });
+    if(res.estoque.bad) att.push({ sev:"bad", txt:`${res.estoque.bad} item(ns) de estoque no vermelho`, mod:"estoque" });
+    if(res.geladeiras.warn) att.push({ sev:"warn", txt:`${res.geladeiras.warn} equipamento(s) com leitura atrasada`, mod:"geladeiras" });
+    if(res.documentos.warn) att.push({ sev:"warn", txt:`${res.documentos.warn} documento(s) vencendo em breve`, mod:"documentos" });
+    if(res.estoque.warn) att.push({ sev:"warn", txt:`${res.estoque.warn} item(ns) de estoque para repor ou vencendo`, mod:"estoque" });
+    if(res.equipe.bad) att.push({ sev:"bad", txt:`${res.equipe.bad} pendência(s) vencida(s) na equipe (férias, exame ou registro)`, mod:"equipe" });
+    if(res.equipe.warn) att.push({ sev:"warn", txt:`${res.equipe.warn} pendência(s) da equipe vencendo em breve`, mod:"equipe" });
+    if(res.atendimentos.blueN) att.push({ sev:"blue", txt:`${brl(res.atendimentos.blueV)} a faturar (${res.atendimentos.blueN} atendimentos)`, mod:"atendimentos" });
+    if(res.agenda.warn) att.push({ sev:"warn", txt:`${res.agenda.warn} agendamento(s) de hoje a confirmar`, mod:"agenda" });
+  }
   const statusModulo=(key)=>{
     if(key==="apresentacao") return {cls:"muted", t:"Indicadores e PDF"};
     if(key==="profissionais") return {cls:"muted", t:"Cadastro e disponibilidade"};
     if(key==="escala") return {cls:"muted", t:"Escala da enfermagem"};
-    const r=res[key];
+    if(key==="ponto") return {cls:"muted", t:"Cadastro e relatório de horas"};
+    if(key==="acessos") return {cls:"muted", t:"Logins e perfis da equipe"};
+    if(key==="financeiro") return {cls:"muted", t:"Receitas, despesas e resultado"};
+    const r=pronto ? res[key] : null;
+    if(!r) return {cls:"muted", t:"—"};
     if(key==="atendimentos") return r.blueN? {cls:"blue", t:`${brl(r.blueV)} a faturar`} : {cls:"ok", t:"Nada pendente"};
     if(key==="agenda") return r.total? {cls:r.warn?"warn":"blue", t:`${r.total} hoje${r.warn?` · ${r.warn} a confirmar`:""}`} : {cls:"ok", t:"Sem agendamentos hoje"};
     if(r.bad) return {cls:"bad", t:`${r.bad} precisam de atenção`};
     if(r.warn) return {cls:"warn", t:`${r.warn} para acompanhar`};
     return {cls:"ok", t:"Tudo certo"};
   };
+  const nCrit=att.filter(a=>a.sev==="bad").length;
+  const nTotal=att.length;
 
   return (
     <div className="home">
       <h2 className="hi">Bom te ver por aqui</h2>
       <p>Este é o resumo da clínica agora.</p>
 
-      <div className="att">
-        <h3>Precisa de atenção</h3>
-        {att.length===0
-          ? <div className="allok"><span className="dot"></span>Está tudo em dia. Nada pendente no momento.</div>
-          : att.map((a,i)=>(
-              <button key={i} className="att-item" onClick={()=>onAbrir(a.mod)}>
-                <span className={"dot "+a.sev}></span>
-                <span className="txt">{a.txt}</span>
-                <span className="go">›</span>
-              </button>
-            ))}
+      {!res ? <div className="center">Carregando o resumo…</div>
+       : res.erro ? <div className="center">Não consegui carregar os dados. Confira se os schemas foram criados no Supabase e se as chaves estão preenchidas.</div>
+       : <>
+      <div className="hometabs">
+        <button className={aba==="inicio"?"on":""} onClick={()=>setAba("inicio")}>Início</button>
+        <button className={aba==="atencao"?"on":""} onClick={()=>setAba("atencao")}>
+          Precisa de atenção
+          {nTotal>0 && <span className={"htbadge"+(nCrit>0?" crit":"")}>{nTotal}</span>}
+        </button>
       </div>
 
-      <div className="cards">
-        {MODULOS.map(m=>{
-          const s=statusModulo(m.key);
-          return (
-            <button key={m.key} className="mcard" onClick={()=>onAbrir(m.key)}>
-              <span className="ic"><Icon name={m.ic}/></span>
-              <span>
-                <span className="mnome">{m.nome}</span>
-                <span className={"mstat "+s.cls} style={{display:"block"}}>{s.t}</span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      {aba==="inicio" ? (
+        <div className="cards">
+          {MODULOS.filter(m=> !m.soloGestor || papel==="gestor").map(m=>{
+            const s=statusModulo(m.key);
+            return (
+              <button key={m.key} className="mcard" onClick={()=>onAbrir(m.key)}>
+                <span className="ic"><Icon name={m.ic}/></span>
+                <span>
+                  <span className="mnome">{m.nome}</span>
+                  <span className={"mstat "+s.cls} style={{display:"block"}}>{s.t}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="att">
+          {att.length===0
+            ? <div className="allok"><span className="dot"></span>Está tudo em dia. Nada pendente no momento.</div>
+            : att.map((a,i)=>(
+                <button key={i} className="att-item" onClick={()=>onAbrir(a.mod)}>
+                  <span className={"dot "+a.sev}></span>
+                  <span className="txt">{a.txt}</span>
+                  <span className="go">›</span>
+                </button>
+              ))}
+        </div>
+      )}
+      </>}
     </div>
   );
 }
@@ -316,7 +393,7 @@ function App(){
   useEffect(()=>{
     if(!session){ setPapel(undefined); return; }
     sb.from("perfis").select("papel").eq("id", session.user.id).maybeSingle()
-      .then(({data})=> setPapel(data?.papel || "funcionario"));
+      .then(({data})=> setPapel(data?.papel || "sem_acesso"));
   },[session]);
 
   useEffect(()=>{
@@ -330,6 +407,26 @@ function App(){
   if(papel===undefined) return <div className="center">Carregando seu acesso…</div>;
 
   const sair = <button className="out" onClick={()=>sb.auth.signOut()}>Sair</button>;
+
+  // Sem perfil liberado (ex.: usuário de outro app no mesmo projeto): sem acesso.
+  if(papel==="sem_acesso"){
+    return (
+      <>
+        <div className="bar"><span className="logo">C</span><span className="title">Plataforma da Clínica</span><span className="sp"></span>{sair}</div>
+        <div className="center">Este acesso não está liberado para a plataforma da clínica.<br/>Peça ao gestor para liberar seu perfil.</div>
+      </>
+    );
+  }
+
+  // QUIOSQUE: iPad de ponto — só registra entrada/saída, não vê mais nada.
+  if(papel==="quiosque"){
+    return (
+      <>
+        <div className="bar"><span className="logo">C</span><span className="title">Ponto — Quiosque</span><span className="sp"></span>{sair}</div>
+        <iframe className="frame" allow="camera; microphone" src="registro-ponto.html" title="Ponto"></iframe>
+      </>
+    );
+  }
 
   // MÉDICO: só a própria agenda + a própria disponibilidade.
   if(papel==="medico"){
@@ -349,7 +446,7 @@ function App(){
           </div>
           <span className="sp"></span>{sair}
         </div>
-        <iframe className="frame"
+        <iframe className="frame" allow="camera; microphone"
           src={mv==="disponibilidade" ? ("profissionais.html?meu="+meuProf.id) : ("agenda.html?profissional="+encodeURIComponent(meuProf.nome))}
           title={mv==="disponibilidade"?"Disponibilidade":"Agenda"}></iframe>
       </>
@@ -369,7 +466,7 @@ function App(){
           </div>
           <span className="sp"></span>{sair}
         </div>
-        <iframe className="frame" src={fv==="agenda" ? "agenda.html?somente=ver" : "estoque.html?somente=inventario"} title={fv==="agenda"?"Agenda":"Inventário"}></iframe>
+        <iframe className="frame" allow="camera; microphone" src={fv==="agenda" ? "agenda.html" : "estoque.html?somente=inventario"} title={fv==="agenda"?"Agenda":"Inventário"}></iframe>
       </>
     );
   }
@@ -381,14 +478,14 @@ function App(){
       <div className="bar">
         <span className="logo">C</span>
         {view==="home"
-          ? <span className="title">Plataforma da Clínica</span>
+          ? <span className="title">Plataforma da Clínica <span style={{fontSize:10,color:"var(--muted)",fontWeight:500,marginLeft:6}}>{VERSAO_PLATAFORMA}</span></span>
           : <><button className="back" onClick={()=>setView("home")}>‹ Início</button><span className="title">{mod?.nome}</span></>}
         <span className="sp"></span>
         {sair}
       </div>
       {view==="home"
-        ? <Home onAbrir={setView} />
-        : <iframe className="frame" src={mod.src} title={mod.nome}></iframe>}
+        ? <Home onAbrir={setView} papel={papel} />
+        : <iframe className="frame" allow="camera; microphone" src={mod.src} title={mod.nome}></iframe>}
     </>
   );
 }
