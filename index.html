@@ -116,11 +116,20 @@
 </head>
 <body>
 <div id="root"></div>
+<div id="diag" style="position:fixed;bottom:8px;right:8px;font:11px monospace;color:#5C6B75;z-index:99999;pointer-events:none">v19.09-c</div>
+<script>
+  window.addEventListener("error", function(e){
+    var d=document.getElementById("diag"); if(!d) return;
+    d.style.cssText="position:fixed;left:8px;right:8px;bottom:8px;background:#FBE5E2;color:#C0392B;padding:12px;border-radius:10px;font:12px monospace;white-space:pre-wrap;z-index:99999;max-height:45vh;overflow:auto";
+    var st=(e.error&&e.error.stack)?e.error.stack.split("\n").slice(0,4).join("\n"):"";
+    d.textContent="v19.09-c · ERRO NA PÁGINA:\n"+(e.message||String(e.error||e))+"\n"+st;
+  });
+</script>
 
 <script type="text/babel">
 const { useState, useEffect, useMemo } = React;
 
-const VERSAO_PLATAFORMA="v19.09-b";
+const VERSAO_PLATAFORMA="v19.09-c";
 console.log("PLATAFORMA "+VERSAO_PLATAFORMA);
 const configurado = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const sb = configurado ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
