@@ -91,6 +91,9 @@
   .err{background:var(--bad-bg); color:var(--bad); padding:9px 12px; border-radius:9px; font-size:13px; margin-bottom:12px}
 
   @media (max-width:760px){ .cols{grid-template-columns:1fr} .faixa{grid-template-columns:1fr 1fr} }
+  .mtabs{display:inline-flex;background:#EEF1F3;border-radius:9px;padding:3px;margin-bottom:12px}
+  .mtabs button{font:inherit;font-weight:600;font-size:13px;border:none;background:none;color:var(--muted);padding:6px 12px;border-radius:7px;cursor:pointer}
+  .mtabs button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
 </style>
 </head>
 <body>
@@ -169,7 +172,7 @@ function App(){
         <span className={"mode "+(sb?"live":"demo")}>{sb?"● Conectado ao Supabase":"○ Modo demo — nada é salvo"}</span>
       </div>
 
-      <div className="note">A disponibilidade definida aqui é o que a IA de agendamento no WhatsApp usa para oferecer horários livres e preencher a agenda. Os agendamentos aparecem na Agenda em tempo real.</div>
+      <div className="note">O <b>padrão semanal</b> vale para todas as semanas. Em <b>Por semana</b> você bloqueia dias/horários (folga, férias, congresso) ou adiciona horários extras numa data específica. A agenda e a Dri (WhatsApp) respeitam os dois.</div>
 
       <div className="cols" style={meu?{gridTemplateColumns:"1fr"}:null}>
         {!meu &&
@@ -204,6 +207,7 @@ function App(){
 }
 
 function DispEditor({ prof, disp, onSave, onEditProf }){
+  const [modo,setModo]=useState("padrao"); // padrao | semana
   const init = useMemo(()=> disp.map(d=>({ dia_semana:d.dia_semana, hora_inicio:hhmm(d.hora_inicio), hora_fim:hhmm(d.hora_fim), duracao_slot:d.duracao_slot||30 })), [prof.id]);
   const [faixas,setFaixas]=useState(init);
   const [msg,setMsg]=useState(""); const [saving,setSaving]=useState(false);
@@ -227,6 +231,12 @@ function DispEditor({ prof, disp, onSave, onEditProf }){
         <button className="btn btn-ghost btn-sm" onClick={onEditProf}>Editar cadastro</button>
       </div>
 
+      <div className="mtabs">
+        <button className={modo==="padrao"?"on":""} onClick={()=>setModo("padrao")}>Padrão semanal</button>
+        <button className={modo==="semana"?"on":""} onClick={()=>setModo("semana")}>Por semana</button>
+      </div>
+
+      {modo==="semana" ? <SemanaExcecoes prof={prof} disp={disp} /> : <>
       {[1,2,3,4,5,6,0].map(dia=>(
         <div className="dia" key={dia}>
           <div className="dh"><span className="dnome">{DIAS[dia]}</span><button className="btn btn-ghost btn-sm" onClick={()=>add(dia)}>+ faixa</button></div>
@@ -243,9 +253,90 @@ function DispEditor({ prof, disp, onSave, onEditProf }){
       ))}
 
       <div className="savebar">
-        <span className="note2">{msg || "A IA usará estes horários para marcar."}</span>
+        <span className="note2">{msg || "Este é o padrão de todas as semanas. Para folgas, férias ou horários extras numa data específica, use \"Por semana\"."}</span>
         <button className="btn btn-primary" onClick={salvar} disabled={saving}>{saving?"Salvando…":"Salvar disponibilidade"}</button>
       </div>
+      </>}
+    </div>
+  );
+}
+
+/* Exceções por data: bloqueios (folga, férias, congresso) e horários extras */
+const iso=(d)=>d.toISOString().slice(0,10);
+const addD=(s,n)=>{ const [y,m,d]=s.split("-").map(Number); const x=new Date(y,m-1,d+n); return iso(x); };
+const segunda=(s)=>{ const [y,m,d]=s.split("-").map(Number); const w=new Date(y,m-1,d).getDay(); return addD(s,-((w+6)%7)); };
+function SemanaExcecoes({ prof, disp }){
+  const hoje=iso(new Date());
+  const [ini,setIni]=useState(segunda(hoje));
+  const [exc,setExc]=useState([]); const [loading,setLoading]=useState(true); const [msg,setMsg]=useState("");
+  const [novo,setNovo]=useState(null); // {data, tipo, inicio, fim, motivo, diaInteiro}
+  const dias=Array.from({length:6},(_,i)=>addD(ini,i));
+  async function load(){
+    setLoading(true);
+    if(sb){ const {data,error}=await sb.from("clinica_agenda_excecoes").select("*").eq("profissional_id",prof.id).gte("data",ini).lte("data",addD(ini,6)).order("data");
+      if(error) setMsg(error.message); setExc(data||[]); }
+    else setExc([]);
+    setLoading(false);
+  }
+  useEffect(()=>{ load(); },[prof.id, ini]);
+  const padraoDo=(d)=>{ const w=new Date(d+"T00:00:00").getDay(); return disp.filter(x=>x.dia_semana===w); };
+  const excDo=(d)=> exc.filter(e=>e.data===d);
+  async function salvar(){
+    const f=novo; if(!f) return;
+    const payload={ profissional_id:prof.id, data:f.data, tipo:f.tipo, motivo:f.motivo||null,
+      inicio: f.diaInteiro ? null : (f.inicio||null), fim: f.diaInteiro ? null : (f.fim||null) };
+    if(f.tipo==="extra" && (!payload.inicio||!payload.fim)) { setMsg("Horário extra precisa de início e fim."); return; }
+    if(!f.diaInteiro && (!payload.inicio||!payload.fim)) { setMsg("Informe início e fim, ou marque 'dia inteiro'."); return; }
+    if(sb){ const r=await sb.from("clinica_agenda_excecoes").insert(payload); if(r.error){ setMsg(r.error.message); return; } await load(); }
+    else setExc(p=>[...p,{...payload,id:"n"+Date.now()}]);
+    setNovo(null); setMsg("");
+  }
+  async function remover(e){ if(sb){ const r=await sb.from("clinica_agenda_excecoes").delete().eq("id",e.id); if(r.error) return alert(r.error.message); await load(); } else setExc(p=>p.filter(x=>x.id!==e.id)); }
+  const rot=(d)=>{ const [y,m,dd]=d.split("-"); return DIAS[new Date(d+"T00:00:00").getDay()].slice(0,3)+" "+dd+"/"+m; };
+  return (
+    <div>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+        <button className="btn btn-ghost btn-sm" onClick={()=>setIni(addD(ini,-7))}>‹</button>
+        <b>Semana de {rot(dias[0])} a {rot(dias[5])}</b>
+        <button className="btn btn-ghost btn-sm" onClick={()=>setIni(addD(ini,7))}>›</button>
+        <button className="btn btn-ghost btn-sm" onClick={()=>setIni(segunda(hoje))}>Esta semana</button>
+        <span className="note2" style={{marginLeft:"auto"}}>A agenda desta semana = padrão − bloqueios + extras</span>
+      </div>
+      {loading ? <span className="note2">Carregando…</span> : dias.map(d=>{
+        const pad=padraoDo(d), ex=excDo(d);
+        const diaBloq=ex.some(e=>e.tipo==="bloqueio" && !e.inicio);
+        return (
+          <div className="dia" key={d}>
+            <div className="dh"><span className="dnome">{rot(d)}</span>
+              <span style={{display:"flex",gap:6}}>
+                <button className="btn btn-ghost btn-sm" onClick={()=>setNovo({data:d,tipo:"bloqueio",diaInteiro:true,inicio:"",fim:"",motivo:""})}>Bloquear</button>
+                <button className="btn btn-ghost btn-sm" onClick={()=>setNovo({data:d,tipo:"extra",diaInteiro:false,inicio:"08:00",fim:"12:00",motivo:""})}>+ Extra</button>
+              </span></div>
+            <div style={{fontSize:13,color:diaBloq?"var(--bad)":"#3B4A55"}}>
+              {diaBloq ? <b>Dia bloqueado</b> : pad.length===0 ? <span className="note2">Sem atendimento no padrão</span> : "Padrão: "+pad.map(x=>hhmm(x.hora_inicio)+"–"+hhmm(x.hora_fim)).join(", ")}
+            </div>
+            {ex.map(e=>(
+              <div key={e.id} style={{display:"flex",alignItems:"center",gap:8,marginTop:6,fontSize:13}}>
+                <span style={{padding:"2px 8px",borderRadius:999,fontWeight:700,fontSize:11.5,background:e.tipo==="bloqueio"?"var(--bad-bg)":"var(--ok-bg)",color:e.tipo==="bloqueio"?"var(--bad)":"var(--ok)"}}>{e.tipo==="bloqueio"?"bloqueio":"extra"}</span>
+                <span>{e.inicio ? hhmm(e.inicio)+"–"+hhmm(e.fim) : "dia inteiro"}{e.motivo?` · ${e.motivo}`:""}</span>
+                <button className="rm" title="Remover" onClick={()=>remover(e)} style={{marginLeft:"auto"}}>×</button>
+              </div>
+            ))}
+            {novo && novo.data===d && (
+              <div className="faixa" style={{marginTop:8,flexWrap:"wrap",gap:8}}>
+                <span><span className="lbl">{novo.tipo==="bloqueio"?"Bloqueio":"Horário extra"}</span></span>
+                {novo.tipo==="bloqueio" && <label style={{fontSize:13,display:"flex",alignItems:"center",gap:4}}><input type="checkbox" checked={novo.diaInteiro} onChange={e=>setNovo({...novo,diaInteiro:e.target.checked})} /> dia inteiro</label>}
+                {!novo.diaInteiro && <><span><span className="lbl">Início</span><input type="time" value={novo.inicio} onChange={e=>setNovo({...novo,inicio:e.target.value})} /></span>
+                <span><span className="lbl">Fim</span><input type="time" value={novo.fim} onChange={e=>setNovo({...novo,fim:e.target.value})} /></span></>}
+                <span style={{flex:1,minWidth:140}}><span className="lbl">Motivo</span><input value={novo.motivo} onChange={e=>setNovo({...novo,motivo:e.target.value})} placeholder="férias, congresso…" /></span>
+                <button className="btn btn-primary btn-sm" onClick={salvar}>Salvar</button>
+                <button className="btn btn-ghost btn-sm" onClick={()=>setNovo(null)}>Cancelar</button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {msg && <div style={{color:"var(--bad)",fontSize:13,marginTop:8}}>{msg}</div>}
     </div>
   );
 }
