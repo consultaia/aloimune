@@ -118,6 +118,7 @@
   .wk-legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--muted)}
   .wk-legend span{display:inline-flex;align-items:center;gap:5px}
   .wk-legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+  .rbadge{background:var(--bad);color:#fff;font-size:10.5px;font-weight:700;min-width:18px;height:18px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;margin-left:6px}
 </style>
 </head>
 <body>
@@ -161,11 +162,16 @@ function App(){
   const [prof,setProf]=useState(profLock);
   const [edit,setEdit]=useState(null);
 
+  const [precos,setPrecos]=useState({});   // nome do procedimento -> valor
+  const [concluir,setConcluir]=useState(null); // agendamento sendo concluído (Realizou)
   async function load(){
     setLoading(true);
-    if(sb){ const {data,error}=await sb.from("agendamentos").select("*").order("hora",{ascending:true});
-      if(error) alert("Erro Supabase: "+error.message); setRows(data||[]); }
-    else setRows(demoData());
+    if(sb){ const [{data,error},pr]=await Promise.all([
+        sb.from("agendamentos").select("*").order("hora",{ascending:true}),
+        sb.from("clinica_procedimentos").select("nome,valor").eq("ativo",true) ]);
+      if(error) alert("Erro Supabase: "+error.message); setRows(data||[]);
+      const m={}; (pr.data||[]).forEach(x=>m[(x.nome||"").toLowerCase()]=Number(x.valor||0)); setPrecos(m); }
+    else { setRows(demoData()); setPrecos({consulta:450,retorno:0,"coleta de exames":120}); }
     setLoading(false);
   }
   useEffect(()=>{ load(); },[]);
@@ -186,6 +192,18 @@ function App(){
     return [...l].sort((a,b)=> (a.hora||"").localeCompare(b.hora||""));
   },[rows,dia,prof]);
 
+  // Retornos: quem tem retorno programado e ainda não voltou
+  const retornos = useMemo(()=>{
+    const hoje=hojeStr();
+    const lista=rows.filter(r=> r.retorno_em && ["pendente","contatado"].includes(r.retorno_status||"pendente"))
+      .map(r=>{
+        const jaTem = rows.some(o=> o.id!==r.id && o.paciente && r.paciente && o.paciente.trim().toLowerCase()===r.paciente.trim().toLowerCase() && o.data>r.data && o.status!=="cancelado");
+        const dias=Math.round((new Date(r.retorno_em)-new Date(hoje))/864e5);
+        return {...r, jaTem, dias};
+      }).sort((a,b)=>a.retorno_em.localeCompare(b.retorno_em));
+    return { lista, vencidos: lista.filter(x=>!x.jaTem && x.dias<0).length };
+  },[rows]);
+
   const counts = useMemo(()=>{
     const base = modo==="semana" ? rows.filter(r=>diasSemana.includes(r.data)) : rows.filter(r=>r.data===dia);
     return {
@@ -197,8 +215,35 @@ function App(){
   },[rows,dia,modo,diasSemana]);
 
   async function mudar(r, status){
+    if(status==="realizado"){ setConcluir(r); return; }   // abre a tela de conclusão
     if(sb){ const {error}=await sb.from("agendamentos").update({status}).eq("id",r.id); if(error) return alert(error.message); await load(); }
     else setRows(prev=>prev.map(x=>x.id===r.id?{...x,status}:x));
+  }
+  // Conclusão: marca realizado, gera o ATENDIMENTO (produtividade/faturamento) e programa o retorno
+  async function finalizar(f){
+    const r=concluir;
+    const retorno_em = f.retornoDias>0 ? addDias(r.data, f.retornoDias) : null;
+    const pago = !!f.forma;
+    const atend={ agendamento_id:r.id, data:r.data, paciente:r.paciente||null, profissional:r.profissional||null,
+      tipo:r.tipo||"Consulta", valor:Number(f.valor||0), status: pago?"recebido":"realizado",
+      forma_pagamento: f.forma||null, recebido_em: pago? hojeStr():null, parcelas: f.parcelas?Number(f.parcelas):null, obs:f.obs||null };
+    if(sb){
+      const up=await sb.from("agendamentos").update({ status:"realizado", retorno_em, retorno_status: retorno_em?"pendente":null }).eq("id",r.id);
+      if(up.error) return up.error.message;
+      const at=await sb.from("atendimentos").upsert(atend,{ onConflict:"agendamento_id" });
+      if(at.error) return at.error.message;
+      await load();
+    } else setRows(prev=>prev.map(x=>x.id===r.id?{...x,status:"realizado",retorno_em,retorno_status:retorno_em?"pendente":null}:x));
+    setConcluir(null); return null;
+  }
+  async function retornoStatus(r, st){
+    if(sb){ const {error}=await sb.from("agendamentos").update({retorno_status:st}).eq("id",r.id); if(error) return alert(error.message); await load(); }
+    else setRows(prev=>prev.map(x=>x.id===r.id?{...x,retorno_status:st}:x));
+  }
+  async function salvarComRetorno(f){
+    const e=await salvar(f);
+    if(!e && f._retornoDe && sb){ await sb.from("agendamentos").update({retorno_status:"agendado"}).eq("id",f._retornoDe); await load(); }
+    return e;
   }
   async function salvar(f){
     const p={ data:f.data, hora:f.hora||null, duracao_min:Number(f.duracao_min)||30, paciente:f.paciente||null,
@@ -225,6 +270,7 @@ function App(){
         <div className="vmode">
           <button className={modo==="dia"?"on":""} onClick={()=>setModo("dia")}>Dia</button>
           <button className={modo==="semana"?"on":""} onClick={()=>setModo("semana")}>Semana</button>
+          <button className={modo==="retornos"?"on":""} onClick={()=>setModo("retornos")}>Retornos{retornos.vencidos>0 && <span className="rbadge">{retornos.vencidos}</span>}</button>
         </div>
         <button className="navbtn" onClick={()=>setDia(addDias(dia, modo==="semana"?-7:-1))}>‹</button>
         <span className="daylabel">{modo==="semana" ? `${diasSemana[0].slice(8,10)}/${diasSemana[0].slice(5,7)} – ${diasSemana[5].slice(8,10)}/${diasSemana[5].slice(5,7)}` : rotuloData(dia)}</span>
@@ -249,7 +295,26 @@ function App(){
         </select>
       </div>
 
-      {modo==="semana" ? (
+      {modo==="retornos" ? (
+        <div className="panel">
+          {retornos.lista.length===0 ? <div className="empty">Nenhum retorno pendente. Ao marcar "Realizou", você pode programar o retorno da paciente.</div> :
+          retornos.lista.map(r=>(
+            <div key={r.id} className="row-ag" style={{alignItems:"center"}}>
+              <div className="t"><span className="h">{r.retorno_em.slice(8,10)}/{r.retorno_em.slice(5,7)}</span><span className="d">{r.jaTem?"agendado ✓":(r.dias<0?`vencido há ${-r.dias}d`:r.dias===0?"hoje":`em ${r.dias}d`)}</span></div>
+              <div className="i"><div className="p">{r.paciente||"—"} <span style={{fontWeight:400,color:"var(--muted)"}}>· {r.profissional||""}</span></div>
+                <div className="s">atendida em {r.data.slice(8,10)}/{r.data.slice(5,7)} · {r.tipo||"Consulta"}{r.retorno_status==="contatado"?" · já contatada":""}</div></div>
+              <div className="acts">
+                {r.jaTem ? <span className="st" style={{background:"var(--ok-bg)",color:"var(--ok)"}}>retorno marcado</span> : <>
+                  <span className={"st"+(r.dias<0?" bad":"")}>{r.dias<0?"chamar":"aguardando"}</span>
+                  <button className="btn btn-primary btn-sm" onClick={()=>setEdit({ data:r.retorno_em<hojeStr()?hojeStr():r.retorno_em, hora:"", duracao_min:30, paciente:r.paciente, profissional:r.profissional, tipo:"Retorno", status:"agendado", _retornoDe:r.id })}>Agendar</button>
+                  {r.retorno_status!=="contatado" && <button className="btn btn-ghost btn-sm" onClick={()=>retornoStatus(r,"contatado")}>Contatada</button>}
+                  <button className="btn btn-ghost btn-sm" onClick={()=>retornoStatus(r,"dispensado")}>Dispensar</button>
+                </>}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : modo==="semana" ? (
         <SemanaGrid rows={rows} dias={diasSemana} prof={prof} onEdit={setEdit} onNovo={(d,h)=>setEdit({ data:d, hora:h, duracao_min:30, tipo:"Consulta", status:"agendado" })} />
       ) : (
       <div className="panel">
@@ -280,7 +345,8 @@ function App(){
       </div>
       )}
 
-      {edit && <AgModal ag={edit} profs={profs} onClose={()=>setEdit(null)} onSave={salvar} />}
+      {edit && <AgModal ag={edit} profs={profs} onClose={()=>setEdit(null)} onSave={salvarComRetorno} />}
+      {concluir && <ConcluirModal ag={concluir} precos={precos} onClose={()=>setConcluir(null)} onSave={finalizar} />}
     </div>
   );
 }
@@ -324,6 +390,42 @@ function SemanaGrid({ rows, dias, prof, onEdit, onNovo }){
         <span style={{marginLeft:"auto"}}>Clique no bloco para editar · duplo clique num horário vazio para agendar</span>
       </div>
     </div>
+  );
+}
+
+/* Conclusão do atendimento: gera produtividade/faturamento e programa retorno */
+function ConcluirModal({ ag, precos, onClose, onSave }){
+  const sugerido = precos[(ag.tipo||"consulta").toLowerCase()] ?? 0;
+  const [f,setF]=useState({ valor: sugerido, forma:"", parcelas:"", retornoDias:0, obs:"" });
+  const [err,setErr]=useState(""); const [s,setS]=useState(false);
+  const set=(k,v)=>setF(x=>({...x,[k]:v}));
+  async function submit(){ setS(true); const e=await onSave(f); setS(false); if(e) setErr(e); }
+  const RET=[[0,"Sem retorno"],[7,"7 dias"],[15,"15 dias"],[30,"30 dias"],[60,"60 dias"],[90,"90 dias"]];
+  return (
+    <div className="overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:520}}>
+      <h2>Concluir atendimento</h2>
+      <div style={{color:"var(--muted)",fontSize:13.5,marginBottom:12}}>{ag.paciente||"Paciente"} · {ag.tipo||"Consulta"} · {ag.profissional||""}</div>
+      {err && <div className="err">{err}</div>}
+      <div className="grid">
+        <div className="field"><label>Valor (R$) — sugerido pela tabela</label><input type="number" step="0.01" value={f.valor} onChange={e=>set("valor",e.target.value)} /></div>
+        <div className="field"><label>Pagamento (se já recebeu)</label>
+          <select value={f.forma} onChange={e=>set("forma",e.target.value)}>
+            <option value="">Ainda não recebido (a faturar)</option>
+            <option value="pix">Pix</option><option value="dinheiro">Dinheiro</option>
+            <option value="credito">Cartão de crédito</option><option value="debito">Cartão de débito</option>
+            <option value="convenio">Convênio</option><option value="outro">Outro</option>
+          </select></div>
+        {f.forma==="credito" && <div className="field"><label>Parcelas</label><input type="number" min="1" max="12" value={f.parcelas} onChange={e=>set("parcelas",e.target.value)} placeholder="1" /></div>}
+        <div className="field full"><label>Retorno da paciente</label>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{RET.map(([d,l])=><button key={d} type="button" className={"btn btn-sm "+(f.retornoDias===d?"btn-primary":"btn-ghost")} onClick={()=>set("retornoDias",d)}>{l}</button>)}</div>
+        </div>
+        <div className="field full"><label>Observação</label><input value={f.obs} onChange={e=>set("obs",e.target.value)} placeholder="opcional" /></div>
+      </div>
+      <div className="modal-actions" style={{justifyContent:"flex-end"}}>
+        <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+        <button className="btn btn-primary" onClick={submit} disabled={s}>{s?"Salvando…":"Concluir e lançar"}</button>
+      </div>
+    </div></div>
   );
 }
 
