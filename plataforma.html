@@ -10,7 +10,6 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-<script>if("serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});}</script>
 
 
 <!-- ==========================================================================
@@ -53,7 +52,7 @@
 
   /* Barra superior */
   .bar{display:flex; align-items:center; gap:12px; padding:12px 18px; background:var(--card); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:10}
-  .bar .logo{width:30px; height:30px; border-radius:9px; background:var(--primary); color:#fff; display:flex; align-items:center; justify-content:center; font-family:"Space Grotesk"; font-weight:700}
+  .bar .logo{width:34px; height:34px; border-radius:9px; background:#fff; border:1px solid var(--line); display:flex; align-items:center; justify-content:center; overflow:hidden} .bar .logo img{width:100%; height:100%; object-fit:contain}
   .bar .title{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:17px}
   .bar .back{font:inherit; font-weight:600; border:1px solid var(--line); background:var(--card); border-radius:9px; padding:7px 13px; cursor:pointer}
   .bar .sp{flex:1}
@@ -99,7 +98,7 @@
   /* Login */
   .login-wrap{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; background:linear-gradient(180deg,#EEF3F4,#F5F7F8)}
   .login{background:var(--card); border:1px solid var(--line); border-radius:18px; box-shadow:var(--shadow); padding:32px; width:100%; max-width:380px}
-  .login .logo{width:46px; height:46px; border-radius:12px; background:var(--primary); color:#fff; display:flex; align-items:center; justify-content:center; font-family:"Space Grotesk"; font-weight:700; font-size:22px; margin-bottom:16px}
+  .login .logo{width:72px; height:72px; border-radius:16px; background:#fff; border:1px solid var(--line); display:flex; align-items:center; justify-content:center; overflow:hidden; margin-bottom:16px} .login .logo img{width:100%; height:100%; object-fit:contain}
   .login h1{font-family:"Space Grotesk",sans-serif; font-size:21px; margin:0 0 4px}
   .login p{color:var(--muted); margin:0 0 22px; font-size:14px}
   .login label{font-size:13px; font-weight:600; color:var(--muted); display:block; margin-bottom:6px}
@@ -112,14 +111,40 @@
   .center{max-width:920px; margin:0 auto; padding:60px 20px; text-align:center; color:var(--muted)}
 
   @media (max-width:640px){ .cards{grid-template-columns:1fr} }
+  .guia{position:fixed;right:18px;bottom:18px;width:340px;max-width:calc(100vw - 36px);background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 12px 40px rgba(18,33,43,.18);padding:14px 16px;z-index:70;animation:guiaIn .25s ease}
+  @keyframes guiaIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .guia-h{display:flex;align-items:center;gap:8px;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .guia-n{margin-left:auto;font-weight:600}
+  .guia-x{border:none;background:none;font-size:20px;line-height:1;color:var(--muted);cursor:pointer;padding:0 2px}
+  .guia-t{font-family:"Space Grotesk";font-weight:700;font-size:16px;margin:8px 0 4px}
+  .guia-d{font-size:13.5px;color:#3B4A55;line-height:1.5}
+  .guia-a{display:flex;gap:6px;align-items:center;margin-top:12px}
+  .guia-btn{position:fixed;right:18px;bottom:18px;width:40px;height:40px;border-radius:50%;border:none;background:var(--primary);color:#fff;font-weight:700;font-size:18px;box-shadow:0 8px 24px rgba(14,124,123,.35);cursor:pointer;z-index:70}
+  .btn{font:inherit;font-weight:600;border-radius:9px;cursor:pointer;padding:8px 12px;border:1px solid transparent}
+  .btn-sm{padding:6px 10px;font-size:12.5px}
+  .btn-primary{background:var(--primary);color:#fff}
+  .btn-ghost{background:transparent;border-color:var(--line);color:var(--ink)}
+  .btn:disabled{opacity:.5;cursor:default}
 </style>
 </head>
 <body>
 <div id="root"></div>
+<div id="diag" style="position:fixed;bottom:8px;right:8px;font:11px monospace;color:#5C6B75;z-index:99999;pointer-events:none">v19.09-d</div>
+<script>
+  window.addEventListener("unhandledrejection", function(e){ var d=document.getElementById("diag"); if(!d) return; d.style.cssText="position:fixed;left:8px;right:8px;bottom:8px;background:#FFF3D6;color:#7A4B00;padding:12px;border-radius:10px;font:12px monospace;white-space:pre-wrap;z-index:99999;max-height:45vh;overflow:auto"; d.textContent="v19.09-d · PROMESSA REJEITADA:\n"+String(e.reason&&(e.reason.message||e.reason)); });
+  window.addEventListener("error", function(e){
+    var d=document.getElementById("diag"); if(!d) return;
+    d.style.cssText="position:fixed;left:8px;right:8px;bottom:8px;background:#FBE5E2;color:#C0392B;padding:12px;border-radius:10px;font:12px monospace;white-space:pre-wrap;z-index:99999;max-height:45vh;overflow:auto";
+    var st=(e.error&&e.error.stack)?e.error.stack.split("\n").slice(0,4).join("\n"):"";
+    d.textContent="v19.09-d · ERRO NA PÁGINA:\n"+(e.message||String(e.error||e))+"\n"+st;
+  });
+</script>
 
 <script type="text/babel">
 const { useState, useEffect, useMemo } = React;
 
+const VERSAO_PLATAFORMA="v19.09-d";
+console.log("PLATAFORMA "+VERSAO_PLATAFORMA);
 const configurado = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const sb = configurado ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
@@ -196,7 +221,7 @@ function Login({ onIn }){
   if(modo==="codigo"){
     return (
       <div className="login-wrap"><div className="login">
-        <div className="logo">C</div>
+        <div className="logo"><img src="icon-192.png" alt="Aloimune" /></div>
         <h1>Entrada da equipe</h1>
         <p>Digite seu código.</p>
         {err && <div className="err">{err}</div>}
@@ -217,7 +242,7 @@ function Login({ onIn }){
 
   return (
     <div className="login-wrap"><div className="login">
-      <div className="logo">C</div>
+      <div className="logo"><img src="icon-192.png" alt="Aloimune" /></div>
       <h1>Plataforma da Clínica</h1>
       <p>Entre com seu e-mail e senha.</p>
       {!configurado && <div className="cfg">Configure as chaves do Supabase no topo do arquivo para ativar o login.</div>}
@@ -235,6 +260,7 @@ function Login({ onIn }){
 /* ================= HOME ================= */
 function Home({ onAbrir, papel }){
   const [res,setRes]=useState(null);
+  const [aba,setAba]=useState("inicio"); // 'inicio' | 'atencao' — hook antes de qualquer return
   useEffect(()=>{ (async()=>{
     try{
       const [docs, ins, lot, pts, le6, at, col, ag] = await Promise.all([
@@ -245,7 +271,7 @@ function Home({ onAbrir, papel }){
         sb.from("leituras").select("*").order("medido_em",{ascending:false}).limit(400),
         sb.from("atendimentos").select("valor,status"),
         sb.from("colaboradores").select("*").eq("ativo",true),
-        sb.from("agendamentos").select("data,status"),
+        sb.from("agendamentos").select("data,status,retorno_em,retorno_status"),
       ]);
       // documentos
       let docVenc=0, docVence=0;
@@ -286,27 +312,27 @@ function Home({ onAbrir, papel }){
         geladeiras:{ bad:gExc, warn:gAtr },
         atendimentos:{ blueN:aFat.length, blueV:aFatV },
         equipe:{ bad:rhBad, warn:rhWarn },
-        agenda:{ total:agHoje.length, warn:agConf },
+        agenda:{ total:agHoje.length, warn:agConf, retornos:(ag.data||[]).filter(a=> a.retorno_em && a.retorno_em<hoje && ["pendente","contatado"].includes(a.retorno_status||"pendente")).length },
       });
     }catch(e){ setRes({ erro:true }); }
   })(); },[]);
 
-  if(!res) return <div className="center">Carregando o resumo…</div>;
-  if(res.erro) return <div className="center">Não consegui carregar os dados. Confira se os schemas foram criados no Supabase e se as chaves estão preenchidas.</div>;
-
-  // painel de atenção
+  // Tudo abaixo roda em TODA renderização (sem return antecipado) — evita erro de hooks.
+  const pronto = !!(res && !res.erro);
   const att=[];
-  if(res.geladeiras.bad) att.push({ sev:"bad", txt:`${res.geladeiras.bad} equipamento(s) fora da temperatura`, mod:"geladeiras" });
-  if(res.documentos.bad) att.push({ sev:"bad", txt:`${res.documentos.bad} documento(s) vencido(s)`, mod:"documentos" });
-  if(res.estoque.bad) att.push({ sev:"bad", txt:`${res.estoque.bad} item(ns) de estoque no vermelho`, mod:"estoque" });
-  if(res.geladeiras.warn) att.push({ sev:"warn", txt:`${res.geladeiras.warn} equipamento(s) com leitura atrasada`, mod:"geladeiras" });
-  if(res.documentos.warn) att.push({ sev:"warn", txt:`${res.documentos.warn} documento(s) vencendo em breve`, mod:"documentos" });
-  if(res.estoque.warn) att.push({ sev:"warn", txt:`${res.estoque.warn} item(ns) de estoque para repor ou vencendo`, mod:"estoque" });
-  if(res.equipe.bad) att.push({ sev:"bad", txt:`${res.equipe.bad} pendência(s) vencida(s) na equipe (férias, exame ou registro)`, mod:"equipe" });
-  if(res.equipe.warn) att.push({ sev:"warn", txt:`${res.equipe.warn} pendência(s) da equipe vencendo em breve`, mod:"equipe" });
-  if(res.atendimentos.blueN) att.push({ sev:"blue", txt:`${brl(res.atendimentos.blueV)} a faturar (${res.atendimentos.blueN} atendimentos)`, mod:"atendimentos" });
-  if(res.agenda.warn) att.push({ sev:"warn", txt:`${res.agenda.warn} agendamento(s) de hoje a confirmar`, mod:"agenda" });
-
+  if(pronto){
+    if(res.geladeiras.bad) att.push({ sev:"bad", txt:`${res.geladeiras.bad} equipamento(s) fora da temperatura`, mod:"geladeiras" });
+    if(res.documentos.bad) att.push({ sev:"bad", txt:`${res.documentos.bad} documento(s) vencido(s)`, mod:"documentos" });
+    if(res.estoque.bad) att.push({ sev:"bad", txt:`${res.estoque.bad} item(ns) de estoque no vermelho`, mod:"estoque" });
+    if(res.geladeiras.warn) att.push({ sev:"warn", txt:`${res.geladeiras.warn} equipamento(s) com leitura atrasada`, mod:"geladeiras" });
+    if(res.documentos.warn) att.push({ sev:"warn", txt:`${res.documentos.warn} documento(s) vencendo em breve`, mod:"documentos" });
+    if(res.estoque.warn) att.push({ sev:"warn", txt:`${res.estoque.warn} item(ns) de estoque para repor ou vencendo`, mod:"estoque" });
+    if(res.equipe.bad) att.push({ sev:"bad", txt:`${res.equipe.bad} pendência(s) vencida(s) na equipe (férias, exame ou registro)`, mod:"equipe" });
+    if(res.equipe.warn) att.push({ sev:"warn", txt:`${res.equipe.warn} pendência(s) da equipe vencendo em breve`, mod:"equipe" });
+    if(res.atendimentos.blueN) att.push({ sev:"blue", txt:`${brl(res.atendimentos.blueV)} a faturar (${res.atendimentos.blueN} atendimentos)`, mod:"atendimentos" });
+    if(res.agenda.warn) att.push({ sev:"warn", txt:`${res.agenda.warn} agendamento(s) de hoje a confirmar`, mod:"agenda" });
+    if(res.agenda.retornos) att.push({ sev:"bad", txt:`${res.agenda.retornos} paciente(s) com retorno vencido — ligar para remarcar`, mod:"agenda" });
+  }
   const statusModulo=(key)=>{
     if(key==="apresentacao") return {cls:"muted", t:"Indicadores e PDF"};
     if(key==="profissionais") return {cls:"muted", t:"Cadastro e disponibilidade"};
@@ -314,22 +340,25 @@ function Home({ onAbrir, papel }){
     if(key==="ponto") return {cls:"muted", t:"Cadastro e relatório de horas"};
     if(key==="acessos") return {cls:"muted", t:"Logins e perfis da equipe"};
     if(key==="financeiro") return {cls:"muted", t:"Receitas, despesas e resultado"};
-    const r=res[key];
+    const r=pronto ? res[key] : null;
+    if(!r) return {cls:"muted", t:"—"};
     if(key==="atendimentos") return r.blueN? {cls:"blue", t:`${brl(r.blueV)} a faturar`} : {cls:"ok", t:"Nada pendente"};
     if(key==="agenda") return r.total? {cls:r.warn?"warn":"blue", t:`${r.total} hoje${r.warn?` · ${r.warn} a confirmar`:""}`} : {cls:"ok", t:"Sem agendamentos hoje"};
     if(r.bad) return {cls:"bad", t:`${r.bad} precisam de atenção`};
     if(r.warn) return {cls:"warn", t:`${r.warn} para acompanhar`};
     return {cls:"ok", t:"Tudo certo"};
   };
-
-  const [aba,setAba]=useState("inicio"); // 'inicio' | 'atencao'
   const nCrit=att.filter(a=>a.sev==="bad").length;
   const nTotal=att.length;
+
   return (
     <div className="home">
       <h2 className="hi">Bom te ver por aqui</h2>
       <p>Este é o resumo da clínica agora.</p>
 
+      {!res ? <div className="center">Carregando o resumo…</div>
+       : res.erro ? <div className="center">Não consegui carregar os dados. Confira se os schemas foram criados no Supabase e se as chaves estão preenchidas.</div>
+       : <>
       <div className="hometabs">
         <button className={aba==="inicio"?"on":""} onClick={()=>setAba("inicio")}>Início</button>
         <button className={aba==="atencao"?"on":""} onClick={()=>setAba("atencao")}>
@@ -366,11 +395,46 @@ function Home({ onAbrir, papel }){
               ))}
         </div>
       )}
+      </>}
     </div>
   );
 }
 
 /* ================= APP ================= */
+/* Guia de boas-vindas: caixa flutuante que orienta a gestora a conhecer a plataforma */
+const PASSOS_GUIA=[
+  { t:"Bem-vinda à sua plataforma", d:"Em poucos passos você deixa a clínica funcionando aqui dentro. Pode fechar e voltar quando quiser pelo botão ? no canto.", mod:null },
+  { t:"1 · Cadastre a equipe", d:"Em Acessos, crie o login de cada pessoa. Funcionário entra com um código de 6 números; médico e chefia com e-mail e senha.", mod:"acessos" },
+  { t:"2 · Profissionais e horários", d:"Cadastre os médicos e a grade semanal de atendimento. É isso que a agenda — e a Dri, no WhatsApp — usam para oferecer horários.", mod:"profissionais" },
+  { t:"3 · Tabela de preços", d:"No Financeiro, defina o valor de cada procedimento. Ao marcar \"Realizou\" na agenda, o atendimento já nasce com o valor certo.", mod:"financeiro" },
+  { t:"4 · Documentos e alvará", d:"Guarde alvará, licenças e certificados com validade. A plataforma avisa antes de vencer.", mod:"documentos" },
+  { t:"5 · Equipamentos e estoque", d:"Registre geladeiras/freezers e as leituras de temperatura; cadastre insumos com lote e validade. Alertas aparecem sozinhos na home.", mod:"geladeiras" },
+  { t:"6 · Equipe, escala e ponto", d:"No RH ficam férias, exames e conselho. A Escala monta o mês e o Ponto (tablet com reconhecimento facial) registra as horas.", mod:"equipe" },
+  { t:"7 · Agenda no dia a dia", d:"Confirme, marque Realizou (gera produtividade e retorno), Faltou. Na aba Retornos você vê quem precisa voltar e ainda não marcou.", mod:"agenda" },
+  { t:"Pronto!", d:"A home mostra \"Precisa de atenção\" com tudo que pede ação. Qualquer dúvida, o Janan ajusta a plataforma para o jeito da clínica.", mod:null },
+];
+function GuiaFlutuante({ onAbrir }){
+  const KEY="guia_plataforma_v1";
+  const [aberto,setAberto]=useState(()=>{ try{ return localStorage.getItem(KEY)!=="fechado"; }catch(_){ return true; } });
+  const [i,setI]=useState(0);
+  const fechar=()=>{ setAberto(false); try{ localStorage.setItem(KEY,"fechado"); }catch(_){ } };
+  if(!aberto) return <button className="guia-btn" title="Conhecer a plataforma" onClick={()=>{ setI(0); setAberto(true); }}>?</button>;
+  const p=PASSOS_GUIA[i];
+  return (
+    <div className="guia">
+      <div className="guia-h"><span>Conheça a plataforma</span><span className="guia-n">{i+1}/{PASSOS_GUIA.length}</span><button className="guia-x" onClick={fechar} title="Fechar">×</button></div>
+      <div className="guia-t">{p.t}</div>
+      <div className="guia-d">{p.d}</div>
+      <div className="guia-a">
+        {p.mod && <button className="btn btn-primary btn-sm" onClick={()=>onAbrir(p.mod)}>Abrir</button>}
+        <span style={{flex:1}}></span>
+        <button className="btn btn-ghost btn-sm" disabled={i===0} onClick={()=>setI(i-1)}>‹ Anterior</button>
+        {i<PASSOS_GUIA.length-1 ? <button className="btn btn-ghost btn-sm" onClick={()=>setI(i+1)}>Próximo ›</button> : <button className="btn btn-ghost btn-sm" onClick={fechar}>Concluir</button>}
+      </div>
+    </div>
+  );
+}
+
 function App(){
   const [session,setSession]=useState(undefined); // undefined = carregando
   const [papel,setPapel]=useState(undefined);      // undefined = carregando papel
@@ -406,7 +470,7 @@ function App(){
   if(papel==="sem_acesso"){
     return (
       <>
-        <div className="bar"><span className="logo">C</span><span className="title">Plataforma da Clínica</span><span className="sp"></span>{sair}</div>
+        <div className="bar"><span className="logo"><img src="icon-192.png" alt="Aloimune" /></span><span className="title">Plataforma da Clínica</span><span className="sp"></span>{sair}</div>
         <div className="center">Este acesso não está liberado para a plataforma da clínica.<br/>Peça ao gestor para liberar seu perfil.</div>
       </>
     );
@@ -416,7 +480,7 @@ function App(){
   if(papel==="quiosque"){
     return (
       <>
-        <div className="bar"><span className="logo">C</span><span className="title">Ponto — Quiosque</span><span className="sp"></span>{sair}</div>
+        <div className="bar"><span className="logo"><img src="icon-192.png" alt="Aloimune" /></span><span className="title">Ponto — Quiosque</span><span className="sp"></span>{sair}</div>
         <iframe className="frame" allow="camera; microphone" src="registro-ponto.html" title="Ponto"></iframe>
       </>
     );
@@ -426,14 +490,14 @@ function App(){
   if(papel==="medico"){
     if(meuProf===undefined) return <div className="center">Carregando seu cadastro…</div>;
     if(!meuProf) return (
-      <><div className="bar"><span className="logo">C</span><span className="title">Área do médico</span><span className="sp"></span>{sair}</div>
+      <><div className="bar"><span className="logo"><img src="icon-192.png" alt="Aloimune" /></span><span className="title">Área do médico</span><span className="sp"></span>{sair}</div>
       <div className="center">Seu login ainda não está vinculado a um profissional. Peça ao gestor para vincular seu cadastro.</div></>
     );
     const mv = view==="disponibilidade" ? "disponibilidade" : "agenda";
     return (
       <>
         <div className="bar">
-          <span className="logo">C</span>
+          <span className="logo"><img src="icon-192.png" alt="Aloimune" /></span>
           <div className="switch" style={{marginLeft:4}}>
             <button className={mv==="agenda"?"on":""} onClick={()=>setView("agenda")}>Minha agenda</button>
             <button className={mv==="disponibilidade"?"on":""} onClick={()=>setView("disponibilidade")}>Minha disponibilidade</button>
@@ -453,7 +517,7 @@ function App(){
     return (
       <>
         <div className="bar">
-          <span className="logo">C</span>
+          <span className="logo"><img src="icon-192.png" alt="Aloimune" /></span>
           <div className="switch" style={{marginLeft:4}}>
             <button className={fv==="inventario"?"on":""} onClick={()=>setView("inventario")}>Inventário</button>
             <button className={fv==="agenda"?"on":""} onClick={()=>setView("agenda")}>Agenda</button>
@@ -470,21 +534,36 @@ function App(){
   return (
     <>
       <div className="bar">
-        <span className="logo">C</span>
+        <span className="logo"><img src="icon-192.png" alt="Aloimune" /></span>
         {view==="home"
-          ? <span className="title">Plataforma da Clínica</span>
+          ? <span className="title">Plataforma da Clínica <span style={{fontSize:10,color:"var(--muted)",fontWeight:500,marginLeft:6}}>{VERSAO_PLATAFORMA}</span></span>
           : <><button className="back" onClick={()=>setView("home")}>‹ Início</button><span className="title">{mod?.nome}</span></>}
         <span className="sp"></span>
         {sair}
       </div>
       {view==="home"
-        ? <Home onAbrir={setView} papel={papel} />
+        ? <><Home onAbrir={setView} papel={papel} />{papel==="gestor" && <GuiaFlutuante onAbrir={setView} />}</>
         : <iframe className="frame" allow="camera; microphone" src={mod.src} title={mod.nome}></iframe>}
     </>
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+class ErroNaTela extends React.Component{
+  constructor(p){ super(p); this.state={erro:null}; }
+  static getDerivedStateFromError(e){ return {erro:e}; }
+  componentDidCatch(e,info){ console.log("ERRO REACT:", e, info&&info.componentStack); }
+  render(){
+    if(this.state.erro){
+      const e=this.state.erro;
+      return <div style={{padding:24,fontFamily:"monospace",fontSize:13,color:"#C0392B",whiteSpace:"pre-wrap"}}>
+        <b>v19.09-d · A página encontrou um erro:</b>{"\n\n"}{String(e&&(e.message||e))}{"\n\n"}{(e&&e.stack||"").split("\n").slice(0,6).join("\n")}
+      </div>;
+    }
+    return this.props.children;
+  }
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<ErroNaTela><App /></ErroNaTela>);
 </script>
 </body>
 </html>
