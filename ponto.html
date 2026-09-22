@@ -14,7 +14,8 @@
      ========================================================================== -->
 <script>
   const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
-  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
+  const WORKER_ACESSOS = "https://acessos-clinica.janan-almeida.workers.dev";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
   const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model";
 </script>
 
@@ -25,6 +26,7 @@
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
 
 <style>
@@ -421,6 +423,49 @@ function BatidaModal({ b, colabs, onClose, onSave, onDel }){
   );
 }
 
+/* ===== QUIOSQUE (tablet): link, QR e login ===== */
+function Quiosque(){
+  const url = location.href.replace(/ponto\.html.*$/,"registro-ponto.html");
+  const qrRef=useRef(null);
+  const [senha,setSenha]=useState(""); const [msg,setMsg]=useState(""); const [busy,setBusy]=useState(false);
+  useEffect(()=>{ if(qrRef.current && window.QRCode){ qrRef.current.innerHTML=""; new QRCode(qrRef.current,{ text:url, width:160, height:160 }); } },[url]);
+  async function criarLogin(){
+    if((senha||"").length<6){ setMsg("A senha do quiosque tem no mínimo 6 dígitos."); return; }
+    setBusy(true); setMsg("");
+    try{
+      const { data:{ session } } = await sb.auth.getSession();
+      const r=await fetch(WORKER_ACESSOS,{ method:"POST", headers:{ "Content-Type":"application/json", authorization:"Bearer "+(session?.access_token||"") },
+        body: JSON.stringify({ action:"criar", nome:"Quiosque do ponto", email:"quiosque@clinica.local", senha, papel:"quiosque", criarColaborador:false }) });
+      const j=await r.json().catch(()=>({error:"resposta inesperada"}));
+      setMsg(j.ok ? "Login do quiosque criado: e-mail quiosque@clinica.local e a senha que você definiu." : ("Não criou: "+(j.error||"erro")+" (se já existe, use 'Resetar senha' em Acessos)."));
+    }catch(e){ setMsg("Falha ao falar com o Worker: "+(e.message||e)); }
+    setBusy(false);
+  }
+  return (
+    <div className="cols">
+      <div className="card">
+        <h3>Link do quiosque</h3>
+        <div className="note">Abra este link no <b>tablet</b> (Chrome) e instale como app (menu ⋮ → "Instalar aplicativo"). Ele fica na recepção lendo o rosto da equipe. Sem login de gestor — usa a conta do quiosque abaixo.</div>
+        <div style={{display:"flex",gap:16,alignItems:"center",flexWrap:"wrap"}}>
+          <div ref={qrRef}></div>
+          <div style={{flex:1,minWidth:220}}>
+            <div style={{fontSize:12.5,color:"var(--muted)",marginBottom:6}}>Aponte a câmera do tablet para o QR, ou copie:</div>
+            <input readOnly value={url} onFocus={e=>e.target.select()} style={{width:"100%",font:"inherit",fontSize:13,padding:"8px 10px",border:"1px solid var(--line)",borderRadius:9}} />
+            <button className="btn btn-primary btn-sm" style={{marginTop:8}} onClick={()=>{ navigator.clipboard?.writeText(url); setMsg("Link copiado."); }}>Copiar link</button>
+          </div>
+        </div>
+      </div>
+      <div className="card">
+        <h3>Login do quiosque</h3>
+        <div className="note">Conta técnica só para o tablet: entra com <b>quiosque@clinica.local</b> e a senha que você definir. Ela só enxerga o ponto — nenhuma outra tela.</div>
+        <div className="field"><label>Senha do quiosque (mín. 6)</label><input value={senha} onChange={e=>setSenha(e.target.value)} placeholder="ex.: 246810" /></div>
+        <button className="btn btn-primary" onClick={criarLogin} disabled={busy}>{busy?"Criando…":"Criar login do quiosque"}</button>
+        {msg && <div style={{marginTop:10,fontSize:13.5,color:msg.startsWith("Não")||msg.startsWith("Falha")||msg.startsWith("A senha")?"var(--bad)":"var(--ok)"}}>{msg}</div>}
+      </div>
+    </div>
+  );
+}
+
 function App(){
   const [tab,setTab]=useState("cadastro");
   return (
@@ -434,8 +479,9 @@ function App(){
         <button className={tab==="cadastro"?"on":""} onClick={()=>setTab("cadastro")}>Cadastro</button>
         <button className={tab==="espelho"?"on":""} onClick={()=>setTab("espelho")}>Espelho</button>
         <button className={tab==="relatorio"?"on":""} onClick={()=>setTab("relatorio")}>Relatório</button>
+        <button className={tab==="quiosque"?"on":""} onClick={()=>setTab("quiosque")}>Quiosque</button>
       </div>
-      {tab==="cadastro" ? <Enroll/> : tab==="espelho" ? <Espelho/> : <Relatorio/>}
+      {tab==="cadastro" ? <Enroll/> : tab==="espelho" ? <Espelho/> : tab==="quiosque" ? <Quiosque/> : <Relatorio/>}
     </div>
   );
 }
