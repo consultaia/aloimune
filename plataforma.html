@@ -129,21 +129,21 @@
 </head>
 <body>
 <div id="root"></div>
-<div id="diag" style="position:fixed;bottom:8px;right:8px;font:11px monospace;color:#5C6B75;z-index:99999;pointer-events:none">v19.09-f</div>
+<div id="diag" style="position:fixed;bottom:8px;right:8px;font:11px monospace;color:#5C6B75;z-index:99999;pointer-events:none">v19.09-g</div>
 <script>
-  window.addEventListener("unhandledrejection", function(e){ var d=document.getElementById("diag"); if(!d) return; d.style.cssText="position:fixed;left:8px;right:8px;bottom:8px;background:#FFF3D6;color:#7A4B00;padding:12px;border-radius:10px;font:12px monospace;white-space:pre-wrap;z-index:99999;max-height:45vh;overflow:auto"; d.textContent="v19.09-f · PROMESSA REJEITADA:\n"+String(e.reason&&(e.reason.message||e.reason)); });
+  window.addEventListener("unhandledrejection", function(e){ var d=document.getElementById("diag"); if(!d) return; d.style.cssText="position:fixed;left:8px;right:8px;bottom:8px;background:#FFF3D6;color:#7A4B00;padding:12px;border-radius:10px;font:12px monospace;white-space:pre-wrap;z-index:99999;max-height:45vh;overflow:auto"; d.textContent="v19.09-g · PROMESSA REJEITADA:\n"+String(e.reason&&(e.reason.message||e.reason)); });
   window.addEventListener("error", function(e){
     var d=document.getElementById("diag"); if(!d) return;
     d.style.cssText="position:fixed;left:8px;right:8px;bottom:8px;background:#FBE5E2;color:#C0392B;padding:12px;border-radius:10px;font:12px monospace;white-space:pre-wrap;z-index:99999;max-height:45vh;overflow:auto";
     var st=(e.error&&e.error.stack)?e.error.stack.split("\n").slice(0,4).join("\n"):"";
-    d.textContent="v19.09-f · ERRO NA PÁGINA:\n"+(e.message||String(e.error||e))+"\n"+st;
+    d.textContent="v19.09-g · ERRO NA PÁGINA:\n"+(e.message||String(e.error||e))+"\n"+st;
   });
 </script>
 
 <script type="text/babel">
 const { useState, useEffect, useMemo } = React;
 
-const VERSAO_PLATAFORMA="v19.09-f";
+const VERSAO_PLATAFORMA="v19.09-g";
 // SUPORTE: número do WhatsApp com DDI+DDD, só dígitos (ex.: "5571999999999"). Vazio = botão some.
 const SUPORTE_WHATSAPP = "5571982074343";
 const linkSuporte = (msg)=> SUPORTE_WHATSAPP ? `https://wa.me/${SUPORTE_WHATSAPP}?text=${encodeURIComponent(msg||"Olá! Preciso de ajuda com a plataforma da clínica.")}` : null;
@@ -266,7 +266,7 @@ function Home({ onAbrir, papel }){
   const [aba,setAba]=useState("inicio"); // 'inicio' | 'atencao' — hook antes de qualquer return
   useEffect(()=>{ (async()=>{
     try{
-      const [docs, ins, lot, pts, le6, at, col, ag] = await Promise.all([
+      const [docs, ins, lot, pts, le6, at, col, ag, eqm] = await Promise.all([
         sb.from("documentos").select("validade,aviso_dias,obrigatorio,arquivo_url"),
         sb.from("insumos").select("*"),
         sb.from("lotes").select("*"),
@@ -275,6 +275,7 @@ function Home({ onAbrir, papel }){
         sb.from("atendimentos").select("valor,status"),
         sb.from("colaboradores").select("*").eq("ativo",true),
         sb.from("agendamentos").select("data,status,retorno_em,retorno_status"),
+        sb.from("clinica_equipamentos").select("proxima_manutencao,calibracao_validade,ativo").eq("ativo",true),
       ]);
       // documentos
       let docVenc=0, docVence=0;
@@ -313,6 +314,8 @@ function Home({ onAbrir, papel }){
         documentos:{ bad:docVenc, warn:docVence },
         estoque:{ bad:estCrit, warn:estBaixo+estVenc },
         geladeiras:{ bad:gExc, warn:gAtr },
+        manutencao:(()=>{ const rows=(eqm&&eqm.data)||[]; const dd=(iso)=>iso?Math.round((new Date(iso)-new Date(hoje))/864e5):null;
+          let bad=0,warn=0; rows.forEach(e=>{ const a=dd(e.proxima_manutencao), b=dd(e.calibracao_validade); if((a!==null&&a<0)||(b!==null&&b<0)) bad++; else if((a!==null&&a<=30)||(b!==null&&b<=30)) warn++; }); return {bad,warn}; })(),
         atendimentos:{ blueN:aFat.length, blueV:aFatV },
         equipe:{ bad:rhBad, warn:rhWarn },
         agenda:{ total:agHoje.length, warn:agConf, retornos:(ag.data||[]).filter(a=> a.retorno_em && a.retorno_em<hoje && ["pendente","contatado"].includes(a.retorno_status||"pendente")).length },
@@ -328,6 +331,8 @@ function Home({ onAbrir, papel }){
     if(res.documentos.bad) att.push({ sev:"bad", txt:`${res.documentos.bad} documento(s) vencido(s)`, mod:"documentos" });
     if(res.estoque.bad) att.push({ sev:"bad", txt:`${res.estoque.bad} item(ns) de estoque no vermelho`, mod:"estoque" });
     if(res.geladeiras.warn) att.push({ sev:"warn", txt:`${res.geladeiras.warn} equipamento(s) com leitura atrasada`, mod:"geladeiras" });
+    if(res.manutencao && res.manutencao.bad) att.push({ sev:"bad", txt:`${res.manutencao.bad} equipamento(s) com manutenção/calibração vencida`, mod:"geladeiras" });
+    if(res.manutencao && res.manutencao.warn) att.push({ sev:"warn", txt:`${res.manutencao.warn} manutenção(ões) vencendo em 30 dias`, mod:"geladeiras" });
     if(res.documentos.warn) att.push({ sev:"warn", txt:`${res.documentos.warn} documento(s) vencendo em breve`, mod:"documentos" });
     if(res.estoque.warn) att.push({ sev:"warn", txt:`${res.estoque.warn} item(ns) de estoque para repor ou vencendo`, mod:"estoque" });
     if(res.equipe.bad) att.push({ sev:"bad", txt:`${res.equipe.bad} pendência(s) vencida(s) na equipe (férias, exame ou registro)`, mod:"equipe" });
@@ -516,6 +521,23 @@ function App(){
   }
 
   // FUNCIONÁRIO: inventário + agenda (só leitura).
+  if(papel==="recepcionista"){
+    const opts=[["agenda","Agenda","agenda.html"],["atendimentos","Atendimentos","produtividade.html"],["profissionais","Profissionais","profissionais.html"],["inventario","Inventário","estoque.html?somente=inventario"]];
+    const cur=opts.find(o=>o[0]===view)||opts[0];
+    return (
+      <>
+        <div className="bar">
+          <span className="logo"><img src="icon-192.png" alt="Aloimune" /></span>
+          <div className="switch" style={{marginLeft:4}}>
+            {opts.map(o=><button key={o[0]} className={cur[0]===o[0]?"on":""} onClick={()=>setView(o[0])}>{o[1]}</button>)}
+          </div>
+          <span className="sp"></span>{sair}
+        </div>
+        <iframe className="frame" allow="camera; microphone" src={cur[2]} title={cur[1]}></iframe>
+      </>
+    );
+  }
+
   if(papel==="funcionario"){
     const fv = view==="agenda" ? "agenda" : "inventario";
     return (
@@ -561,7 +583,7 @@ class ErroNaTela extends React.Component{
     if(this.state.erro){
       const e=this.state.erro;
       return <div style={{padding:24,fontFamily:"monospace",fontSize:13,color:"#C0392B",whiteSpace:"pre-wrap"}}>
-        <b>v19.09-f · A página encontrou um erro:</b>{"\n\n"}{String(e&&(e.message||e))}{"\n\n"}{(e&&e.stack||"").split("\n").slice(0,6).join("\n")}
+        <b>v19.09-g · A página encontrou um erro:</b>{"\n\n"}{String(e&&(e.message||e))}{"\n\n"}{(e&&e.stack||"").split("\n").slice(0,6).join("\n")}
       </div>;
     }
     return this.props.children;
