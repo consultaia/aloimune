@@ -66,6 +66,15 @@
   .field input,.field select{font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:#fff}
   .msg{font-size:13.5px} .msg.ok{color:var(--ok)} .msg.bad{color:var(--bad)}
   @media(max-width:640px){ .tiles{grid-template-columns:1fr} .form{grid-template-columns:1fr} }
+  .ftabs{display:inline-flex;background:#EEF1F3;border-radius:10px;padding:3px;margin-bottom:16px;flex-wrap:wrap}
+  .ftabs button{font:inherit;font-weight:600;font-size:13.5px;border:none;background:none;color:var(--muted);padding:8px 14px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+  .ftabs button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+  .fb{background:var(--warn);color:#fff;font-size:11px;font-weight:700;min-width:20px;height:20px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px}
+  .note{background:var(--ok-bg);border:1px solid #CDE7DD;border-radius:12px;padding:12px 14px;font-size:13.5px;color:var(--primary-ink);line-height:1.55;margin-bottom:12px}
+  .overlay{position:fixed;inset:0;background:rgba(18,33,43,.45);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;z-index:50}
+  .modal{background:var(--card);border-radius:16px;width:100%;max-width:480px;box-shadow:var(--shadow);padding:22px}
+  .modal h2{font-family:"Space Grotesk";margin:0 0 12px;font-size:19px}
+  .err{background:var(--bad-bg);color:var(--bad);padding:9px 12px;border-radius:9px;font-size:13px;margin-bottom:12px}
 </style>
 </head>
 <body>
@@ -93,15 +102,51 @@ function App(){
   const [desp,setDesp]=useState([]); const [atend,setAtend]=useState([]); const [loading,setLoading]=useState(true);
   const [form,setForm]=useState({ data:new Date().toISOString().slice(0,10), descricao:"", categoria:"Insumos", fornecedor:"", valor:"", file:null });
   const [saving,setSaving]=useState(false); const [msg,setMsg]=useState("");
+  const [aba,setAba]=useState("resumo");   // resumo | receber | caixa | despesas | precos
+  const [precos,setPrecos]=useState([]); const [novoPreco,setNovoPreco]=useState({nome:"",valor:""});
+  const [rec,setRec]=useState(null);       // atendimento sendo marcado como recebido
 
   async function load(){
     setLoading(true);
     if(sb){
-      const [d,a]=await Promise.all([ sb.from("despesas").select("*").order("data",{ascending:false}), sb.from("atendimentos").select("data,valor,status") ]);
+      const [d,a,pr]=await Promise.all([
+        sb.from("despesas").select("*").order("data",{ascending:false}),
+        sb.from("atendimentos").select("*").order("data",{ascending:false}),
+        sb.from("clinica_procedimentos").select("*").order("nome") ]);
       if(d.error) setMsg(d.error.message);
-      setDesp(d.data||[]); setAtend(a.data||[]);
-    } else { setDesp(demoDesp()); setAtend(demoAtend()); }
+      setDesp(d.data||[]); setAtend(a.data||[]); setPrecos(pr.data||[]);
+    } else { setDesp(demoDesp()); setAtend(demoAtend()); setPrecos([{id:"1",nome:"Consulta",valor:450,ativo:true},{id:"2",nome:"Ciclo de FIV",valor:18000,ativo:true}]); }
     setLoading(false);
+  }
+  // Contas a receber = feito e ainda não recebido (qualquer mês)
+  const aReceber = atend.filter(x=> x.status!=="recebido" && x.status!=="cancelado");
+  const totReceber = aReceber.reduce((s,x)=>s+Number(x.valor||0),0);
+  // Caixa do mês = o que ENTROU (recebido_em no mês), por forma de pagamento
+  const noMesRec=(s)=>{ if(!s)return false; const [y,m]=s.split("-").map(Number); return y===ano && (m-1)===mes; };
+  const caixaMes = atend.filter(x=> x.status==="recebido" && noMesRec(x.recebido_em||x.data));
+  const FORMAS={pix:"Pix",dinheiro:"Dinheiro",credito:"Cartão crédito",debito:"Cartão débito",convenio:"Convênio",outro:"Outro"};
+  const porForma = Object.keys(FORMAS).map(k=>({k, nome:FORMAS[k], total: caixaMes.filter(x=>(x.forma_pagamento||"outro")===k).reduce((s,x)=>s+Number(x.valor||0),0)})).filter(x=>x.total>0);
+  const totCaixa = caixaMes.reduce((s,x)=>s+Number(x.valor||0),0);
+
+  async function marcarRecebido(f){
+    if(sb){ const r=await sb.from("atendimentos").update({ status:"recebido", forma_pagamento:f.forma||"outro", recebido_em:f.data, parcelas:f.parcelas?Number(f.parcelas):null }).eq("id",rec.id); if(r.error) return r.error.message; await load(); }
+    else setAtend(p=>p.map(x=>x.id===rec.id?{...x,status:"recebido",forma_pagamento:f.forma,recebido_em:f.data}:x));
+    setRec(null); return null;
+  }
+  async function salvarPreco(){
+    if(!novoPreco.nome){ setMsg("Informe o nome do procedimento."); return; }
+    const payload={ nome:novoPreco.nome.trim(), valor:Number(novoPreco.valor)||0, ativo:true };
+    if(sb){ const r=await sb.from("clinica_procedimentos").upsert(payload,{onConflict:"nome"}); if(r.error){ setMsg(r.error.message); return; } await load(); }
+    else setPrecos(p=>[...p.filter(x=>x.nome!==payload.nome),{...payload,id:"n"+Date.now()}]);
+    setNovoPreco({nome:"",valor:""}); setMsg("");
+  }
+  async function editarPreco(pr, valor){
+    if(sb){ const r=await sb.from("clinica_procedimentos").update({valor:Number(valor)||0}).eq("id",pr.id); if(r.error) return alert(r.error.message); await load(); }
+    else setPrecos(p=>p.map(x=>x.id===pr.id?{...x,valor:Number(valor)||0}:x));
+  }
+  async function togglePreco(pr){
+    if(sb){ const r=await sb.from("clinica_procedimentos").update({ativo:!pr.ativo}).eq("id",pr.id); if(r.error) return alert(r.error.message); await load(); }
+    else setPrecos(p=>p.map(x=>x.id===pr.id?{...x,ativo:!x.ativo}:x));
   }
   useEffect(()=>{ load(); },[]);
 
@@ -158,11 +203,64 @@ function App(){
       </div>
 
       <div className="tiles">
-        <div className="tile t-ok"><div className="l">Receita no mês</div><div className="v">{brl(receita)}</div><div className="l" style={{marginTop:4}}>recebido: {brl(recebido)}</div></div>
+        <div className="tile t-ok"><div className="l">Produção no mês (feito)</div><div className="v">{brl(receita)}</div><div className="l" style={{marginTop:4}}>{atendMes.length} atendimentos · vem da agenda</div></div>
+        <div className="tile t-ink"><div className="l">Entrou no caixa</div><div className="v pos">{brl(totCaixa)}</div><div className="l" style={{marginTop:4}}>recebido de fato no mês</div></div>
         <div className="tile t-bad"><div className="l">Despesas no mês</div><div className="v">{brl(totDesp)}</div><div className="l" style={{marginTop:4}}>{despMes.length} lançamentos</div></div>
-        <div className="tile t-ink"><div className="l">Resultado</div><div className={"v "+(resultado>=0?"pos":"neg")}>{brl(resultado)}</div><div className="l" style={{marginTop:4}}>receita − despesas</div></div>
+        <div className="tile t-ink"><div className="l">Resultado</div><div className={"v "+(resultado>=0?"pos":"neg")}>{brl(resultado)}</div><div className="l" style={{marginTop:4}}>produção − despesas</div></div>
       </div>
 
+      <div className="ftabs">
+        <button className={aba==="resumo"?"on":""} onClick={()=>setAba("resumo")}>Resumo</button>
+        <button className={aba==="receber"?"on":""} onClick={()=>setAba("receber")}>A receber{aReceber.length>0 && <span className="fb">{aReceber.length}</span>}</button>
+        <button className={aba==="caixa"?"on":""} onClick={()=>setAba("caixa")}>Caixa</button>
+        <button className={aba==="despesas"?"on":""} onClick={()=>setAba("despesas")}>Despesas</button>
+        <button className={aba==="precos"?"on":""} onClick={()=>setAba("precos")}>Tabela de preços</button>
+      </div>
+
+      {aba==="resumo" && <div className="panel"><div className="note">
+        <b>Como o dinheiro flui na plataforma:</b> a agenda marca <b>"Realizou"</b> → nasce um atendimento com o valor da <b>tabela de preços</b> (produção) → fica em <b>A receber</b> até você marcar como recebido (Pix, cartão, dinheiro…) → então entra no <b>Caixa</b>. Despesas são lançadas com comprovante. Resultado = produção − despesas.
+        <br/><br/>Total <b>a receber</b> acumulado: <b>{brl(totReceber)}</b> ({aReceber.length} atendimentos).
+      </div></div>}
+
+      {aba==="receber" && <div className="panel">
+        {aReceber.length===0 ? <div className="empty">Nada a receber. 🎉</div> :
+        <table><thead><tr><th>Data</th><th>Paciente</th><th>Procedimento</th><th>Profissional</th><th>Valor</th><th>Status</th><th></th></tr></thead>
+          <tbody>{aReceber.map(x=>(
+            <tr key={x.id}><td className="mono">{fmtD(x.data)}</td><td style={{fontWeight:600}}>{x.paciente||"—"}</td><td>{x.tipo||"—"}</td><td>{x.profissional||"—"}</td>
+              <td className="val">{brl(Number(x.valor))}</td><td><span className="cat">{x.status}</span></td>
+              <td><button className="btn btn-primary btn-sm" onClick={()=>setRec(x)}>Marcar recebido</button></td></tr>))}
+          </tbody></table>}
+      </div>}
+
+      {aba==="caixa" && <div className="panel">
+        <h3 style={{margin:"0 0 10px"}}>Entradas no caixa · {MESES[mes]} {ano}</h3>
+        {porForma.length===0 ? <div className="empty">Nada recebido neste mês ainda.</div> : <>
+          <div className="tiles" style={{gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))"}}>
+            {porForma.map(f=><div key={f.k} className="tile t-ok"><div className="l">{f.nome}</div><div className="v" style={{fontSize:20}}>{brl(f.total)}</div></div>)}
+          </div>
+          <table><thead><tr><th>Recebido em</th><th>Paciente</th><th>Procedimento</th><th>Forma</th><th>Valor</th></tr></thead>
+            <tbody>{caixaMes.map(x=>(<tr key={x.id}><td className="mono">{fmtD(x.recebido_em||x.data)}</td><td style={{fontWeight:600}}>{x.paciente||"—"}</td><td>{x.tipo||"—"}</td><td>{FORMAS[x.forma_pagamento]||"—"}{x.parcelas?` · ${x.parcelas}x`:""}</td><td className="val">{brl(Number(x.valor))}</td></tr>))}</tbody></table>
+        </>}
+        <div className="note" style={{marginTop:12}}>Cartão: o valor que entra aqui é o que a paciente pagou. A conciliação com a maquininha (taxa, prazo de repasse) pode ser automatizada — veja com o Janan qual operadora a clínica usa.</div>
+      </div>}
+
+      {aba==="precos" && <div className="panel">
+        <h3 style={{margin:"0 0 10px"}}>Tabela de preços</h3>
+        <div className="note">É daqui que a agenda pega o valor ao marcar "Realizou". O nome do procedimento deve ser o mesmo usado no tipo do agendamento (ex.: Consulta, Retorno, Ciclo de FIV).</div>
+        <table><thead><tr><th>Procedimento</th><th>Valor (R$)</th><th>Ativo</th></tr></thead>
+          <tbody>{precos.map(pr=>(<tr key={pr.id} style={{opacity:pr.ativo?1:.5}}>
+            <td style={{fontWeight:600}}>{pr.nome}</td>
+            <td><input type="number" step="0.01" defaultValue={pr.valor} onBlur={e=>{ if(Number(e.target.value)!==Number(pr.valor)) editarPreco(pr,e.target.value); }} style={{width:120,font:"inherit",padding:"6px 8px",border:"1px solid var(--line)",borderRadius:8}} /></td>
+            <td><button className="btn btn-ghost btn-sm" onClick={()=>togglePreco(pr)}>{pr.ativo?"desativar":"ativar"}</button></td></tr>))}
+          </tbody></table>
+        <div className="form" style={{marginTop:14}}>
+          <div className="field"><label>Novo procedimento</label><input value={novoPreco.nome} onChange={e=>setNovoPreco({...novoPreco,nome:e.target.value})} placeholder="Ex.: Histeroscopia" /></div>
+          <div className="field"><label>Valor (R$)</label><input type="number" step="0.01" value={novoPreco.valor} onChange={e=>setNovoPreco({...novoPreco,valor:e.target.value})} /></div>
+          <div className="full"><button className="btn btn-primary" onClick={salvarPreco}>Adicionar à tabela</button> {msg && <span className="msg bad" style={{marginLeft:10}}>{msg}</span>}</div>
+        </div>
+      </div>}
+
+      {aba==="despesas" && <>
       <div className="panel">
         {loading ? <div className="empty">Carregando…</div> :
          despMes.length===0 ? <div className="empty">Sem despesas neste mês.</div> :
@@ -200,7 +298,34 @@ function App(){
           </div>
         </div>
       </div>
+      </>}
+
+      {rec && <RecebidoModal at={rec} onClose={()=>setRec(null)} onSave={marcarRecebido} />}
     </div>
+  );
+}
+
+function RecebidoModal({ at, onClose, onSave }){
+  const [f,setF]=useState({ forma:"pix", data:new Date().toISOString().slice(0,10), parcelas:"" });
+  const [err,setErr]=useState(""); const [s,setS]=useState(false);
+  const set=(k,v)=>setF(x=>({...x,[k]:v}));
+  async function submit(){ setS(true); const e=await onSave(f); setS(false); if(e) setErr(e); }
+  return (
+    <div className="overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}>
+      <h2>Marcar como recebido</h2>
+      <div style={{color:"var(--muted)",fontSize:13.5,marginBottom:12}}>{at.paciente||"Paciente"} · {at.tipo||""} · <b>{brl(Number(at.valor))}</b></div>
+      {err && <div className="err">{err}</div>}
+      <div className="form">
+        <div className="field"><label>Forma</label><select value={f.forma} onChange={e=>set("forma",e.target.value)}>
+          <option value="pix">Pix</option><option value="dinheiro">Dinheiro</option><option value="credito">Cartão de crédito</option><option value="debito">Cartão de débito</option><option value="convenio">Convênio</option><option value="outro">Outro</option></select></div>
+        <div className="field"><label>Data do recebimento</label><input type="date" value={f.data} onChange={e=>set("data",e.target.value)} /></div>
+        {f.forma==="credito" && <div className="field"><label>Parcelas</label><input type="number" min="1" max="12" value={f.parcelas} onChange={e=>set("parcelas",e.target.value)} placeholder="1" /></div>}
+      </div>
+      <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:16}}>
+        <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+        <button className="btn btn-primary" onClick={submit} disabled={s}>{s?"Salvando…":"Confirmar"}</button>
+      </div>
+    </div></div>
   );
 }
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
