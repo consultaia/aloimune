@@ -104,6 +104,14 @@
     .row-actions{justify-content:flex-start; padding-top:8px}
     .grid{grid-template-columns:1fr}
   }
+  .seg{display:inline-flex;background:#EEF1F3;border-radius:8px;padding:2px}
+  .seg button{font:inherit;font-weight:700;font-size:12px;border:none;background:none;color:var(--muted);padding:4px 10px;border-radius:6px;cursor:pointer}
+  .seg button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+  .gbar{margin:10px 0}
+  .gb-h{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px}
+  .gb-n{font-weight:600} .gb-v{color:var(--muted)} .gb-v b{color:var(--ink)}
+  .gb-t{height:12px;background:#EEF1F3;border-radius:999px;overflow:hidden}
+  .gb-f{height:100%;border-radius:999px;transition:width .4s ease}
 </style>
 </head>
 <body>
@@ -168,10 +176,14 @@ function App(){
   const aReceber = soma(doMes.filter(r=>r.status==="faturado"));
   const recebido = soma(doMes.filter(r=>r.status==="recebido"));
 
+  const [medida,setMedida]=useState("valor"); // valor | qtd
   const porProf = useMemo(()=>{
-    const m={}; doMes.forEach(r=>{ m[r.profissional||"—"]=(m[r.profissional||"—"]||0)+Number(r.valor||0); });
-    return Object.entries(m).sort((a,b)=>b[1]-a[1]);
-  },[doMes]);
+    const v={}, q={};
+    doMes.forEach(r=>{ const k=r.profissional||"—"; v[k]=(v[k]||0)+Number(r.valor||0); q[k]=(q[k]||0)+1; });
+    const totV=Object.values(v).reduce((a,b)=>a+b,0), totQ=Object.values(q).reduce((a,b)=>a+b,0);
+    return Object.keys(v).map(k=>({ nome:k, valor:v[k], qtd:q[k], pctV: totV? v[k]/totV*100:0, pctQ: totQ? q[k]/totQ*100:0 }))
+      .sort((a,b)=> medida==="valor" ? b.valor-a.valor : b.qtd-a.qtd);
+  },[doMes, medida]);
   const porTipo = useMemo(()=>{
     const m={}; doMes.forEach(r=>{ m[r.tipo||"—"]=(m[r.tipo||"—"]||0)+1; });
     return Object.entries(m).sort((a,b)=>b[1]-a[1]);
@@ -227,9 +239,24 @@ function App(){
 
       <div className="cols">
         <div className="card">
-          <h3>Por profissional (R$ no mês)</h3>
-          {porProf.length===0 ? <div className="sub">Sem dados no mês.</div> :
-            porProf.map(([n,v])=>(<div className="brk" key={n}><span className="nm">{n}</span><span className="vl">{brl(v)}</span></div>))}
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+            <h3 style={{margin:0,flex:1}}>Produtividade por profissional</h3>
+            <div className="seg"><button className={medida==="valor"?"on":""} onClick={()=>setMedida("valor")}>R$</button><button className={medida==="qtd"?"on":""} onClick={()=>setMedida("qtd")}>Nº</button></div>
+          </div>
+          {porProf.length===0 ? <div className="sub">Sem dados no mês.</div> : (()=>{
+            const max=Math.max(...porProf.map(x=> medida==="valor"?x.valor:x.qtd), 1);
+            const cores=["#0E7C7B","#2F6DB5","#B26B00","#7E57C2","#2E7D5B","#C0392B","#5C6B75"];
+            return porProf.map((x,i)=>{
+              const val= medida==="valor"?x.valor:x.qtd, pct= medida==="valor"?x.pctV:x.pctQ;
+              return (
+                <div className="gbar" key={x.nome}>
+                  <div className="gb-h"><span className="gb-n">{x.nome}</span><span className="gb-v">{medida==="valor"?brl(val):val+" atend."} <b>· {pct.toFixed(0)}%</b></span></div>
+                  <div className="gb-t"><div className="gb-f" style={{width:(val/max*100)+"%", background:cores[i%cores.length]}}></div></div>
+                </div>
+              );
+            });
+          })()}
+          <div className="sub" style={{marginTop:8}}>Percentual = participação de cada profissional no total do mês ({medida==="valor"?"em R$":"em nº de atendimentos"}).</div>
         </div>
         <div className="card">
           <h3>Por tipo (nº de atendimentos)</h3>
