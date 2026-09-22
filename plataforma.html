@@ -129,21 +129,24 @@
 </head>
 <body>
 <div id="root"></div>
-<div id="diag" style="position:fixed;bottom:8px;right:8px;font:11px monospace;color:#5C6B75;z-index:99999;pointer-events:none">v19.09-d</div>
+<div id="diag" style="position:fixed;bottom:8px;right:8px;font:11px monospace;color:#5C6B75;z-index:99999;pointer-events:none">v19.09-e</div>
 <script>
-  window.addEventListener("unhandledrejection", function(e){ var d=document.getElementById("diag"); if(!d) return; d.style.cssText="position:fixed;left:8px;right:8px;bottom:8px;background:#FFF3D6;color:#7A4B00;padding:12px;border-radius:10px;font:12px monospace;white-space:pre-wrap;z-index:99999;max-height:45vh;overflow:auto"; d.textContent="v19.09-d · PROMESSA REJEITADA:\n"+String(e.reason&&(e.reason.message||e.reason)); });
+  window.addEventListener("unhandledrejection", function(e){ var d=document.getElementById("diag"); if(!d) return; d.style.cssText="position:fixed;left:8px;right:8px;bottom:8px;background:#FFF3D6;color:#7A4B00;padding:12px;border-radius:10px;font:12px monospace;white-space:pre-wrap;z-index:99999;max-height:45vh;overflow:auto"; d.textContent="v19.09-e · PROMESSA REJEITADA:\n"+String(e.reason&&(e.reason.message||e.reason)); });
   window.addEventListener("error", function(e){
     var d=document.getElementById("diag"); if(!d) return;
     d.style.cssText="position:fixed;left:8px;right:8px;bottom:8px;background:#FBE5E2;color:#C0392B;padding:12px;border-radius:10px;font:12px monospace;white-space:pre-wrap;z-index:99999;max-height:45vh;overflow:auto";
     var st=(e.error&&e.error.stack)?e.error.stack.split("\n").slice(0,4).join("\n"):"";
-    d.textContent="v19.09-d · ERRO NA PÁGINA:\n"+(e.message||String(e.error||e))+"\n"+st;
+    d.textContent="v19.09-e · ERRO NA PÁGINA:\n"+(e.message||String(e.error||e))+"\n"+st;
   });
 </script>
 
 <script type="text/babel">
 const { useState, useEffect, useMemo } = React;
 
-const VERSAO_PLATAFORMA="v19.09-d";
+const VERSAO_PLATAFORMA="v19.09-e";
+// SUPORTE: número do WhatsApp com DDI+DDD, só dígitos (ex.: "5571999999999"). Vazio = botão some.
+const SUPORTE_WHATSAPP = "";
+const linkSuporte = (msg)=> SUPORTE_WHATSAPP ? `https://wa.me/${SUPORTE_WHATSAPP}?text=${encodeURIComponent(msg||"Olá! Preciso de ajuda com a plataforma da clínica.")}` : null;
 console.log("PLATAFORMA "+VERSAO_PLATAFORMA);
 const configurado = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 const sb = configurado ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -411,7 +414,7 @@ const PASSOS_GUIA=[
   { t:"5 · Equipamentos e estoque", d:"Registre geladeiras/freezers e as leituras de temperatura; cadastre insumos com lote e validade. Alertas aparecem sozinhos na home.", mod:"geladeiras" },
   { t:"6 · Equipe, escala e ponto", d:"No RH ficam férias, exames e conselho. A Escala monta o mês e o Ponto (tablet com reconhecimento facial) registra as horas.", mod:"equipe" },
   { t:"7 · Agenda no dia a dia", d:"Confirme, marque Realizou (gera produtividade e retorno), Faltou. Na aba Retornos você vê quem precisa voltar e ainda não marcou.", mod:"agenda" },
-  { t:"Pronto!", d:"A home mostra \"Precisa de atenção\" com tudo que pede ação. Qualquer dúvida, o Janan ajusta a plataforma para o jeito da clínica.", mod:null },
+  { t:"Pronto!", d:"A home mostra \"Precisa de atenção\" com tudo que pede ação. Qualquer dúvida, fale com o suporte — a plataforma se adapta ao jeito da sua clínica.", mod:null, suporte:true },
 ];
 function GuiaFlutuante({ onAbrir }){
   const KEY="guia_plataforma_v1";
@@ -427,6 +430,7 @@ function GuiaFlutuante({ onAbrir }){
       <div className="guia-d">{p.d}</div>
       <div className="guia-a">
         {p.mod && <button className="btn btn-primary btn-sm" onClick={()=>onAbrir(p.mod)}>Abrir</button>}
+        {p.suporte && linkSuporte() && <a className="btn btn-primary btn-sm" href={linkSuporte()} target="_blank" rel="noreferrer" style={{textDecoration:"none"}}>Falar com o suporte</a>}
         <span style={{flex:1}}></span>
         <button className="btn btn-ghost btn-sm" disabled={i===0} onClick={()=>setI(i-1)}>‹ Anterior</button>
         {i<PASSOS_GUIA.length-1 ? <button className="btn btn-ghost btn-sm" onClick={()=>setI(i+1)}>Próximo ›</button> : <button className="btn btn-ghost btn-sm" onClick={fechar}>Concluir</button>}
@@ -464,7 +468,7 @@ function App(){
   if(!session) return <Login onIn={()=>{}} />;
   if(papel===undefined) return <div className="center">Carregando seu acesso…</div>;
 
-  const sair = <button className="out" onClick={()=>sb.auth.signOut()}>Sair</button>;
+  const sair = <>{linkSuporte() && <a className="out" href={linkSuporte()} target="_blank" rel="noreferrer" style={{textDecoration:"none",marginRight:6}}>Suporte</a>}<button className="out" onClick={()=>sb.auth.signOut()}>Sair</button></>;
 
   // Sem perfil liberado (ex.: usuário de outro app no mesmo projeto): sem acesso.
   if(papel==="sem_acesso"){
@@ -557,7 +561,7 @@ class ErroNaTela extends React.Component{
     if(this.state.erro){
       const e=this.state.erro;
       return <div style={{padding:24,fontFamily:"monospace",fontSize:13,color:"#C0392B",whiteSpace:"pre-wrap"}}>
-        <b>v19.09-d · A página encontrou um erro:</b>{"\n\n"}{String(e&&(e.message||e))}{"\n\n"}{(e&&e.stack||"").split("\n").slice(0,6).join("\n")}
+        <b>v19.09-e · A página encontrou um erro:</b>{"\n\n"}{String(e&&(e.message||e))}{"\n\n"}{(e&&e.stack||"").split("\n").slice(0,6).join("\n")}
       </div>;
     }
     return this.props.children;
