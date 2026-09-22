@@ -144,7 +144,7 @@
 const { useState, useEffect, useMemo } = React;
 
 const VERSAO_PLATAFORMA="v19.09-e";
-// SUPORTE: número do WhatsApp com DDI+DDD, só dígitos (ex.: "5571999999999"). Vazio = botão some.
+// SUPORTE: número do WhatsApp com DDI+DDD, só dígitos (ex.: "5571982074343"). Vazio = botão some.
 const SUPORTE_WHATSAPP = "";
 const linkSuporte = (msg)=> SUPORTE_WHATSAPP ? `https://wa.me/${SUPORTE_WHATSAPP}?text=${encodeURIComponent(msg||"Olá! Preciso de ajuda com a plataforma da clínica.")}` : null;
 console.log("PLATAFORMA "+VERSAO_PLATAFORMA);
