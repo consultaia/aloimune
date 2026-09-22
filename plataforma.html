@@ -151,23 +151,24 @@
 </head>
 <body>
 <div id="root"></div>
-<div id="diag" style="position:fixed;bottom:8px;right:8px;font:11px monospace;color:#5C6B75;z-index:99999;pointer-events:none">v19.09-h</div>
+<div id="diag" style="position:fixed;bottom:8px;right:8px;font:11px monospace;color:#5C6B75;z-index:99999;pointer-events:none">v19.09-i</div>
 <script>
-  window.addEventListener("unhandledrejection", function(e){ var d=document.getElementById("diag"); if(!d) return; d.style.cssText="position:fixed;left:8px;right:8px;bottom:8px;background:#FFF3D6;color:#7A4B00;padding:12px;border-radius:10px;font:12px monospace;white-space:pre-wrap;z-index:99999;max-height:45vh;overflow:auto"; d.textContent="v19.09-h · PROMESSA REJEITADA:\n"+String(e.reason&&(e.reason.message||e.reason)); });
+  window.addEventListener("unhandledrejection", function(e){ var d=document.getElementById("diag"); if(!d) return; d.style.cssText="position:fixed;left:8px;right:8px;bottom:8px;background:#FFF3D6;color:#7A4B00;padding:12px;border-radius:10px;font:12px monospace;white-space:pre-wrap;z-index:99999;max-height:45vh;overflow:auto"; d.textContent="v19.09-i · PROMESSA REJEITADA:\n"+String(e.reason&&(e.reason.message||e.reason)); });
   window.addEventListener("error", function(e){
     var d=document.getElementById("diag"); if(!d) return;
     d.style.cssText="position:fixed;left:8px;right:8px;bottom:8px;background:#FBE5E2;color:#C0392B;padding:12px;border-radius:10px;font:12px monospace;white-space:pre-wrap;z-index:99999;max-height:45vh;overflow:auto";
     var st=(e.error&&e.error.stack)?e.error.stack.split("\n").slice(0,4).join("\n"):"";
-    d.textContent="v19.09-h · ERRO NA PÁGINA:\n"+(e.message||String(e.error||e))+"\n"+st;
+    d.textContent="v19.09-i · ERRO NA PÁGINA:\n"+(e.message||String(e.error||e))+"\n"+st;
   });
 </script>
 
 <script type="text/babel">
 const { useState, useEffect, useMemo } = React;
 
-const VERSAO_PLATAFORMA="v19.09-h";
+const VERSAO_PLATAFORMA="v19.09-i";
 // SUPORTE: número do WhatsApp com DDI+DDD, só dígitos (ex.: "5571999999999"). Vazio = botão some.
 const SUPORTE_WHATSAPP = "5571982074343";
+const withV = (src)=> src + (src.includes("?")?"&":"?") + "v=" + encodeURIComponent(VERSAO_PLATAFORMA);
 const linkSuporte = (msg)=> SUPORTE_WHATSAPP ? `https://wa.me/${SUPORTE_WHATSAPP}?text=${encodeURIComponent(msg||"Olá! Preciso de ajuda com a plataforma da clínica.")}` : null;
 console.log("PLATAFORMA "+VERSAO_PLATAFORMA);
 const configurado = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
@@ -534,7 +535,7 @@ function App(){
     return (
       <>
         <div className="bar"><span className="logo"><img src="icon-192.png" alt="Aloimune" /></span><span className="title">Ponto — Quiosque</span><span className="sp"></span>{sair}</div>
-        <iframe className="frame" allow="camera; microphone" src="registro-ponto.html" title="Ponto"></iframe>
+        <iframe className="frame" allow="camera; microphone" src={withV("registro-ponto.html")} title="Ponto"></iframe>
       </>
     );
   }
@@ -558,7 +559,7 @@ function App(){
           <span className="sp"></span>{sair}
         </div>
         <iframe className="frame" allow="camera; microphone"
-          src={mv==="disponibilidade" ? ("profissionais.html?meu="+meuProf.id) : ("agenda.html?profissional="+encodeURIComponent(meuProf.nome))}
+          src={withV(mv==="disponibilidade" ? ("profissionais.html?meu="+meuProf.id) : ("agenda.html?profissional="+encodeURIComponent(meuProf.nome)))}
           title={mv==="disponibilidade"?"Disponibilidade":"Agenda"}></iframe>
       </>
     );
@@ -574,7 +575,7 @@ function App(){
           rodape={<>{linkSuporte() && <a className="side-link" href={linkSuporte()} target="_blank" rel="noreferrer">Suporte</a>}<button className="side-link" onClick={()=>sb.auth.signOut()}>Sair</button></>} />
         <div className="main">
           <div className="bar"><button className="hamb" onClick={()=>setMenu(m=>!m)} aria-label="Menu">☰</button><span className="title">{cur.nome}</span><span className="sp"></span></div>
-          <iframe className="frame" allow="camera; microphone" src={cur.src} title={cur.nome}></iframe>
+          <iframe className="frame" allow="camera; microphone" src={withV(cur.src)} title={cur.nome}></iframe>
         </div>
       </div>
     );
@@ -592,7 +593,7 @@ function App(){
           </div>
           <span className="sp"></span>{sair}
         </div>
-        <iframe className="frame" allow="camera; microphone" src={fv==="agenda" ? "agenda.html" : "estoque.html?somente=inventario"} title={fv==="agenda"?"Agenda":"Inventário"}></iframe>
+        <iframe className="frame" allow="camera; microphone" src={withV(fv==="agenda" ? "agenda.html" : "estoque.html?somente=inventario")} title={fv==="agenda"?"Agenda":"Inventário"}></iframe>
       </>
     );
   }
@@ -612,7 +613,7 @@ function App(){
       </div>
       {view==="home"
         ? <><Home onAbrir={setView} papel={papel} />{papel==="gestor" && <GuiaFlutuante onAbrir={setView} />}</>
-        : <iframe className="frame" allow="camera; microphone" src={mod.src} title={mod.nome}></iframe>}
+        : <iframe className="frame" allow="camera; microphone" src={withV(mod.src)} title={mod.nome}></iframe>}
       </div>
     </div>
   );
@@ -627,7 +628,7 @@ class ErroNaTela extends React.Component{
     if(this.state.erro){
       const e=this.state.erro;
       return <div style={{padding:24,fontFamily:"monospace",fontSize:13,color:"#C0392B",whiteSpace:"pre-wrap"}}>
-        <b>v19.09-h · A página encontrou um erro:</b>{"\n\n"}{String(e&&(e.message||e))}{"\n\n"}{(e&&e.stack||"").split("\n").slice(0,6).join("\n")}
+        <b>v19.09-i · A página encontrou um erro:</b>{"\n\n"}{String(e&&(e.message||e))}{"\n\n"}{(e&&e.stack||"").split("\n").slice(0,6).join("\n")}
       </div>;
     }
     return this.props.children;
