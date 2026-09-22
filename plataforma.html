@@ -125,25 +125,47 @@
   .btn-primary{background:var(--primary);color:#fff}
   .btn-ghost{background:transparent;border-color:var(--line);color:var(--ink)}
   .btn:disabled{opacity:.5;cursor:default}
+  .shell{display:flex; min-height:100vh}
+  .side{width:232px; flex:0 0 232px; background:var(--card); border-right:1px solid var(--line); display:flex; flex-direction:column; position:sticky; top:0; height:100vh}
+  .side-brand{display:flex; align-items:center; gap:10px; padding:16px 16px 12px; border-bottom:1px solid var(--line)}
+  .side-brand .logo{width:36px; height:36px; border-radius:9px; background:#fff; border:1px solid var(--line); overflow:hidden; display:flex; align-items:center; justify-content:center} .side-brand .logo img{width:100%; height:100%; object-fit:contain}
+  .sb-t{font-family:"Space Grotesk"; font-weight:700; font-size:15px} .sb-s{font-size:11.5px; color:var(--muted)}
+  .side-nav{padding:10px 8px; display:flex; flex-direction:column; gap:2px; overflow:auto; flex:1}
+  .side-item{display:flex; align-items:center; gap:10px; width:100%; text-align:left; font:inherit; font-weight:600; font-size:13.5px; color:#3B4A55; background:none; border:none; padding:9px 10px; border-radius:9px; cursor:pointer}
+  .side-item:hover{background:#F1F5F6} .side-item.on{background:var(--ok-bg); color:var(--primary-ink)}
+  .si-ic{width:20px; height:20px; display:inline-flex; color:var(--primary)} .si-ic svg{width:18px; height:18px}
+  .side-foot{border-top:1px solid var(--line); padding:10px 12px; display:flex; flex-direction:column; gap:4px}
+  .side-link{font:inherit; font-weight:600; font-size:13px; color:var(--muted); background:none; border:none; text-align:left; padding:6px 4px; cursor:pointer; text-decoration:none}
+  .side-link:hover{color:var(--ink)} .side-ver{font-size:10.5px; color:#9AA7AF; padding:4px}
+  .main{flex:1; min-width:0; display:flex; flex-direction:column}
+  .main .bar{position:sticky; top:0}
+  .hamb{display:none; font:inherit; font-size:18px; background:none; border:1px solid var(--line); border-radius:8px; padding:2px 8px; cursor:pointer}
+  .backdrop{display:none}
+  @media (max-width: 900px){
+    .side{position:fixed; left:-250px; top:0; bottom:0; z-index:90; transition:left .2s ease; box-shadow:0 0 0 rgba(0,0,0,0)}
+    .side.aberto{left:0; box-shadow:0 12px 40px rgba(18,33,43,.3)}
+    .backdrop{display:block; position:fixed; inset:0; background:rgba(18,33,43,.35); z-index:80}
+    .hamb{display:inline-flex}
+  }
 </style>
 </head>
 <body>
 <div id="root"></div>
-<div id="diag" style="position:fixed;bottom:8px;right:8px;font:11px monospace;color:#5C6B75;z-index:99999;pointer-events:none">v19.09-g</div>
+<div id="diag" style="position:fixed;bottom:8px;right:8px;font:11px monospace;color:#5C6B75;z-index:99999;pointer-events:none">v19.09-h</div>
 <script>
-  window.addEventListener("unhandledrejection", function(e){ var d=document.getElementById("diag"); if(!d) return; d.style.cssText="position:fixed;left:8px;right:8px;bottom:8px;background:#FFF3D6;color:#7A4B00;padding:12px;border-radius:10px;font:12px monospace;white-space:pre-wrap;z-index:99999;max-height:45vh;overflow:auto"; d.textContent="v19.09-g · PROMESSA REJEITADA:\n"+String(e.reason&&(e.reason.message||e.reason)); });
+  window.addEventListener("unhandledrejection", function(e){ var d=document.getElementById("diag"); if(!d) return; d.style.cssText="position:fixed;left:8px;right:8px;bottom:8px;background:#FFF3D6;color:#7A4B00;padding:12px;border-radius:10px;font:12px monospace;white-space:pre-wrap;z-index:99999;max-height:45vh;overflow:auto"; d.textContent="v19.09-h · PROMESSA REJEITADA:\n"+String(e.reason&&(e.reason.message||e.reason)); });
   window.addEventListener("error", function(e){
     var d=document.getElementById("diag"); if(!d) return;
     d.style.cssText="position:fixed;left:8px;right:8px;bottom:8px;background:#FBE5E2;color:#C0392B;padding:12px;border-radius:10px;font:12px monospace;white-space:pre-wrap;z-index:99999;max-height:45vh;overflow:auto";
     var st=(e.error&&e.error.stack)?e.error.stack.split("\n").slice(0,4).join("\n"):"";
-    d.textContent="v19.09-g · ERRO NA PÁGINA:\n"+(e.message||String(e.error||e))+"\n"+st;
+    d.textContent="v19.09-h · ERRO NA PÁGINA:\n"+(e.message||String(e.error||e))+"\n"+st;
   });
 </script>
 
 <script type="text/babel">
 const { useState, useEffect, useMemo } = React;
 
-const VERSAO_PLATAFORMA="v19.09-g";
+const VERSAO_PLATAFORMA="v19.09-h";
 // SUPORTE: número do WhatsApp com DDI+DDD, só dígitos (ex.: "5571999999999"). Vazio = botão some.
 const SUPORTE_WHATSAPP = "5571982074343";
 const linkSuporte = (msg)=> SUPORTE_WHATSAPP ? `https://wa.me/${SUPORTE_WHATSAPP}?text=${encodeURIComponent(msg||"Olá! Preciso de ajuda com a plataforma da clínica.")}` : null;
@@ -182,6 +204,7 @@ const MODULOS = [
 
 function Icon({ name }){
   const p = {
+    home:"M3 11l9-8 9 8 M5 10v10h5v-6h4v6h5V10",
     doc:"M7 3h7l4 4v14H7z M14 3v4h4",
     box:"M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10",
     temp:"M12 3a2 2 0 0 1 2 2v8a4 4 0 1 1-4 0V5a2 2 0 0 1 2-2z",
@@ -444,11 +467,32 @@ function GuiaFlutuante({ onAbrir }){
   );
 }
 
+/* Menu lateral fixo: troca de módulo com um clique, sem "voltar" */
+function Sidebar({ itens, view, onGo, aberto, onFechar, rodape }){
+  return (
+    <>
+      {aberto && <div className="backdrop" onClick={onFechar}></div>}
+      <aside className={"side"+(aberto?" aberto":"")}>
+        <div className="side-brand"><span className="logo"><img src="icon-192.png" alt="Aloimune" /></span><div><div className="sb-t">Aloimune</div><div className="sb-s">Gestão da clínica</div></div></div>
+        <nav className="side-nav">
+          {itens.map(m=>(
+            <button key={m.key} className={"side-item"+(view===m.key?" on":"")} onClick={()=>{ onGo(m.key); onFechar(); }}>
+              <span className="si-ic"><Icon name={m.ic}/></span><span>{m.nome}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="side-foot">{rodape}<div className="side-ver">{VERSAO_PLATAFORMA}</div></div>
+      </aside>
+    </>
+  );
+}
+
 function App(){
   const [session,setSession]=useState(undefined); // undefined = carregando
   const [papel,setPapel]=useState(undefined);      // undefined = carregando papel
   const [meuProf,setMeuProf]=useState(undefined);  // profissional vinculado ao médico
   const [view,setView]=useState("home");
+  const [menu,setMenu]=useState(false);
 
   useEffect(()=>{
     if(!sb){ setSession(null); return; }
@@ -522,19 +566,17 @@ function App(){
 
   // FUNCIONÁRIO: inventário + agenda (só leitura).
   if(papel==="recepcionista"){
-    const opts=[["agenda","Agenda","agenda.html"],["atendimentos","Atendimentos","produtividade.html"],["profissionais","Profissionais","profissionais.html"],["inventario","Inventário","estoque.html?somente=inventario"]];
-    const cur=opts.find(o=>o[0]===view)||opts[0];
+    const opts=[{key:"agenda",nome:"Agenda",src:"agenda.html",ic:"calendar"},{key:"atendimentos",nome:"Atendimentos",src:"produtividade.html",ic:"chart"},{key:"profissionais",nome:"Profissionais",src:"profissionais.html",ic:"steth"},{key:"inventario",nome:"Inventário",src:"estoque.html?somente=inventario",ic:"box"}];
+    const cur=opts.find(o=>o.key===view)||opts[0];
     return (
-      <>
-        <div className="bar">
-          <span className="logo"><img src="icon-192.png" alt="Aloimune" /></span>
-          <div className="switch" style={{marginLeft:4}}>
-            {opts.map(o=><button key={o[0]} className={cur[0]===o[0]?"on":""} onClick={()=>setView(o[0])}>{o[1]}</button>)}
-          </div>
-          <span className="sp"></span>{sair}
+      <div className="shell">
+        <Sidebar itens={opts} view={cur.key} onGo={setView} aberto={menu} onFechar={()=>setMenu(false)}
+          rodape={<>{linkSuporte() && <a className="side-link" href={linkSuporte()} target="_blank" rel="noreferrer">Suporte</a>}<button className="side-link" onClick={()=>sb.auth.signOut()}>Sair</button></>} />
+        <div className="main">
+          <div className="bar"><button className="hamb" onClick={()=>setMenu(m=>!m)} aria-label="Menu">☰</button><span className="title">{cur.nome}</span><span className="sp"></span></div>
+          <iframe className="frame" allow="camera; microphone" src={cur.src} title={cur.nome}></iframe>
         </div>
-        <iframe className="frame" allow="camera; microphone" src={cur[2]} title={cur[1]}></iframe>
-      </>
+      </div>
     );
   }
 
@@ -555,22 +597,24 @@ function App(){
     );
   }
 
-  // GESTOR e AUDITORIA: plataforma completa.
+  // GESTOR e AUDITORIA: plataforma completa com menu lateral.
   const mod = MODULOS.find(m=>m.key===view);
+  const itens=[{key:"home",nome:"Início",ic:"home"}, ...MODULOS.filter(m=> !m.soloGestor || papel==="gestor")];
   return (
-    <>
+    <div className="shell">
+      <Sidebar itens={itens} view={view} onGo={setView} aberto={menu} onFechar={()=>setMenu(false)}
+        rodape={<>{linkSuporte() && <a className="side-link" href={linkSuporte()} target="_blank" rel="noreferrer">Suporte</a>}<button className="side-link" onClick={()=>sb.auth.signOut()}>Sair</button></>} />
+      <div className="main">
       <div className="bar">
-        <span className="logo"><img src="icon-192.png" alt="Aloimune" /></span>
-        {view==="home"
-          ? <span className="title">Plataforma da Clínica <span style={{fontSize:10,color:"var(--muted)",fontWeight:500,marginLeft:6}}>{VERSAO_PLATAFORMA}</span></span>
-          : <><button className="back" onClick={()=>setView("home")}>‹ Início</button><span className="title">{mod?.nome}</span></>}
+        <button className="hamb" onClick={()=>setMenu(m=>!m)} aria-label="Menu">☰</button>
+        <span className="title">{view==="home" ? "Início" : mod?.nome}</span>
         <span className="sp"></span>
-        {sair}
       </div>
       {view==="home"
         ? <><Home onAbrir={setView} papel={papel} />{papel==="gestor" && <GuiaFlutuante onAbrir={setView} />}</>
         : <iframe className="frame" allow="camera; microphone" src={mod.src} title={mod.nome}></iframe>}
-    </>
+      </div>
+    </div>
   );
 }
 
@@ -583,7 +627,7 @@ class ErroNaTela extends React.Component{
     if(this.state.erro){
       const e=this.state.erro;
       return <div style={{padding:24,fontFamily:"monospace",fontSize:13,color:"#C0392B",whiteSpace:"pre-wrap"}}>
-        <b>v19.09-g · A página encontrou um erro:</b>{"\n\n"}{String(e&&(e.message||e))}{"\n\n"}{(e&&e.stack||"").split("\n").slice(0,6).join("\n")}
+        <b>v19.09-h · A página encontrou um erro:</b>{"\n\n"}{String(e&&(e.message||e))}{"\n\n"}{(e&&e.stack||"").split("\n").slice(0,6).join("\n")}
       </div>;
     }
     return this.props.children;
