@@ -107,6 +107,22 @@
   .empty{padding:40px; text-align:center; color:var(--muted); grid-column:1/-1}
 
   @media (max-width:620px){ .tiles{grid-template-columns:repeat(2,1fr)} .frow{grid-template-columns:1fr} }
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+  .etabs{display:inline-flex;background:#EEF1F3;border-radius:10px;padding:3px;margin-bottom:16px}
+  .etabs button{font:inherit;font-weight:600;font-size:13.5px;border:none;background:none;color:var(--muted);padding:8px 14px;border-radius:8px;cursor:pointer}
+  .etabs button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+  .pcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;border-top:4px solid var(--line)}
+  .pcard.bad{border-top-color:var(--bad)} .pcard.warn{border-top-color:var(--warn)} .pcard.ok{border-top-color:var(--ok)}
+  .ph{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+  .pn{font-weight:700;font-size:15.5px} .pl{font-size:12.5px;color:var(--muted)}
+  .badge{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .badge.bad{background:var(--bad-bg);color:var(--bad)} .badge.warn{background:var(--warn-bg);color:var(--warn)} .badge.ok{background:var(--ok-bg);color:var(--ok)} .badge.muted{background:#EEF1F3;color:var(--muted)}
+  .meta{font-size:13px;color:#3B4A55}
+  .form2{display:grid;grid-template-columns:1fr 1fr;gap:12px} .form2 .full{grid-column:1/-1}
+  .err{background:var(--bad-bg);color:var(--bad);padding:9px 12px;border-radius:9px;font-size:13px;margin-bottom:12px}
+  .note{background:var(--ok-bg);border:1px solid #CDE7DD;border-radius:12px;padding:10px 12px;font-size:13px;color:var(--primary-ink)}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+  .tile.t-ink{border-left-color:var(--ink)} .tile.t-warn{border-left-color:var(--warn)}
 </style>
 </head>
 <body>
@@ -256,7 +272,7 @@ function PontoCard({ ponto, leituras, onRegistrar, onReload }) {
   );
 }
 
-function App() {
+function AppTemperatura() {
   const [pontos, setPontos] = useState([]);
   const [leituras, setLeituras] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -318,17 +334,7 @@ function App() {
   ];
 
   return (
-    <div className="wrap">
-      <div className="top">
-        <div className="brand">
-          <h1>Equipamentos</h1>
-          <p>Temperatura de geladeiras e freezers — imunobiológicos e amostras</p>
-        </div>
-        <span className={"mode " + (sb ? "live" : "demo")}>
-          {sb ? "● Conectado ao Supabase" : "○ Modo demo — nada é salvo"}
-        </span>
-      </div>
-
+    <div>
       <div className="tiles">
         {tiles.map(([k,l,cls]) => (
           <div key={k} className={"tile " + cls}>
@@ -400,6 +406,141 @@ function RegistroModal({ ponto, onClose, onSave }) {
   );
 }
 
+
+/* ===================== MANUTENÇÃO DE EQUIPAMENTOS ===================== */
+const TIPOS_EQ=["Ultrassom","Autoclave","Centrífuga","Microscópio","Incubadora","Aparelho de anestesia","Monitor","Balança","Ar-condicionado","Computador/TI","Outro"];
+const addMeses=(iso,n)=>{ if(!iso) return null; const [y,m,d]=iso.split("-").map(Number); const dt=new Date(y,m-1+n,d); return dt.toISOString().slice(0,10); };
+const diasAte=(iso)=> iso ? Math.round((new Date(iso)-new Date(new Date().toISOString().slice(0,10)))/864e5) : null;
+function statusEq(e){
+  const d=diasAte(e.proxima_manutencao), c=diasAte(e.calibracao_validade);
+  if((d!==null && d<0) || (c!==null && c<0)) return {cls:"bad", t: d!==null&&d<0 ? `manutenção vencida há ${-d}d` : `calibração vencida há ${-c}d`};
+  if((d!==null && d<=30) || (c!==null && c<=30)) return {cls:"warn", t: d!==null&&d<=30 ? `manutenção em ${d}d` : `calibração em ${c}d`};
+  if(d===null && c===null) return {cls:"muted", t:"sem data programada"};
+  return {cls:"ok", t: d!==null ? `em dia · próxima em ${d}d` : `em dia`};
+}
+function AppManutencao(){
+  const [eqs,setEqs]=useState([]); const [hist,setHist]=useState([]); const [loading,setLoading]=useState(true);
+  const [edit,setEdit]=useState(null); const [manut,setManut]=useState(null); const [verHist,setVerHist]=useState(null);
+  async function load(){
+    setLoading(true);
+    if(sb){ const [e,h]=await Promise.all([ sb.from("clinica_equipamentos").select("*").order("nome"), sb.from("clinica_manutencoes").select("*").order("data",{ascending:false}) ]);
+      if(e.error) alert(e.error.message); setEqs(e.data||[]); setHist(h.data||[]); }
+    else { setEqs([{id:"1",nome:"Ultrassom GE Voluson",tipo:"Ultrassom",local:"Consultório 1",ultima_manutencao:"2026-03-10",periodicidade_meses:12,proxima_manutencao:"2027-03-10",calibracao_validade:"2026-10-01",ativo:true}]); setHist([]); }
+    setLoading(false);
+  }
+  useEffect(()=>{ load(); },[]);
+  async function salvar(f){
+    const payload={ nome:f.nome, tipo:f.tipo||null, local:f.local||null, serie:f.serie||null, fabricante:f.fabricante||null,
+      ultima_manutencao:f.ultima_manutencao||null, periodicidade_meses:Number(f.periodicidade_meses)||12,
+      proxima_manutencao: f.proxima_manutencao || (f.ultima_manutencao ? addMeses(f.ultima_manutencao, Number(f.periodicidade_meses)||12) : null),
+      calibracao_validade:f.calibracao_validade||null, responsavel:f.responsavel||null, obs:f.obs||null, ativo:true };
+    if(!payload.nome) return "Informe o nome do equipamento.";
+    if(sb){ const r= f.id ? await sb.from("clinica_equipamentos").update(payload).eq("id",f.id) : await sb.from("clinica_equipamentos").insert(payload); if(r.error) return r.error.message; await load(); }
+    else setEqs(p=> f.id ? p.map(x=>x.id===f.id?{...x,...payload}:x) : [...p,{...payload,id:"n"+Date.now()}]);
+    setEdit(null); return null;
+  }
+  async function registrar(f){
+    const e=manut; const data=f.data||new Date().toISOString().slice(0,10);
+    const upd={ ultima_manutencao:data, proxima_manutencao:addMeses(data, e.periodicidade_meses||12) };
+    if(f.tipo==="calibracao" && f.calibracao_validade) upd.calibracao_validade=f.calibracao_validade;
+    if(sb){ const r1=await sb.from("clinica_manutencoes").insert({ equipamento_id:e.id, data, tipo:f.tipo, empresa:f.empresa||null, custo:f.custo?Number(f.custo):null, obs:f.obs||null }); if(r1.error) return r1.error.message;
+      const r2=await sb.from("clinica_equipamentos").update(upd).eq("id",e.id); if(r2.error) return r2.error.message; await load(); }
+    else setEqs(p=>p.map(x=>x.id===e.id?{...x,...upd}:x));
+    setManut(null); return null;
+  }
+  async function excluir(e){ if(!confirm("Excluir "+e.nome+"?")) return; if(sb){ const r=await sb.from("clinica_equipamentos").delete().eq("id",e.id); if(r.error) return alert(r.error.message); await load(); } else setEqs(p=>p.filter(x=>x.id!==e.id)); }
+  const fmt=(iso)=> iso ? iso.slice(8,10)+"/"+iso.slice(5,7)+"/"+iso.slice(0,4) : "—";
+  const c={ bad:eqs.filter(e=>statusEq(e).cls==="bad").length, warn:eqs.filter(e=>statusEq(e).cls==="warn").length, ok:eqs.filter(e=>statusEq(e).cls==="ok").length };
+  return (
+    <>
+      <div className="tiles">
+        <div className="tile t-bad"><div className="n">{c.bad}</div><div className="l">Vencidos</div></div>
+        <div className="tile t-warn"><div className="n">{c.warn}</div><div className="l">Vencem em 30 dias</div></div>
+        <div className="tile t-ok"><div className="n">{c.ok}</div><div className="l">Em dia</div></div>
+        <div className="tile t-ink"><div className="n">{eqs.length}</div><div className="l">Equipamentos</div></div>
+      </div>
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}><button className="btn btn-primary" onClick={()=>setEdit({ periodicidade_meses:12 })}>+ Equipamento</button></div>
+      <div className="grid">
+        {loading ? <div className="empty">Carregando…</div> : eqs.length===0 ? <div className="empty">Nenhum equipamento cadastrado. Comece pelo ultrassom, autoclave, centrífuga…</div> :
+         eqs.map(e=>{ const st=statusEq(e); return (
+          <div key={e.id} className={"pcard "+st.cls}>
+            <div className="ph"><div><div className="pn">{e.nome}</div><div className="pl">{[e.tipo,e.local].filter(Boolean).join(" · ")}{e.serie?` · nº ${e.serie}`:""}</div></div><span className={"badge "+st.cls}>{st.t}</span></div>
+            <div className="meta" style={{marginTop:8}}>Última manutenção: <b>{fmt(e.ultima_manutencao)}</b> · a cada {e.periodicidade_meses} meses · próxima: <b>{fmt(e.proxima_manutencao)}</b>{e.calibracao_validade?<> · calibração até <b>{fmt(e.calibracao_validade)}</b></>:null}</div>
+            <div className="acts" style={{marginTop:12,display:"flex",gap:8,flexWrap:"wrap"}}>
+              <button className="btn btn-primary btn-sm" onClick={()=>setManut(e)}>Registrar manutenção</button>
+              <button className="btn btn-ghost btn-sm" onClick={()=>setEdit(e)}>Editar</button>
+              <button className="btn btn-ghost btn-sm" onClick={()=>setVerHist(e)}>Histórico ({hist.filter(h=>h.equipamento_id===e.id).length})</button>
+              <button className="btn btn-ghost btn-sm" onClick={()=>excluir(e)}>Excluir</button>
+            </div>
+            {verHist && verHist.id===e.id && <div style={{marginTop:10,borderTop:"1px solid var(--line)",paddingTop:8,fontSize:13}}>
+              {hist.filter(h=>h.equipamento_id===e.id).length===0 ? <span style={{color:"var(--muted)"}}>Sem manutenções registradas.</span> :
+               hist.filter(h=>h.equipamento_id===e.id).map(h=><div key={h.id} style={{padding:"4px 0"}}><b>{fmt(h.data)}</b> · {h.tipo}{h.empresa?` · ${h.empresa}`:""}{h.custo?` · R$ ${Number(h.custo).toFixed(2)}`:""}{h.obs?` — ${h.obs}`:""}</div>)}
+            </div>}
+          </div> ); })}
+      </div>
+      {edit && <EqModal e={edit} onClose={()=>setEdit(null)} onSave={salvar} />}
+      {manut && <ManutModal e={manut} onClose={()=>setManut(null)} onSave={registrar} />}
+    </>
+  );
+}
+function EqModal({ e, onClose, onSave }){
+  const [f,setF]=useState({ id:e.id, nome:e.nome||"", tipo:e.tipo||"Ultrassom", local:e.local||"", serie:e.serie||"", fabricante:e.fabricante||"", ultima_manutencao:e.ultima_manutencao||"", periodicidade_meses:e.periodicidade_meses||12, proxima_manutencao:e.proxima_manutencao||"", calibracao_validade:e.calibracao_validade||"", responsavel:e.responsavel||"", obs:e.obs||"" });
+  const [err,setErr]=useState(""); const set=(k,v)=>setF(x=>({...x,[k]:v}));
+  async function submit(){ const er=await onSave(f); if(er) setErr(er); }
+  return (<div className="overlay" onClick={onClose}><div className="modal" onClick={ev=>ev.stopPropagation()} style={{maxWidth:560}}>
+    <h2>{f.id?"Editar equipamento":"Novo equipamento"}</h2>{err && <div className="err">{err}</div>}
+    <div className="form2">
+      <div className="field full"><label>Nome</label><input value={f.nome} onChange={ev=>set("nome",ev.target.value)} placeholder="Ex.: Ultrassom GE Voluson" /></div>
+      <div className="field"><label>Tipo</label><select value={f.tipo} onChange={ev=>set("tipo",ev.target.value)}>{TIPOS_EQ.map(t=><option key={t}>{t}</option>)}</select></div>
+      <div className="field"><label>Local</label><input value={f.local} onChange={ev=>set("local",ev.target.value)} /></div>
+      <div className="field"><label>Nº de série</label><input value={f.serie} onChange={ev=>set("serie",ev.target.value)} /></div>
+      <div className="field"><label>Fabricante</label><input value={f.fabricante} onChange={ev=>set("fabricante",ev.target.value)} /></div>
+      <div className="field"><label>Última manutenção</label><input type="date" value={f.ultima_manutencao} onChange={ev=>set("ultima_manutencao",ev.target.value)} /></div>
+      <div className="field"><label>Periodicidade (meses)</label><input type="number" min="1" value={f.periodicidade_meses} onChange={ev=>set("periodicidade_meses",ev.target.value)} /></div>
+      <div className="field"><label>Próxima (vazio = calcula)</label><input type="date" value={f.proxima_manutencao} onChange={ev=>set("proxima_manutencao",ev.target.value)} /></div>
+      <div className="field"><label>Calibração válida até</label><input type="date" value={f.calibracao_validade} onChange={ev=>set("calibracao_validade",ev.target.value)} /></div>
+      <div className="field"><label>Responsável</label><input value={f.responsavel} onChange={ev=>set("responsavel",ev.target.value)} /></div>
+      <div className="field full"><label>Observações</label><input value={f.obs} onChange={ev=>set("obs",ev.target.value)} /></div>
+    </div>
+    <div className="modal-actions"><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={submit}>Salvar</button></div>
+  </div></div>);
+}
+function ManutModal({ e, onClose, onSave }){
+  const [f,setF]=useState({ data:new Date().toISOString().slice(0,10), tipo:"preventiva", empresa:"", custo:"", calibracao_validade:"", obs:"" });
+  const [err,setErr]=useState(""); const set=(k,v)=>setF(x=>({...x,[k]:v}));
+  async function submit(){ const er=await onSave(f); if(er) setErr(er); }
+  return (<div className="overlay" onClick={onClose}><div className="modal" onClick={ev=>ev.stopPropagation()}>
+    <h2>Registrar manutenção · {e.nome}</h2>{err && <div className="err">{err}</div>}
+    <div className="form2">
+      <div className="field"><label>Data</label><input type="date" value={f.data} onChange={ev=>set("data",ev.target.value)} /></div>
+      <div className="field"><label>Tipo</label><select value={f.tipo} onChange={ev=>set("tipo",ev.target.value)}><option value="preventiva">Preventiva</option><option value="corretiva">Corretiva</option><option value="calibracao">Calibração</option></select></div>
+      {f.tipo==="calibracao" && <div className="field full"><label>Nova validade da calibração</label><input type="date" value={f.calibracao_validade} onChange={ev=>set("calibracao_validade",ev.target.value)} /></div>}
+      <div className="field"><label>Empresa/técnico</label><input value={f.empresa} onChange={ev=>set("empresa",ev.target.value)} /></div>
+      <div className="field"><label>Custo (R$)</label><input type="number" step="0.01" value={f.custo} onChange={ev=>set("custo",ev.target.value)} /></div>
+      <div className="field full"><label>Observações</label><input value={f.obs} onChange={ev=>set("obs",ev.target.value)} /></div>
+    </div>
+    <div className="note" style={{marginTop:8}}>Ao salvar, a "última manutenção" vira esta data e a próxima é recalculada pela periodicidade.</div>
+    <div className="modal-actions"><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={submit}>Salvar</button></div>
+  </div></div>);
+}
+
+/* ===== casca com abas ===== */
+function App(){
+  const [aba,setAba]=useState("temperatura");
+  return (
+    <div className="wrap">
+      <div className="top">
+        <div className="brand"><h1>Equipamentos</h1><p>{aba==="temperatura"?"Temperatura de geladeiras e freezers — imunobiológicos e amostras":"Manutenção preventiva e calibração — ultrassom, autoclave, centrífuga…"}</p></div>
+        <span className={"mode " + (sb ? "live" : "demo")}>{sb ? "● Conectado ao Supabase" : "○ Modo demo — nada é salvo"}</span>
+      </div>
+      <div className="etabs">
+        <button className={aba==="temperatura"?"on":""} onClick={()=>setAba("temperatura")}>Temperatura</button>
+        <button className={aba==="manutencao"?"on":""} onClick={()=>setAba("manutencao")}>Manutenção</button>
+      </div>
+      {aba==="temperatura" ? <AppTemperatura embutido /> : <AppManutencao />}
+    </div>
+  );
+}
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 </body>
