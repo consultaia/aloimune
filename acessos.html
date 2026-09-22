@@ -67,7 +67,8 @@
 <script type="text/babel">
 const { useState, useEffect } = React;
 const sb=(SUPABASE_URL&&SUPABASE_ANON_KEY)?supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
-const PAPEIS=[["gestor","Gestor (acesso total)"],["auditoria","Chefe / Auditoria"],["medico","Médico"],["funcionario","Funcionário"],["quiosque","Quiosque (iPad de ponto)"]];
+const PAPEIS=[["gestor","Gestor (acesso total)"],["auditoria","Chefe / Auditoria"],["medico","Médico"],["recepcionista","Recepcionista (agenda, atendimentos, disponibilidade)"],["funcionario","Funcionário (inventário e agenda)"]];
+const LOGIN_POR_CODIGO=["funcionario","recepcionista"];
 const LABEL=Object.fromEntries(PAPEIS);
 
 async function chamar(action, extra){
@@ -105,7 +106,7 @@ function App(){
   useEffect(()=>{ carregar(); },[]);
 
   async function criar(){
-    const func = novo.papel==="funcionario";
+    const func = LOGIN_POR_CODIGO.includes(novo.papel);
     let email = novo.email, senha = novo.senha;
     if(func){
       const cod=(novo.codigo||"").replace(/\D/g,"");
@@ -182,7 +183,7 @@ function App(){
           <div className="field"><label>Perfil</label>
             <select value={novo.papel} onChange={e=>setNovo({...novo,papel:e.target.value, criarColaborador:(e.target.value==="funcionario"||e.target.value==="medico")})}>{PAPEIS.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
 
-          {novo.papel==="funcionario" ? (
+          {LOGIN_POR_CODIGO.includes(novo.papel) ? (
             <div className="field"><label>Código de acesso (6 números)</label>
               <input value={novo.codigo} onChange={e=>setNovo({...novo,codigo:e.target.value.replace(/\D/g,"").slice(0,6)})} placeholder="ex.: 483920" inputMode="numeric" /></div>
           ) : (<>
