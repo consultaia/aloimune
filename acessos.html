@@ -71,11 +71,17 @@ const PAPEIS=[["gestor","Gestor (acesso total)"],["auditoria","Chefe / Auditoria
 const LABEL=Object.fromEntries(PAPEIS);
 
 async function chamar(action, extra){
-  const { data:{ session } } = await sb.auth.getSession();
-  const r = await fetch(WORKER_URL, { method:"POST",
-    headers:{ "Content-Type":"application/json", authorization:"Bearer "+(session?.access_token||"") },
-    body: JSON.stringify({ action, ...extra }) });
-  return r.json();
+  try{
+    const { data:{ session } } = await sb.auth.getSession();
+    if(!session) return { error:"Você não está logada. Entre de novo na plataforma." };
+    const r = await fetch(WORKER_URL, { method:"POST",
+      headers:{ "Content-Type":"application/json", authorization:"Bearer "+session.access_token },
+      body: JSON.stringify({ action, ...extra }) });
+    const txt = await r.text();
+    let j; try{ j=JSON.parse(txt); }catch(_){ return { error:"O Worker respondeu algo inesperado (HTTP "+r.status+"): "+txt.slice(0,160) }; }
+    if(!r.ok && !j.error) j.error="Erro HTTP "+r.status;
+    return j;
+  }catch(e){ return { error:"Não consegui falar com o Worker ("+(e.message||e)+"). Confira a URL do Worker e sua internet." }; }
 }
 
 function App(){
@@ -84,10 +90,15 @@ function App(){
   const [salvando,setSalvando]=useState(false);
   const configOK = sb && WORKER_URL;
 
+  const [diag,setDiag]=useState(null); // {email, papel, worker:"ok"|"erro", erro}
   async function carregar(){
     setLoading(true);
     if(!configOK){ setLoading(false); return; }
+    const { data:{ session } } = await sb.auth.getSession();
+    let papel=null;
+    if(session){ const { data } = await sb.from("perfis").select("papel").eq("id",session.user.id).maybeSingle(); papel=data?.papel||null; }
     const res=await chamar("listar");
+    setDiag({ email:session?.user?.email||"—", papel, worker: res.ok?"ok":"erro", erro: res.ok?null:(res.error||"Erro ao listar.") });
     if(res.ok) setUsers(res.usuarios||[]); else setMsg({geral:res.error||"Erro ao listar."});
     setLoading(false);
   }
@@ -125,17 +136,29 @@ function App(){
       </div>
 
       {!configOK && <div className="cfg">Falta configurar: preencha as chaves do Supabase e a URL do Worker no topo deste arquivo (veja o acessos-worker.js).</div>}
+      {diag && (
+        diag.worker==="ok"
+          ? <div className="note" style={{background:"var(--ok-bg)",color:"var(--primary-ink)"}}>✓ Conectado. Você está logada como <b>{diag.email}</b> com perfil <b>{diag.papel||"—"}</b>. Tudo que você criar aqui vale na hora no login da equipe.</div>
+          : <div className="cfg" style={{lineHeight:1.55}}>
+              <b>Acessos não está operante.</b> Motivo: {diag.erro}<br/>
+              Você está logada como <b>{diag.email}</b> · perfil no banco: <b>{diag.papel||"nenhum"}</b>.
+              {diag.papel!=="gestor" && <><br/><br/><b>Como resolver:</b> só o perfil <b>gestor</b> pode gerenciar acessos. Rode no Supabase (SQL Editor), trocando o e-mail pelo seu:<br/>
+              <code style={{display:"block",background:"#fff",padding:"8px 10px",borderRadius:8,marginTop:6,fontSize:12}}>insert into public.perfis (id, papel, nome) select id, 'gestor', 'Gestora' from auth.users where email='{diag.email}' on conflict (id) do update set papel='gestor';</code>
+              Depois saia e entre de novo.</>}
+            </div>
+      )}
       <div className="note">Cada pessoa entra com o próprio login e cai direto na janela do seu perfil. Para funcionário, a senha pode ser um código só de números. Só o gestor vê esta tela.</div>
 
       <div className="panel">
         {loading ? <div className="empty">Carregando…</div> :
          users.length===0 ? <div className="empty">Nenhum acesso cadastrado ainda.</div> :
          <table>
-           <thead><tr><th>Nome</th><th>Perfil</th><th></th></tr></thead>
+           <thead><tr><th>Nome</th><th>Login</th><th>Perfil</th><th></th></tr></thead>
            <tbody>
              {users.map(u=>(
                <tr key={u.id}>
                  <td className="nome">{u.nome||"—"}</td>
+                 <td style={{fontSize:12.5,color:"var(--muted)"}}>{(u.email||"").endsWith("@clinica.local") ? "código "+(u.email||"").slice(1,7) : (u.email||"—")}</td>
                  <td>
                    <select value={u.papel} onChange={e=>mudarPapel(u.id,e.target.value)} style={{font:"inherit",padding:"5px 8px",border:"1px solid var(--line)",borderRadius:8}}>
                      {PAPEIS.map(([v,l])=><option key={v} value={v}>{l}</option>)}
