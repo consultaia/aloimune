@@ -449,7 +449,12 @@ function AgModal({ ag, profs, onClose, onSave }){
           <input list="profs" value={f.profissional} onChange={e=>set("profissional",e.target.value)} />
           <datalist id="profs">{profs.map(p=><option key={p} value={p} />)}</datalist>
         </div>
-        <div className="field full"><label>Status</label><select value={f.status} onChange={e=>set("status",e.target.value)}>{Object.entries(STATUS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div>
+        <div className="field full"><label>Status</label>
+          <select value={f.status} onChange={e=>set("status",e.target.value)}>
+            {Object.entries(STATUS).filter(([k])=> k!=="realizado" || f.status==="realizado").map(([k,v])=><option key={k} value={k}>{v}</option>)}
+          </select>
+          {f.status!=="realizado" && <div style={{fontSize:12,color:"var(--muted)",marginTop:4}}>Para concluir a consulta (valor, pagamento e retorno), use o botão <b>Realizou</b> na lista do dia.</div>}
+        </div>
       </div>
       <div className="modal-actions"><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={submit} disabled={s}>{s?"Salvando…":"Salvar"}</button></div>
     </div></div>
