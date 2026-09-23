@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pacientes</title>
+
+<!-- ==========================================================================
+     PACIENTES — acompanhamento longitudinal (jornada, pendências, evolução)
+     Regras de acesso (feitas no banco, pacientes.sql):
+       • gestora (enfermeira) e médicos: veem o clínico (médico: se a paciente é
+         compartilhada, se é o responsável, ou se a evolução é dele)
+       • recepção / chefia: só cadastro, etapa e pendências
+       • toda visualização de evolução fica registrada em clinica_auditoria
+     ========================================================================== -->
+<script>
+  const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  :root{
+    --bg:#F5F7F8; --card:#FFFFFF; --ink:#12212B; --muted:#5C6B75; --line:#E3E8EB;
+    --primary:#0E7C7B; --primary-ink:#0A5E5D; --ok:#2E7D5B; --ok-bg:#E7F4EE;
+    --warn:#B26B00; --warn-bg:#FAEED4; --bad:#C0392B; --bad-bg:#FBE5E2; --blue:#2F6DB5; --blue-bg:#E6EFF9;
+    --radius:14px; --shadow:0 1px 2px rgba(18,33,43,.06), 0 8px 24px rgba(18,33,43,.06);
+  }
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1280px;margin:0 auto;padding:22px 18px 60px}
+  .top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  h1{font-family:"Space Grotesk";font-size:26px;margin:0} .top p{margin:4px 0 0;color:var(--muted);font-size:14px}
+  .mode{font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px} .mode.live{background:var(--ok-bg);color:var(--ok)} .mode.demo{background:var(--warn-bg);color:var(--warn)}
+  .btn{font:inherit;font-weight:600;border-radius:9px;cursor:pointer;padding:9px 13px;border:1px solid transparent}
+  .btn-primary{background:var(--primary);color:#fff} .btn-ghost{background:transparent;border-color:var(--line);color:var(--ink)} .btn-sm{padding:6px 10px;font-size:12.5px} .btn:disabled{opacity:.5;cursor:default}
+  .tabs{display:inline-flex;background:#EEF1F3;border-radius:10px;padding:3px;margin-bottom:14px;flex-wrap:wrap}
+  .tabs button{font:inherit;font-weight:600;font-size:13.5px;border:none;background:none;color:var(--muted);padding:8px 14px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+  .tabs button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+  .badge{font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;background:#C6D0D4;color:#12212B} .badge.bad{background:var(--bad);color:#fff} .badge.warn{background:var(--warn);color:#fff}
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  input,select,textarea{font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink)} textarea{min-height:70px;resize:vertical;width:100%}
+  input:focus,select:focus,textarea:focus{outline:2px solid #BFE3E2;border-color:var(--primary)}
+  .note{background:var(--ok-bg);border:1px solid #CDE7DD;border-radius:12px;padding:11px 13px;font-size:13.5px;color:var(--primary-ink);line-height:1.55;margin-bottom:12px}
+  .empty{color:var(--muted);font-size:14px;padding:20px;text-align:center}
+  /* quadro */
+  .board{display:grid;grid-template-columns:repeat(6,minmax(200px,1fr));gap:12px;overflow-x:auto;padding-bottom:8px}
+  .col{background:#EEF2F4;border-radius:14px;padding:10px;min-height:280px;display:flex;flex-direction:column;gap:8px}
+  .col.over{outline:2px dashed var(--primary)}
+  .col-h{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);padding:2px 4px 6px}
+  .pcard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;cursor:grab;box-shadow:var(--shadow)}
+  .pcard:active{cursor:grabbing} .pcard .n{font-weight:700;font-size:14px} .pcard .s{font-size:12px;color:var(--muted);margin-top:2px}
+  .chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px} .chip{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#EEF1F3;color:#3B4A55}
+  .chip.bad{background:var(--bad-bg);color:var(--bad)} .chip.warn{background:var(--warn-bg);color:var(--warn)} .chip.ok{background:var(--ok-bg);color:var(--ok)} .chip.blue{background:var(--blue-bg);color:var(--blue)}
+  /* lista */
+  table{width:100%;border-collapse:collapse;background:var(--card);border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+  th{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);background:#FBFCFC}
+  td{padding:10px 12px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:middle} tr:last-child td{border-bottom:none} tr.row:hover td{background:#F7FAFB;cursor:pointer}
+  /* drawer */
+  .overlay{position:fixed;inset:0;background:rgba(18,33,43,.45);display:flex;justify-content:flex-end;z-index:50}
+  .drawer{width:min(760px,100%);height:100%;background:var(--bg);overflow:auto;box-shadow:-12px 0 40px rgba(18,33,43,.2);display:flex;flex-direction:column}
+  .dh{background:var(--card);border-bottom:1px solid var(--line);padding:16px 20px;position:sticky;top:0;z-index:2}
+  .dh h2{font-family:"Space Grotesk";margin:0;font-size:20px} .dh .s{font-size:13px;color:var(--muted);margin-top:2px}
+  .dbody{padding:16px 20px;display:flex;flex-direction:column;gap:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+  .card h3{margin:0 0 10px;font-size:14px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px} .grid .full{grid-column:1/-1}
+  .field{display:flex;flex-direction:column;gap:4px} .field label{font-size:12px;color:var(--muted);font-weight:600}
+  .pend{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13.5px} .pend:last-child{border-bottom:none}
+  .pend .d{flex:1} .pend .v{font-size:12px;color:var(--muted)} .pend.venc .v{color:var(--bad);font-weight:700}
+  .tl{border-left:2px solid var(--line);margin-left:6px;padding-left:14px} .tli{position:relative;padding:6px 0 10px;font-size:13.5px}
+  .tli::before{content:"";position:absolute;left:-20px;top:11px;width:10px;height:10px;border-radius:50%;background:var(--primary)} .tli .w{font-size:12px;color:var(--muted)}
+  .evo{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;background:#FBFCFC} .evo .h{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);margin-bottom:6px}
+  .evo b{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-top:8px} .evo p{margin:2px 0 0;white-space:pre-wrap}
+  .lock{background:var(--warn-bg);color:var(--warn);border-radius:12px;padding:12px 14px;font-size:13.5px}
+  .sw{display:inline-flex;align-items:center;gap:8px;font-size:13px}
+  .msg{font-size:13px;margin-top:8px} .msg.bad{color:var(--bad)} .msg.ok{color:var(--ok)}
+  @media (max-width:900px){ .board{grid-template-columns:repeat(6,240px)} .grid{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo, useRef } = React;
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+const ETAPAS=[
+  ["primeira_consulta","Primeira consulta"],["investigacao","Em investigação"],["aguardando_resultados","Aguardando resultados"],
+  ["tratamento","Em tratamento / ciclo"],["gestante","Gestante / alta"],["retorno","Retorno pendente"],
+];
+const ETAPA_NOME=Object.fromEntries(ETAPAS);
+const TIPOS_PEND={ exame_solicitado:"Exame solicitado", resultado_avaliar:"Resultado a avaliar", retorno:"Retorno", consentimento:"Consentimento", pagamento:"Pagamento", outro:"Outro" };
+const hojeStr=()=>new Date().toISOString().slice(0,10);
+const idade=(n)=>{ if(!n) return null; const d=new Date(n), h=new Date(); let a=h.getFullYear()-d.getFullYear(); if(h<new Date(h.getFullYear(),d.getMonth(),d.getDate())) a--; return a; };
+const fmtD=(iso)=> iso ? iso.slice(8,10)+"/"+iso.slice(5,7)+"/"+iso.slice(0,4) : "—";
+const dias=(iso)=> iso ? Math.round((new Date(iso)-new Date(hojeStr()))/864e5) : null;
+const addD=(iso,n)=>{ const [y,m,d]=iso.split("-").map(Number); return new Date(y,m-1,d+n).toISOString().slice(0,10); };
+const normTel=(t)=>{ let d=(t||"").replace(/\D/g,""); if(!d) return ""; if(d.length<=11) d="55"+d; return d; };
+const STATUS_MSG={pendente:"programada",enviada:"enviada",erro:"erro",cancelada:"cancelada"};
+
+function App(){
+  const [papel,setPapel]=useState(null); const [meuProf,setMeuProf]=useState(null); const [uid,setUid]=useState(null);
+  const [pacs,setPacs]=useState([]); const [pends,setPends]=useState([]); const [profs,setProfs]=useState([]); const [ags,setAgs]=useState([]); const [msgs,setMsgs]=useState([]);
+  const [loading,setLoading]=useState(true); const [aba,setAba]=useState("quadro");
+  const [busca,setBusca]=useState(""); const [fProf,setFProf]=useState("");
+  const [sel,setSel]=useState(null); const [novo,setNovo]=useState(false); const [over,setOver]=useState(null);
+
+  async function load(){
+    setLoading(true);
+    if(sb){
+      const { data:{ session } } = await sb.auth.getSession();
+      if(session){ setUid(session.user.id);
+        const [pf,pr]=await Promise.all([ sb.from("perfis").select("papel").eq("id",session.user.id).maybeSingle(), sb.from("profissionais").select("id,nome").eq("user_id",session.user.id).maybeSingle() ]);
+        setPapel(pf.data?.papel||null); setMeuProf(pr.data||null); }
+      const [p,pe,pro,ag,mg]=await Promise.all([
+        sb.from("clinica_pacientes").select("*").eq("ativo",true).order("nome"),
+        sb.from("clinica_pendencias").select("*").eq("status","aberta").order("vencimento",{ascending:true,nullsFirst:false}),
+        sb.from("profissionais").select("id,nome").eq("ativo",true).order("nome"),
+        sb.from("agendamentos").select("id,data,hora,status,tipo,profissional,paciente,paciente_id").order("data",{ascending:false}).limit(2000),
+        sb.from("clinica_mensagens_programadas").select("*").order("enviar_em"),
+      ]);
+      setMsgs(mg.data||[]);
+      if(p.error) alert("Pacientes: "+p.error.message);
+      setPacs(p.data||[]); setPends(pe.data||[]); setProfs(pro.data||[]); setAgs(ag.data||[]);
+    } else {
+      setPapel("gestor"); setProfs([{id:"p1",nome:"Dra. Marina Alves"},{id:"p2",nome:"Dr. André Costa"}]);
+      setPacs([{id:"a",nome:"Ana Paula Souza",nascimento:"1990-03-12",telefone:"71 99999-0000",medico_responsavel_id:"p1",compartilhada:true,etapa:"investigacao",consentimento_em:"2026-09-01T10:00:00Z"},
+               {id:"b",nome:"Carla Mendes",nascimento:"1986-11-02",medico_responsavel_id:"p1",compartilhada:false,etapa:"tratamento"},
+               {id:"c",nome:"Beatriz Lima",nascimento:"1994-07-20",medico_responsavel_id:"p2",compartilhada:true,etapa:"retorno"}]);
+      setPends([{id:"1",paciente_id:"a",tipo:"exame_solicitado",descricao:"USG transvaginal",vencimento:"2026-09-30",status:"aberta"},
+                {id:"2",paciente_id:"c",tipo:"retorno",descricao:"Retorno pós-consulta",vencimento:"2026-09-10",status:"aberta"}]);
+      setAgs([]);
+    }
+    setLoading(false);
+  }
+  useEffect(()=>{ load(); },[]);
+
+  const podeClinico=(p)=> papel==="gestor" || (papel==="medico" && (p.compartilhada || (meuProf && p.medico_responsavel_id===meuProf.id)));
+  const podeEditar = ["gestor","recepcionista","medico"].includes(papel);
+  const profNome=(id)=> (profs.find(x=>x.id===id)||{}).nome || "—";
+  const pendsDe=(pid)=> pends.filter(x=>x.paciente_id===pid);
+  const proxAg=(p)=> ags.filter(a=> a.status!=="cancelado" && a.data>=hojeStr() && (a.paciente_id===p.id || (!a.paciente_id && a.paciente && a.paciente.trim().toLowerCase()===p.nome.trim().toLowerCase()))).sort((a,b)=>a.data.localeCompare(b.data))[0];
+
+  const visiveis=pacs.filter(p=> (!busca || p.nome.toLowerCase().includes(busca.toLowerCase())) && (!fProf || p.medico_responsavel_id===fProf));
+  const pendVenc=pends.filter(x=>x.vencimento && x.vencimento<hojeStr()).length;
+
+  async function moverEtapa(p, etapa){
+    if(!podeEditar || p.etapa===etapa) return;
+    if(sb){ const r=await sb.from("clinica_pacientes").update({etapa}).eq("id",p.id); if(r.error) return alert(r.error.message); }
+    setPacs(prev=>prev.map(x=>x.id===p.id?{...x,etapa}:x));
+  }
+  async function salvarPaciente(f){
+    const payload={ nome:(f.nome||"").trim(), nascimento:f.nascimento||null, telefone:f.telefone||null, email:f.email||null,
+      medico_responsavel_id:f.medico_responsavel_id||null, compartilhada:!!f.compartilhada, etapa:f.etapa||"primeira_consulta",
+      consentimento_em: f.consentiu ? (f.consentimento_em||new Date().toISOString()) : null, obs_adm:f.obs_adm||null };
+    if(!payload.nome) return "Informe o nome.";
+    if(sb){ const r= f.id ? await sb.from("clinica_pacientes").update(payload).eq("id",f.id) : await sb.from("clinica_pacientes").insert(payload).select().single();
+      if(r.error) return r.error.message; await load(); if(!f.id && r.data) setSel(r.data); }
+    else { const np={...payload,id:f.id||("n"+Date.now())}; setPacs(p=> f.id? p.map(x=>x.id===f.id?np:x):[...p,np]); if(!f.id) setSel(np); }
+    setNovo(false); return null;
+  }
+  async function addPend(pid, f){
+    const payload={ paciente_id:pid, tipo:f.tipo, descricao:f.descricao||null, vencimento:f.vencimento||null, criado_por:uid };
+    if(sb){ const r=await sb.from("clinica_pendencias").insert(payload); if(r.error) return r.error.message; await load(); }
+    else setPends(p=>[...p,{...payload,id:"n"+Date.now(),status:"aberta"}]);
+    return null;
+  }
+  async function concluirPend(x, status="concluida"){
+    if(sb){ const r=await sb.from("clinica_pendencias").update({status, concluida_em:new Date().toISOString()}).eq("id",x.id); if(r.error) return alert(r.error.message); await load(); }
+    else setPends(p=>p.filter(y=>y.id!==x.id));
+  }
+  async function programarLembrete(pac, pend, f){
+    const tel=normTel(f.telefone); if(!tel) return "Informe o telefone (WhatsApp) da paciente.";
+    const payload={ paciente_id:pac.id, pendencia_id:pend?pend.id:null, telefone:tel, nome:(pac.nome||"").split(" ")[0], profissional:profNome(pac.medico_responsavel_id),
+      data_ref: (pend&&pend.vencimento)||f.enviar_em, tipo: pend&&pend.tipo==="retorno" ? "lembrete_retorno" : "lembrete_pendencia", texto:f.texto||null, enviar_em:f.enviar_em, criado_por:uid };
+    if(sb){ const r=await sb.from("clinica_mensagens_programadas").insert(payload); if(r.error) return r.error.message;
+      if(tel!==normTel(pac.telefone)) await sb.from("clinica_pacientes").update({telefone:f.telefone}).eq("id",pac.id);
+      await load(); }
+    else setMsgs(m=>[...m,{...payload,id:"n"+Date.now(),status:"pendente"}]);
+    return null;
+  }
+  async function cancelarLembrete(m){ if(sb){ const r=await sb.from("clinica_mensagens_programadas").update({status:"cancelada"}).eq("id",m.id); if(r.error) return alert(r.error.message); await load(); } else setMsgs(x=>x.filter(y=>y.id!==m.id)); }
+  async function auditar(acao, registro_id, detalhe){ if(sb) await sb.from("clinica_auditoria").insert({ usuario_id:uid, papel, acao, tabela:"clinica_evolucoes", registro_id, detalhe }); }
+
+  const selAtual = sel ? (pacs.find(p=>p.id===sel.id)||sel) : null;
+
+  return (
+    <div className="wrap">
+      <div className="top">
+        <div><h1>Pacientes</h1><p>Acompanhamento longitudinal — jornada, pendências e evolução</p></div>
+        <span className={"mode "+(sb?"live":"demo")}>{sb?"● Conectado ao Supabase":"○ Modo demo — nada é salvo"}</span>
+      </div>
+
+      <div className="tabs">
+        <button className={aba==="quadro"?"on":""} onClick={()=>setAba("quadro")}>Quadro da jornada</button>
+        <button className={aba==="lista"?"on":""} onClick={()=>setAba("lista")}>Lista</button>
+        <button className={aba==="pendencias"?"on":""} onClick={()=>setAba("pendencias")}>Pendências{pends.length>0 && <span className={"badge"+(pendVenc>0?" bad":"")}>{pends.length}</span>}</button>
+      </div>
+
+      <div className="toolbar">
+        <input placeholder="Buscar paciente…" value={busca} onChange={e=>setBusca(e.target.value)} style={{minWidth:220}} />
+        <select value={fProf} onChange={e=>setFProf(e.target.value)}><option value="">Todos os médicos</option>{profs.map(p=><option key={p.id} value={p.id}>{p.nome}</option>)}</select>
+        <span style={{flex:1}}></span>
+        {podeEditar && <button className="btn btn-primary" onClick={()=>setNovo(true)}>+ Nova paciente</button>}
+      </div>
+
+      {loading ? <div className="empty">Carregando…</div> : aba==="quadro" ? (
+        <div className="board">
+          {ETAPAS.map(([k,nome])=>{
+            const lista=visiveis.filter(p=>p.etapa===k);
+            return (
+              <div key={k} className={"col"+(over===k?" over":"")}
+                   onDragOver={e=>{ if(podeEditar){ e.preventDefault(); setOver(k); } }} onDragLeave={()=>setOver(null)}
+                   onDrop={e=>{ e.preventDefault(); setOver(null); const id=e.dataTransfer.getData("text/plain"); const p=pacs.find(x=>x.id===id); if(p) moverEtapa(p,k); }}>
+                <div className="col-h"><span>{nome}</span><span className="badge">{lista.length}</span></div>
+                {lista.map(p=>{
+                  const pp=pendsDe(p.id); const venc=pp.filter(x=>x.vencimento && x.vencimento<hojeStr()).length; const prox=proxAg(p);
+                  return (
+                    <div key={p.id} className="pcard" draggable={podeEditar} onDragStart={e=>e.dataTransfer.setData("text/plain",p.id)} onClick={()=>setSel(p)}>
+                      <div className="n">{p.nome}</div>
+                      <div className="s">{idade(p.nascimento)!==null?idade(p.nascimento)+" anos · ":""}{profNome(p.medico_responsavel_id)}</div>
+                      <div className="chips">
+                        {venc>0 && <span className="chip bad">{venc} vencida{venc>1?"s":""}</span>}
+                        {pp.length-venc>0 && <span className="chip warn">{pp.length-venc} pendente{pp.length-venc>1?"s":""}</span>}
+                        {prox && <span className="chip blue">consulta {fmtD(prox.data).slice(0,5)}</span>}
+                        {!p.compartilhada && <span className="chip">privada</span>}
+                        {!p.consentimento_em && <span className="chip warn">sem consentimento</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+                {lista.length===0 && <div className="empty" style={{padding:"14px 4px",fontSize:12.5}}>—</div>}
+              </div>
+            );
+          })}
+        </div>
+      ) : aba==="lista" ? (
+        <table><thead><tr><th>Paciente</th><th>Idade</th><th>Médico</th><th>Etapa</th><th>Pendências</th><th>Próxima consulta</th></tr></thead>
+          <tbody>{visiveis.map(p=>{ const pp=pendsDe(p.id); const prox=proxAg(p); return (
+            <tr key={p.id} className="row" onClick={()=>setSel(p)}>
+              <td style={{fontWeight:600}}>{p.nome}{!p.compartilhada && <span className="chip" style={{marginLeft:6}}>privada</span>}</td><td>{idade(p.nascimento)??"—"}</td><td>{profNome(p.medico_responsavel_id)}</td>
+              <td>{ETAPA_NOME[p.etapa]||p.etapa}</td><td>{pp.length? <span className={"chip "+(pp.some(x=>x.vencimento&&x.vencimento<hojeStr())?"bad":"warn")}>{pp.length}</span> : <span className="chip ok">em dia</span>}</td>
+              <td>{prox? fmtD(prox.data)+" "+(prox.hora||"").slice(0,5) : "—"}</td></tr>); })}
+            {visiveis.length===0 && <tr><td colSpan="6" className="empty">Nenhuma paciente.</td></tr>}
+          </tbody></table>
+      ) : (
+        <table><thead><tr><th>Vencimento</th><th>Paciente</th><th>Pendência</th><th>Médico</th><th></th></tr></thead>
+          <tbody>{pends.filter(x=>{ const p=pacs.find(y=>y.id===x.paciente_id); return p && visiveis.includes(p); }).map(x=>{ const p=pacs.find(y=>y.id===x.paciente_id); const d=dias(x.vencimento); return (
+            <tr key={x.id} className="row" onClick={()=>setSel(p)}>
+              <td className={d!==null&&d<0?"":""} style={{color:d!==null&&d<0?"var(--bad)":undefined,fontWeight:d!==null&&d<0?700:400}}>{x.vencimento?fmtD(x.vencimento):"—"}{d!==null&&d<0?` (há ${-d}d)`:""}</td>
+              <td style={{fontWeight:600}}>{p?.nome}</td><td>{TIPOS_PEND[x.tipo]}{x.descricao?` · ${x.descricao}`:""}</td><td>{profNome(p?.medico_responsavel_id)}</td>
+              <td>{podeEditar && <button className="btn btn-ghost btn-sm" onClick={e=>{ e.stopPropagation(); concluirPend(x); }}>Concluir</button>}</td></tr>); })}
+            {pends.length===0 && <tr><td colSpan="5" className="empty">Nenhuma pendência aberta. 🎉</td></tr>}
+          </tbody></table>
+      )}
+
+      {novo && <PacienteForm p={{compartilhada:true,etapa:"primeira_consulta"}} profs={profs} meuProf={meuProf} onClose={()=>setNovo(false)} onSave={salvarPaciente} />}
+      {selAtual && <Drawer p={selAtual} papel={papel} meuProf={meuProf} profs={profs} pends={pendsDe(selAtual.id)} ags={ags} msgs={msgs.filter(m=>m.paciente_id===selAtual.id)} podeClinico={podeClinico(selAtual)} podeEditar={podeEditar}
+        onClose={()=>setSel(null)} onSave={salvarPaciente} onAddPend={addPend} onConcluirPend={concluirPend} onMover={moverEtapa} auditar={auditar} uid={uid} reload={load}
+        onLembrete={programarLembrete} onCancelarLembrete={cancelarLembrete} />}
+    </div>
+  );
+}
+
+function PacienteForm({ p, profs, meuProf, onClose, onSave }){
+  const [f,setF]=useState({ id:p.id, nome:p.nome||"", nascimento:p.nascimento||"", telefone:p.telefone||"", email:p.email||"",
+    medico_responsavel_id:p.medico_responsavel_id||(meuProf?meuProf.id:""), compartilhada:p.compartilhada!==false, etapa:p.etapa||"primeira_consulta",
+    consentiu:!!p.consentimento_em, consentimento_em:p.consentimento_em||null, obs_adm:p.obs_adm||"" });
+  const [err,setErr]=useState(""); const [s,setS]=useState(false); const set=(k,v)=>setF(x=>({...x,[k]:v}));
+  async function submit(){ setS(true); const e=await onSave(f); setS(false); if(e) setErr(e); }
+  return (
+    <div className="overlay" onClick={onClose}><div className="drawer" onClick={e=>e.stopPropagation()} style={{width:"min(560px,100%)"}}>
+      <div className="dh"><h2>{f.id?"Editar cadastro":"Nova paciente"}</h2><div className="s">Dados administrativos — nada clínico aqui.</div></div>
+      <div className="dbody">
+        {err && <div className="lock" style={{background:"var(--bad-bg)",color:"var(--bad)"}}>{err}</div>}
+        <div className="card"><div className="grid">
+          <div className="field full"><label>Nome completo</label><input value={f.nome} onChange={e=>set("nome",e.target.value)} /></div>
+          <div className="field"><label>Nascimento</label><input type="date" value={f.nascimento} onChange={e=>set("nascimento",e.target.value)} /></div>
+          <div className="field"><label>Telefone (WhatsApp)</label><input value={f.telefone} onChange={e=>set("telefone",e.target.value)} placeholder="71 9…" /></div>
+          <div className="field full"><label>E-mail</label><input value={f.email} onChange={e=>set("email",e.target.value)} /></div>
+          <div className="field"><label>Médico responsável</label><select value={f.medico_responsavel_id} onChange={e=>set("medico_responsavel_id",e.target.value)}><option value="">—</option>{profs.map(x=><option key={x.id} value={x.id}>{x.nome}</option>)}</select></div>
+          <div className="field"><label>Etapa da jornada</label><select value={f.etapa} onChange={e=>set("etapa",e.target.value)}>{ETAPAS.map(([k,n])=><option key={k} value={k}>{n}</option>)}</select></div>
+          <div className="field full"><label className="sw"><input type="checkbox" checked={f.compartilhada} onChange={e=>set("compartilhada",e.target.checked)} /> Prontuário compartilhado com a equipe médica (desmarque para só o médico responsável ver as evoluções)</label></div>
+          <div className="field full"><label className="sw"><input type="checkbox" checked={f.consentiu} onChange={e=>set("consentiu",e.target.checked)} /> Paciente autorizou o registro dos seus dados para acompanhamento (LGPD){f.consentimento_em?` — em ${fmtD(f.consentimento_em.slice(0,10))}`:""}</label></div>
+          <div className="field full"><label>Observação administrativa</label><input value={f.obs_adm} onChange={e=>set("obs_adm",e.target.value)} placeholder="convênio, preferências de contato…" /></div>
+        </div></div>
+        <div style={{display:"flex",justifyContent:"flex-end",gap:8}}><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={submit} disabled={s}>{s?"Salvando…":"Salvar"}</button></div>
+      </div>
+    </div></div>
+  );
+}
+
+function Drawer({ p, papel, meuProf, profs, pends, ags, msgs, podeClinico, podeEditar, onClose, onSave, onAddPend, onConcluirPend, onMover, auditar, uid, reload, onLembrete, onCancelarLembrete }){
+  const [lem,setLem]=useState(null); // pendência para lembrar
+  const [tab,setTab]=useState("resumo"); const [editar,setEditar]=useState(false);
+  const [np,setNp]=useState({tipo:"exame_solicitado",descricao:"",vencimento:""}); const [msg,setMsg]=useState("");
+  const [evos,setEvos]=useState(null); const [ne,setNe]=useState({data:hojeStr(),queixa:"",achados:"",conduta:"",texto:"",pendExame:"",pendRetorno:""});
+  const profNome=(id)=> (profs.find(x=>x.id===id)||{}).nome || "—";
+  const hist=ags.filter(a=> a.paciente_id===p.id || (!a.paciente_id && a.paciente && a.paciente.trim().toLowerCase()===p.nome.trim().toLowerCase()));
+
+  async function carregarEvos(){
+    if(!podeClinico) return;
+    if(sb){ const {data,error}=await sb.from("clinica_evolucoes").select("*").eq("paciente_id",p.id).order("data",{ascending:false}); if(error){ setMsg(error.message); setEvos([]); } else setEvos(data||[]);
+      auditar("visualizou_evolucoes", p.id, "paciente="+p.id); }
+    else setEvos([]);
+  }
+  useEffect(()=>{ if(tab==="evolucao" && evos===null) carregarEvos(); },[tab]);
+
+  async function salvarEvo(){
+    if(!ne.queixa && !ne.achados && !ne.conduta && !ne.texto){ setMsg("Escreva a evolução."); return; }
+    const payload={ paciente_id:p.id, profissional_id: meuProf?meuProf.id:null, autor_id:uid, data:ne.data, queixa:ne.queixa||null, achados:ne.achados||null, conduta:ne.conduta||null, texto:ne.texto||null, etapa_na_data:p.etapa };
+    if(sb){ const r=await sb.from("clinica_evolucoes").insert(payload); if(r.error){ setMsg(r.error.message); return; } }
+    // pendências geradas pela evolução
+    if(ne.pendExame) await onAddPend(p.id,{tipo:"exame_solicitado",descricao:ne.pendExame,vencimento:null});
+    if(ne.pendRetorno){ const d=new Date(); d.setDate(d.getDate()+Number(ne.pendRetorno)); await onAddPend(p.id,{tipo:"retorno",descricao:"Retorno em "+ne.pendRetorno+" dias",vencimento:d.toISOString().slice(0,10)}); }
+    setNe({data:hojeStr(),queixa:"",achados:"",conduta:"",texto:"",pendExame:"",pendRetorno:""}); setMsg("Evolução salva."); setEvos(null); await carregarEvos(); await reload();
+  }
+  async function addP(){ const e=await onAddPend(p.id,np); if(e) setMsg(e); else { setNp({tipo:"exame_solicitado",descricao:"",vencimento:""}); setMsg(""); } }
+
+  return (
+    <div className="overlay" onClick={onClose}><div className="drawer" onClick={e=>e.stopPropagation()}>
+      <div className="dh">
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{flex:1}}><h2>{p.nome}</h2><div className="s">{idade(p.nascimento)!==null?idade(p.nascimento)+" anos · ":""}{profNome(p.medico_responsavel_id)} · {ETAPA_NOME[p.etapa]}{!p.compartilhada?" · privada":""}</div></div>
+          {podeEditar && <select value={p.etapa} onChange={e=>onMover(p,e.target.value)} style={{fontSize:13}}>{ETAPAS.map(([k,n])=><option key={k} value={k}>{n}</option>)}</select>}
+          <button className="btn btn-ghost btn-sm" onClick={onClose}>Fechar</button>
+        </div>
+        <div className="tabs" style={{marginTop:12,marginBottom:0}}>
+          <button className={tab==="resumo"?"on":""} onClick={()=>setTab("resumo")}>Resumo</button>
+          <button className={tab==="pendencias"?"on":""} onClick={()=>setTab("pendencias")}>Pendências{pends.length>0 && <span className="badge">{pends.length}</span>}</button>
+          <button className={tab==="evolucao"?"on":""} onClick={()=>setTab("evolucao")}>Evolução</button>
+          <button className={tab==="timeline"?"on":""} onClick={()=>setTab("timeline")}>Linha do tempo</button>
+        </div>
+      </div>
+      <div className="dbody">
+        {tab==="resumo" && <>
+          <div className="card"><h3>Cadastro</h3>
+            <div style={{fontSize:14,lineHeight:1.8}}>
+              Telefone: <b>{p.telefone||"—"}</b> · E-mail: <b>{p.email||"—"}</b><br/>
+              Consentimento LGPD: {p.consentimento_em? <b style={{color:"var(--ok)"}}>registrado em {fmtD(p.consentimento_em.slice(0,10))}</b> : <b style={{color:"var(--warn)"}}>ainda não registrado</b>}<br/>
+              {p.obs_adm && <>Obs.: {p.obs_adm}</>}
+            </div>
+            {podeEditar && <button className="btn btn-ghost btn-sm" style={{marginTop:10}} onClick={()=>setEditar(true)}>Editar cadastro</button>}
+          </div>
+          <div className="card"><h3>Pendências abertas</h3>
+            {pends.length===0 ? <div className="empty" style={{padding:8}}>Nenhuma.</div> : pends.map(x=>{ const d=dias(x.vencimento); return (
+              <div key={x.id} className={"pend"+(d!==null&&d<0?" venc":"")}><div className="d"><b>{TIPOS_PEND[x.tipo]}</b>{x.descricao?` · ${x.descricao}`:""}</div><div className="v">{x.vencimento?(d<0?`vencida há ${-d}d`:d===0?"hoje":`em ${d}d`):"sem prazo"}</div></div>); })}
+          </div>
+        </>}
+
+        {tab==="pendencias" && <>
+          <div className="card"><h3>Abertas</h3>
+            {pends.length===0 ? <div className="empty" style={{padding:8}}>Nenhuma pendência.</div> : pends.map(x=>{ const d=dias(x.vencimento); return (
+              <div key={x.id} className={"pend"+(d!==null&&d<0?" venc":"")}><div className="d"><b>{TIPOS_PEND[x.tipo]}</b>{x.descricao?` · ${x.descricao}`:""}</div><div className="v">{x.vencimento?fmtD(x.vencimento):"sem prazo"}</div>
+                {podeEditar && <><button className="btn btn-primary btn-sm" title="A Dri manda um WhatsApp na data que você escolher" onClick={()=>setLem(x)}>Lembrar pela Dri</button><button className="btn btn-ghost btn-sm" onClick={()=>onConcluirPend(x)}>Concluir</button><button className="btn btn-ghost btn-sm" onClick={()=>onConcluirPend(x,"cancelada")}>×</button></>}</div>); })}
+          </div>
+          <div className="card"><h3>Lembretes pela Dri (WhatsApp)</h3>
+            {(msgs||[]).filter(m=>m.status!=="cancelada").length===0 ? <div className="empty" style={{padding:8}}>Nenhum lembrete programado.</div> :
+             msgs.filter(m=>m.status!=="cancelada").map(m=>(<div key={m.id} className="pend"><div className="d">{fmtD(m.enviar_em)} · {m.tipo==="lembrete_retorno"?"retorno":"pendência"}{m.data_ref?` (ref. ${fmtD(m.data_ref)})`:""}</div>
+               <span className={"chip "+(m.status==="enviada"?"ok":m.status==="erro"?"bad":"blue")}>{STATUS_MSG[m.status]||m.status}{m.status==="erro"&&m.erro?` · ${m.erro.slice(0,60)}`:""}</span>
+               {podeEditar && m.status==="pendente" && <button className="btn btn-ghost btn-sm" onClick={()=>onCancelarLembrete(m)}>cancelar</button>}</div>))}
+          </div>
+          {podeEditar && <div className="card"><h3>Nova pendência</h3>
+            <div className="grid">
+              <div className="field"><label>Tipo</label><select value={np.tipo} onChange={e=>setNp({...np,tipo:e.target.value})}>{Object.entries(TIPOS_PEND).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div>
+              <div className="field"><label>Prazo</label><input type="date" value={np.vencimento} onChange={e=>setNp({...np,vencimento:e.target.value})} /></div>
+              <div className="field full"><label>Descrição</label><input value={np.descricao} onChange={e=>setNp({...np,descricao:e.target.value})} placeholder="ex.: USG transvaginal, AMH, espermograma…" /></div>
+            </div>
+            <div style={{display:"flex",gap:8,alignItems:"center",marginTop:10}}><button className="btn btn-primary btn-sm" onClick={addP}>Adicionar</button>{msg && <span className={"msg "+(msg.includes("salva")?"ok":"bad")}>{msg}</span>}</div>
+          </div>}
+        </>}
+
+        {tab==="evolucao" && (!podeClinico ? (
+          <div className="lock">🔒 Conteúdo clínico restrito. {papel==="medico" ? "Esta paciente está marcada como privada pelo médico responsável." : "Seu perfil vê cadastro, etapa e pendências — as evoluções ficam com a equipe clínica."}</div>
+        ) : <>
+          <div className="note">Acesso clínico registrado na auditoria. Só a equipe clínica vê este conteúdo.</div>
+          {(papel==="medico"||papel==="gestor") && <div className="card"><h3>Nova evolução</h3>
+            <div className="grid">
+              <div className="field"><label>Data</label><input type="date" value={ne.data} onChange={e=>setNe({...ne,data:e.target.value})} /></div>
+              <div className="field"><label>Profissional</label><input value={meuProf?meuProf.nome:(papel==="gestor"?"Enfermagem / gestão":"")} readOnly /></div>
+              <div className="field full"><label>Queixa / motivo</label><textarea value={ne.queixa} onChange={e=>setNe({...ne,queixa:e.target.value})} /></div>
+              <div className="field full"><label>Achados / exames</label><textarea value={ne.achados} onChange={e=>setNe({...ne,achados:e.target.value})} /></div>
+              <div className="field full"><label>Conduta / plano</label><textarea value={ne.conduta} onChange={e=>setNe({...ne,conduta:e.target.value})} /></div>
+              <div className="field"><label>Gerar pendência de exame</label><input value={ne.pendExame} onChange={e=>setNe({...ne,pendExame:e.target.value})} placeholder="ex.: AMH + USG" /></div>
+              <div className="field"><label>Programar retorno (dias)</label><select value={ne.pendRetorno} onChange={e=>setNe({...ne,pendRetorno:e.target.value})}><option value="">não</option><option value="7">7</option><option value="15">15</option><option value="30">30</option><option value="60">60</option><option value="90">90</option></select></div>
+            </div>
+            <div style={{display:"flex",gap:8,alignItems:"center",marginTop:10}}><button className="btn btn-primary" onClick={salvarEvo}>Salvar evolução</button>{msg && <span className={"msg "+(msg.includes("salva")?"ok":"bad")}>{msg}</span>}</div>
+          </div>}
+          <div className="card"><h3>Histórico clínico</h3>
+            {evos===null ? <div className="empty" style={{padding:8}}>Carregando…</div> : evos.length===0 ? <div className="empty" style={{padding:8}}>Sem evoluções ainda.</div> :
+             evos.map(e=>(<div key={e.id} className="evo"><div className="h"><span><b style={{display:"inline",textTransform:"none",letterSpacing:0,color:"var(--ink)"}}>{fmtD(e.data)}</b> · {profNome(e.profissional_id)}</span><span>{ETAPA_NOME[e.etapa_na_data]||""}</span></div>
+               {e.queixa && <><b>Queixa</b><p>{e.queixa}</p></>}{e.achados && <><b>Achados</b><p>{e.achados}</p></>}{e.conduta && <><b>Conduta</b><p>{e.conduta}</p></>}{e.texto && <><b>Notas</b><p>{e.texto}</p></>}</div>))}
+          </div>
+        </>)}
+
+        {tab==="timeline" && <div className="card"><h3>Linha do tempo (agenda)</h3>
+          {hist.length===0 ? <div className="empty" style={{padding:8}}>Nenhum agendamento vinculado. Na Agenda, escolha a paciente pelo cadastro para vincular.</div> :
+           <div className="tl">{hist.map(a=>(<div key={a.id} className="tli"><div><b>{a.tipo||"Consulta"}</b> · {a.profissional||""} · <span className="chip">{a.status}</span></div><div className="w">{fmtD(a.data)} {(a.hora||"").slice(0,5)}</div></div>))}</div>}
+        </div>}
+      </div>
+      {editar && <PacienteForm p={p} profs={profs} meuProf={meuProf} onClose={()=>setEditar(false)} onSave={async(f)=>{ const e=await onSave(f); if(!e) setEditar(false); return e; }} />}
+      {lem && <LembreteModal p={p} pend={lem} profNome={profNome} onClose={()=>setLem(null)} onSave={async(f)=>{ const e=await onLembrete(p,lem,f); if(!e) setLem(null); return e; }} />}
+    </div></div>
+  );
+}
+
+function LembreteModal({ p, pend, profNome, onClose, onSave }){
+  const base = pend.vencimento || hojeStr();
+  const sug = addD(base,-2) < hojeStr() ? hojeStr() : addD(base,-2);
+  const [f,setF]=useState({ enviar_em:sug, telefone:p.telefone||"", texto:"" });
+  const [err,setErr]=useState(""); const [s,setS]=useState(false);
+  const prof=profNome(p.medico_responsavel_id); const nome=(p.nome||"").split(" ")[0];
+  const preview = pend.tipo==="retorno"
+    ? `Olá, ${nome}! Aqui é a Dri, da clínica. Está chegando a data do seu retorno com ${prof} (previsto para ${fmtD(pend.vencimento).slice(0,5)}). Quer que eu já marque um horário pra você? É só responder esta mensagem 🙂`
+    : `Olá, ${nome}! Aqui é a Dri, da clínica. Passando para lembrar: ${TIPOS_PEND[pend.tipo]}${pend.descricao?` — ${pend.descricao}`:""}. Se precisar marcar um horário, é só responder 🙂`;
+  async function submit(){ setS(true); const e=await onSave({...f, texto:f.texto||preview}); setS(false); if(e) setErr(e); }
+  return (
+    <div className="overlay" onClick={onClose} style={{alignItems:"center",justifyContent:"center"}}><div className="card" onClick={e=>e.stopPropagation()} style={{width:"min(520px,94vw)"}}>
+      <h3 style={{textTransform:"none",letterSpacing:0,fontSize:17,color:"var(--ink)"}}>Lembrar pela Dri · {TIPOS_PEND[pend.tipo]}</h3>
+      {err && <div className="lock" style={{background:"var(--bad-bg)",color:"var(--bad)",marginBottom:10}}>{err}</div>}
+      <div className="grid">
+        <div className="field"><label>Enviar em</label><input type="date" value={f.enviar_em} min={hojeStr()} onChange={e=>setF({...f,enviar_em:e.target.value})} /></div>
+        <div className="field"><label>WhatsApp da paciente</label><input value={f.telefone} onChange={e=>setF({...f,telefone:e.target.value})} placeholder="71 9…" /></div>
+        <div className="field full"><label>Mensagem (modelo)</label><textarea value={f.texto||preview} onChange={e=>setF({...f,texto:e.target.value})} /></div>
+      </div>
+      <div className="note" style={{marginTop:10}}>A Dri envia às 9h da data escolhida. Quando a paciente responder, ela já oferece horários e marca sozinha.</div>
+      <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:10}}><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={submit} disabled={s}>{s?"Programando…":"Programar"}</button></div>
+    </div></div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
