@@ -163,12 +163,18 @@ function App(){
   const [edit,setEdit]=useState(null);
 
   const [precos,setPrecos]=useState({});   // nome do procedimento -> valor
+  const [pacientes,setPacientes]=useState([]); // cadastro (id, nome, telefone) para vincular
+  const [lembretes,setLembretes]=useState([]);   // lembretes programados (por agendamento)
   const [concluir,setConcluir]=useState(null); // agendamento sendo concluído (Realizou)
   async function load(){
     setLoading(true);
-    if(sb){ const [{data,error},pr]=await Promise.all([
+    if(sb){ const [{data,error},pr,pc,pc2]=await Promise.all([
         sb.from("agendamentos").select("*").order("hora",{ascending:true}),
-        sb.from("clinica_procedimentos").select("nome,valor").eq("ativo",true) ]);
+        sb.from("clinica_procedimentos").select("nome,valor").eq("ativo",true),
+        sb.from("clinica_pacientes").select("id,nome,telefone").eq("ativo",true).order("nome"),
+        sb.from("clinica_mensagens_programadas").select("id,agendamento_id,status,enviar_em").in("status",["pendente","enviada"]) ]);
+      setLembretes(pc2?.data||[]);
+      setPacientes(pc.data||[]);
       if(error) alert("Erro Supabase: "+error.message); setRows(data||[]);
       const m={}; (pr.data||[]).forEach(x=>m[(x.nome||"").toLowerCase()]=Number(x.valor||0)); setPrecos(m); }
     else { setRows(demoData()); setPrecos({consulta:450,retorno:0,"coleta de exames":120}); }
@@ -224,7 +230,8 @@ function App(){
     const r=concluir;
     const retorno_em = f.retornoDias>0 ? addDias(r.data, f.retornoDias) : null;
     const pago = !!f.forma;
-    const atend={ agendamento_id:r.id, data:r.data, paciente:r.paciente||null, profissional:r.profissional||null,
+    const cadP = r.paciente_id || (pacientes.find(x=> (r.paciente||"").trim().toLowerCase()===x.nome.trim().toLowerCase())||{}).id || null;
+    const atend={ agendamento_id:r.id, data:r.data, paciente:r.paciente||null, paciente_id:cadP, profissional:r.profissional||null,
       tipo:r.tipo||"Consulta", valor:Number(f.valor||0), status: pago?"recebido":"realizado",
       forma_pagamento: f.forma||null, recebido_em: pago? hojeStr():null, parcelas: f.parcelas?Number(f.parcelas):null, obs:f.obs||null };
     if(sb){
@@ -232,9 +239,20 @@ function App(){
       if(up.error) return up.error.message;
       const at=await sb.from("atendimentos").upsert(atend,{ onConflict:"agendamento_id" });
       if(at.error) return at.error.message;
+      if(retorno_em && cadP){ await sb.from("clinica_pendencias").insert({ paciente_id:cadP, tipo:"retorno", descricao:"Retorno programado na consulta de "+r.data.slice(8,10)+"/"+r.data.slice(5,7), vencimento:retorno_em }); }
       await load();
     } else setRows(prev=>prev.map(x=>x.id===r.id?{...x,status:"realizado",retorno_em,retorno_status:retorno_em?"pendente":null}:x));
     setConcluir(null); return null;
+  }
+  async function lembrarPelaDri(r){
+    const cad = pacientes.find(x=> x.id===r.paciente_id) || pacientes.find(x=> (r.paciente||"").trim().toLowerCase()===x.nome.trim().toLowerCase());
+    if(!cad){ alert("Cadastre a paciente em Pacientes (com WhatsApp) e vincule o agendamento a ela para a Dri conseguir avisar."); return; }
+    let tel=(cad.telefone||"").replace(/\D/g,""); if(!tel){ tel=(prompt("WhatsApp da paciente (com DDD):")||"").replace(/\D/g,""); if(!tel) return; await sb.from("clinica_pacientes").update({telefone:tel}).eq("id",cad.id); }
+    if(tel.length<=11) tel="55"+tel;
+    const ref=r.retorno_em; const sug=addDias(ref,-2)<hojeStr()?hojeStr():addDias(ref,-2);
+    const dia=prompt("Enviar o lembrete em (AAAA-MM-DD):", sug); if(!dia) return;
+    const { error }=await sb.from("clinica_mensagens_programadas").insert({ paciente_id:cad.id, agendamento_id:r.id, telefone:tel, nome:(cad.nome||"").split(" ")[0], profissional:r.profissional||null, data_ref:ref, tipo:"lembrete_retorno", enviar_em:dia });
+    if(error) return alert(error.message); await load();
   }
   async function retornoStatus(r, st){
     if(sb){ const {error}=await sb.from("agendamentos").update({retorno_status:st}).eq("id",r.id); if(error) return alert(error.message); await load(); }
@@ -246,7 +264,9 @@ function App(){
     return e;
   }
   async function salvar(f){
+    const cad=pacientes.find(x=> (f.paciente||"").trim().toLowerCase()===x.nome.trim().toLowerCase());
     const p={ data:f.data, hora:f.hora||null, duracao_min:Number(f.duracao_min)||30, paciente:f.paciente||null,
+      paciente_id: cad? cad.id : (f.paciente_id||null),
       tipo:f.tipo||null, profissional:f.profissional||null, status:f.status||"agendado", obs:f.obs||null };
     if(sb){ const r=f.id? await sb.from("agendamentos").update(p).eq("id",f.id) : await sb.from("agendamentos").insert(p);
       if(r.error) return r.error.message; await load(); }
@@ -307,6 +327,7 @@ function App(){
                 {r.jaTem ? <span className="st" style={{background:"var(--ok-bg)",color:"var(--ok)"}}>retorno marcado</span> : <>
                   <span className={"st"+(r.dias<0?" bad":"")}>{r.dias<0?"chamar":"aguardando"}</span>
                   <button className="btn btn-primary btn-sm" onClick={()=>setEdit({ data:r.retorno_em<hojeStr()?hojeStr():r.retorno_em, hora:"", duracao_min:30, paciente:r.paciente, profissional:r.profissional, tipo:"Retorno", status:"agendado", _retornoDe:r.id })}>Agendar</button>
+                  {(()=>{ const l=lembretes.find(x=>x.agendamento_id===r.id); return l ? <span className="st" style={{background:"var(--blue-bg)",color:"var(--blue)"}}>{l.status==="enviada"?"Dri avisou":"Dri avisa "+l.enviar_em.slice(8,10)+"/"+l.enviar_em.slice(5,7)}</span> : (sb && <button className="btn btn-ghost btn-sm" onClick={()=>lembrarPelaDri(r)}>Lembrar pela Dri</button>); })()}
                   {r.retorno_status!=="contatado" && <button className="btn btn-ghost btn-sm" onClick={()=>retornoStatus(r,"contatado")}>Contatada</button>}
                   <button className="btn btn-ghost btn-sm" onClick={()=>retornoStatus(r,"dispensado")}>Dispensar</button>
                 </>}
@@ -345,7 +366,7 @@ function App(){
       </div>
       )}
 
-      {edit && <AgModal ag={edit} profs={profs} onClose={()=>setEdit(null)} onSave={salvarComRetorno} />}
+      {edit && <AgModal ag={edit} profs={profs} pacientes={pacientes} onClose={()=>setEdit(null)} onSave={salvarComRetorno} />}
       {concluir && <ConcluirModal ag={concluir} precos={precos} onClose={()=>setConcluir(null)} onSave={finalizar} />}
     </div>
   );
@@ -429,7 +450,7 @@ function ConcluirModal({ ag, precos, onClose, onSave }){
   );
 }
 
-function AgModal({ ag, profs, onClose, onSave }){
+function AgModal({ ag, profs, pacientes, onClose, onSave }){
   const [f,setF]=useState({ id:ag.id, data:ag.data||new Date().toISOString().slice(0,10), hora:ag.hora?ag.hora.slice(0,5):"",
     duracao_min:ag.duracao_min??30, paciente:ag.paciente||"", tipo:ag.tipo||"Consulta", profissional:ag.profissional||"", status:ag.status||"agendado", obs:ag.obs||"" });
   const [err,setErr]=useState(""); const [s,setS]=useState(false);
@@ -444,7 +465,8 @@ function AgModal({ ag, profs, onClose, onSave }){
         <div className="field"><label>Hora</label><input type="time" value={f.hora} onChange={e=>set("hora",e.target.value)} /></div>
         <div className="field"><label>Duração (min)</label><input type="number" value={f.duracao_min} onChange={e=>set("duracao_min",e.target.value)} /></div>
         <div className="field"><label>Tipo</label><select value={f.tipo} onChange={e=>set("tipo",e.target.value)}>{TIPOS.map(t=><option key={t}>{t}</option>)}</select></div>
-        <div className="field"><label>Paciente (iniciais/código)</label><input value={f.paciente} onChange={e=>set("paciente",e.target.value)} /></div>
+        <div className="field"><label>Paciente</label><input list="lista-pacientes" value={f.paciente} onChange={e=>set("paciente",e.target.value)} placeholder="digite para buscar no cadastro" />
+          <datalist id="lista-pacientes">{(pacientes||[]).map(x=><option key={x.id} value={x.nome} />)}</datalist></div>
         <div className="field"><label>Profissional</label>
           <input list="profs" value={f.profissional} onChange={e=>set("profissional",e.target.value)} />
           <datalist id="profs">{profs.map(p=><option key={p} value={p} />)}</datalist>
