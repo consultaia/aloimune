@@ -104,19 +104,22 @@ function Relogio(){ const [t,setT]=useState(hora());
   return <div className="clock">{t}</div>; }
 
 function Login({ onIn }){
-  const [email,setEmail]=useState(""); const [senha,setSenha]=useState("");
+  const EMAIL_QUIOSQUE="quiosque@clinica.local";
+  const [outro,setOutro]=useState(false);
+  const [email,setEmail]=useState(EMAIL_QUIOSQUE); const [senha,setSenha]=useState("");
   const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
   async function entrar(){ setErr(""); setBusy(true);
-    const { error } = await sb.auth.signInWithPassword({ email, password:senha });
-    setBusy(false); if(error){ setErr("E-mail ou senha incorretos."); return; } onIn(); }
+    const { error } = await sb.auth.signInWithPassword({ email: outro?email:EMAIL_QUIOSQUE, password:senha });
+    setBusy(false); if(error){ setErr("Senha incorreta. A senha do quiosque é definida pela gestora em Ponto → Quiosque."); return; } onIn(); }
   return (
     <div className="kiosk"><div className="login">
-      <h1>Ponto da clínica</h1>
-      <p>Login do quiosque (feito uma vez neste iPad).</p>
+      <h1>Ativar o quiosque</h1>
+      <p>Só na primeira vez neste aparelho. Digite a <b>senha do quiosque</b> (definida em Ponto → Quiosque) e ele fica ativado.</p>
       {err && <div className="err">{err}</div>}
-      <input type="email" placeholder="e-mail" value={email} onChange={e=>setEmail(e.target.value)} />
-      <input type="password" placeholder="senha" value={senha} onChange={e=>setSenha(e.target.value)} onKeyDown={e=>e.key==="Enter"&&entrar()} />
-      <button onClick={entrar} disabled={busy}>{busy?"Entrando…":"Entrar"}</button>
+      {outro && <input type="email" placeholder="e-mail da conta" value={email} onChange={e=>setEmail(e.target.value)} />}
+      <input type="password" inputMode="numeric" placeholder="senha do quiosque" value={senha} onChange={e=>setSenha(e.target.value)} onKeyDown={e=>e.key==="Enter"&&entrar()} autoFocus />
+      <button onClick={entrar} disabled={busy}>{busy?"Ativando…":"Ativar"}</button>
+      <div style={{marginTop:12,fontSize:12,opacity:.7,cursor:"pointer"}} onClick={()=>setOutro(!outro)}>{outro?"usar a conta padrão do quiosque":"entrar com outra conta"}</div>
     </div></div>
   );
 }
