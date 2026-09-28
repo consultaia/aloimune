@@ -150,9 +150,11 @@ function App(){
   const [prof,setProf]=useState(""); const [status,setStatus]=useState("");
   const [edit,setEdit]=useState(null);
 
+  const [papel,setPapel]=useState(null);
   async function load(){
     setLoading(true);
-    if(sb){ const {data,error}=await sb.from("atendimentos").select("*").order("data",{ascending:false});
+    if(sb){
+      try{ const { data:{ session } }=await sb.auth.getSession(); if(session){ const { data:pf }=await sb.from("perfis").select("papel").eq("id",session.user.id).maybeSingle(); setPapel(pf?.papel||null); } }catch(_){} const {data,error}=await sb.from("atendimentos").select("*").order("data",{ascending:false});
       if(error) alert("Erro Supabase: "+error.message); setRows(data||[]); }
     else setRows(demoData());
     setLoading(false);
@@ -299,7 +301,7 @@ function App(){
                           {r.status==="realizado"?"Marcar faturado":"Marcar recebido"}
                         </button>}
                       <button className="btn btn-ghost btn-sm" onClick={()=>setEdit(r)}>Editar</button>
-                      <button className="btn btn-ghost btn-sm" onClick={()=>excluir(r.id)}>Excluir</button>
+                      {(papel==null||papel==="gestor"||papel==="auditoria") && <button className="btn btn-ghost btn-sm" onClick={()=>excluir(r.id)}>Excluir</button>}
                     </div>
                   </td>
                 </tr>
