@@ -112,6 +112,9 @@ function App(){
   const [loading,setLoading]=useState(true); const [aba,setAba]=useState("quadro");
   const [busca,setBusca]=useState(""); const [fProf,setFProf]=useState("");
   const [sel,setSel]=useState(null); const [novo,setNovo]=useState(false); const [over,setOver]=useState(null);
+  const [aud,setAud]=useState(null);
+  async function carregarAud(){ if(!sb){ setAud([]); return; } const {data,error}=await sb.from("clinica_auditoria").select("*").order("quando",{ascending:false}).limit(300); setAud(error?[]:(data||[])); }
+  useEffect(()=>{ if(aba==="auditoria" && aud===null) carregarAud(); },[aba]);
 
   async function load(){
     setLoading(true);
@@ -203,6 +206,7 @@ function App(){
         <button className={aba==="quadro"?"on":""} onClick={()=>setAba("quadro")}>Quadro da jornada</button>
         <button className={aba==="lista"?"on":""} onClick={()=>setAba("lista")}>Lista</button>
         <button className={aba==="pendencias"?"on":""} onClick={()=>setAba("pendencias")}>Pendências{pends.length>0 && <span className={"badge"+(pendVenc>0?" bad":"")}>{pends.length}</span>}</button>
+        {(papel==="gestor"||papel==="auditoria") && <button className={aba==="auditoria"?"on":""} onClick={()=>setAba("auditoria")}>Auditoria</button>}
       </div>
 
       <div className="toolbar">
@@ -251,6 +255,16 @@ function App(){
               <td>{prox? fmtD(prox.data)+" "+(prox.hora||"").slice(0,5) : "—"}</td></tr>); })}
             {visiveis.length===0 && <tr><td colSpan="6" className="empty">Nenhuma paciente.</td></tr>}
           </tbody></table>
+      ) : aba==="auditoria" ? (
+        <div>
+          <div className="note">Registro automático (LGPD): toda criação, alteração ou visualização de evolução e cadastro fica aqui, com quem e quando. Somente gestão e chefia enxergam esta lista.</div>
+          <table><thead><tr><th>Quando</th><th>Quem (perfil)</th><th>Ação</th><th>Onde</th><th>Detalhe</th></tr></thead>
+            <tbody>{aud===null ? <tr><td colSpan="5" className="empty">Carregando…</td></tr> : aud.length===0 ? <tr><td colSpan="5" className="empty">Nenhum registro ainda.</td></tr> :
+              aud.map(a=>{ const pac = a.detalhe && a.detalhe.startsWith("paciente=") ? pacs.find(p=>p.id===a.detalhe.slice(9)) : null; return (
+              <tr key={a.id}><td style={{whiteSpace:"nowrap"}}>{new Date(a.quando).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</td>
+                <td>{a.papel||"—"}</td><td><span className="chip">{a.acao}</span></td><td>{(a.tabela||"").replace("clinica_","")}</td><td>{pac?pac.nome:(a.detalhe||"—")}</td></tr>); })}
+            </tbody></table>
+        </div>
       ) : (
         <table><thead><tr><th>Vencimento</th><th>Paciente</th><th>Pendência</th><th>Médico</th><th></th></tr></thead>
           <tbody>{pends.filter(x=>{ const p=pacs.find(y=>y.id===x.paciente_id); return p && visiveis.includes(p); }).map(x=>{ const p=pacs.find(y=>y.id===x.paciente_id); const d=dias(x.vencimento); return (
