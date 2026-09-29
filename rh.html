@@ -95,6 +95,8 @@
 <div id="root"></div>
 
 <script type="text/babel">
+const _dl=(d)=>{const x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);};
+
 const { useState, useEffect, useMemo } = React;
 
 /* Motor de prazo (mesmo do cofre). */
@@ -109,7 +111,7 @@ window.computeStatus = computeStatus;
 const sb = (SUPABASE_URL && SUPABASE_ANON_KEY) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 function demoData(){
-  const rel=(n)=>{ const x=new Date(); x.setDate(x.getDate()+n); return x.toISOString().slice(0,10); };
+  const rel=(n)=>{ const x=new Date(); x.setDate(x.getDate()+n); return _dl(x); };
   return [
     { id:"1", nome:"Marina Alves", funcao:"Médica", admissao:rel(-900), ferias_vencimento:rel(20), ferias_agendada:rel(45), exame_periodico:rel(200), conselho:"CRM 41892", conselho_validade:rel(300), nr32_validade:rel(15), aviso_dias:30 },
     { id:"2", nome:"André Costa", funcao:"Médico", admissao:rel(-500), ferias_vencimento:rel(120), ferias_agendada:null, exame_periodico:rel(-5), conselho:"CRM 55210", conselho_validade:rel(400), nr32_validade:rel(260), aviso_dias:30 },
