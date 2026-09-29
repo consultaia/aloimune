@@ -129,6 +129,8 @@
 <div id="root"></div>
 
 <script type="text/babel">
+const _dl=(d)=>{const x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);};
+
 const { useState, useEffect, useMemo } = React;
 
 /* ===========================================================================
@@ -409,8 +411,8 @@ function RegistroModal({ ponto, onClose, onSave }) {
 
 /* ===================== MANUTENÇÃO DE EQUIPAMENTOS ===================== */
 const TIPOS_EQ=["Ultrassom","Autoclave","Centrífuga","Microscópio","Incubadora","Aparelho de anestesia","Monitor","Balança","Ar-condicionado","Computador/TI","Outro"];
-const addMeses=(iso,n)=>{ if(!iso) return null; const [y,m,d]=iso.split("-").map(Number); const dt=new Date(y,m-1+n,d); return dt.toISOString().slice(0,10); };
-const diasAte=(iso)=> iso ? Math.round((new Date(iso)-new Date(new Date().toISOString().slice(0,10)))/864e5) : null;
+const addMeses=(iso,n)=>{ if(!iso) return null; const [y,m,d]=iso.split("-").map(Number); const dt=new Date(y,m-1+n,d); return _dl(dt); };
+const diasAte=(iso)=> iso ? Math.round((new Date(iso)-new Date(_dl(new Date())))/864e5) : null;
 function statusEq(e){
   const d=diasAte(e.proxima_manutencao), c=diasAte(e.calibracao_validade);
   if((d!==null && d<0) || (c!==null && c<0)) return {cls:"bad", t: d!==null&&d<0 ? `manutenção vencida há ${-d}d` : `calibração vencida há ${-c}d`};
@@ -440,7 +442,7 @@ function AppManutencao(){
     setEdit(null); return null;
   }
   async function registrar(f){
-    const e=manut; const data=f.data||new Date().toISOString().slice(0,10);
+    const e=manut; const data=f.data||_dl(new Date());
     const upd={ ultima_manutencao:data, proxima_manutencao:addMeses(data, e.periodicidade_meses||12) };
     if(f.tipo==="calibracao" && f.calibracao_validade) upd.calibracao_validade=f.calibracao_validade;
     if(sb){ const r1=await sb.from("clinica_manutencoes").insert({ equipamento_id:e.id, data, tipo:f.tipo, empresa:f.empresa||null, custo:f.custo?Number(f.custo):null, obs:f.obs||null }); if(r1.error) return r1.error.message;
@@ -506,7 +508,7 @@ function EqModal({ e, onClose, onSave }){
   </div></div>);
 }
 function ManutModal({ e, onClose, onSave }){
-  const [f,setF]=useState({ data:new Date().toISOString().slice(0,10), tipo:"preventiva", empresa:"", custo:"", calibracao_validade:"", obs:"" });
+  const [f,setF]=useState({ data:_dl(new Date()), tipo:"preventiva", empresa:"", custo:"", calibracao_validade:"", obs:"" });
   const [err,setErr]=useState(""); const set=(k,v)=>setF(x=>({...x,[k]:v}));
   async function submit(){ const er=await onSave(f); if(er) setErr(er); }
   return (<div className="overlay" onClick={onClose}><div className="modal" onClick={ev=>ev.stopPropagation()}>
