@@ -113,7 +113,7 @@
   </div>
   <div id="dri" class="phone">
     <div class="chat">
-      <div class="chat-h"><div class="av">D</div><div><div class="nm">Dri · Clínica</div><div class="st">assistente virtual · online</div></div><button id="resetBtn">reiniciar</button></div>
+      <div class="chat-h"><div class="av">D</div><div><div class="nm">Dri · Clínica Exemplo</div><div class="st">assistente virtual · online</div></div><button id="resetBtn">reiniciar</button></div>
       <div class="msgs" id="msgs"></div>
       <div class="sugest" id="sugest"></div>
       <div class="inp"><input id="txt" placeholder="Escreva como uma paciente…" autocomplete="off" /><button id="send">➤</button></div>
@@ -210,11 +210,11 @@
   function add(cls, t) { const d = document.createElement("div"); d.className = "m " + cls; d.textContent = t; msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight; return d; }
   function typing() { const d = document.createElement("div"); d.className = "m dri"; d.innerHTML = '<span class="typing"><i></i><i></i><i></i></span>'; msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight; return d; }
   async function chamar(body) {
-    const r = await fetch(CONFIG.workerDri, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ telefone: tel, ...body }) });
+    const r = await fetch(CONFIG.workerDri, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ telefone: tel, demo: true, ...body }) });
     return r.json();
   }
   async function iniciar() {
-    msgs.innerHTML = ""; add("sys", "Simulação — a mesma inteligência que atende no WhatsApp. Nada aqui é gravado na sua clínica.");
+    msgs.innerHTML = ""; add("sys", "Simulação com uma clínica fictícia — a mesma inteligência que atende no WhatsApp. Nada aqui é gravado.");
     const t = typing();
     try { const j = await chamar({ reset: true }); t.remove(); add("dri", j.resposta || "Oi! Eu sou a Dri 🙂 Como você se chama?"); }
     catch (e) { t.remove(); add("sys", "Não consegui falar com a Dri agora. Tente de novo em instantes."); }
