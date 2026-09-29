@@ -80,6 +80,8 @@
 <body>
 <div id="root"></div>
 <script type="text/babel">
+const _dl=(d)=>{const x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);};
+
 const { useState, useEffect, useMemo } = React;
 const sb=(SUPABASE_URL&&SUPABASE_ANON_KEY)?supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
 const MESES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -87,20 +89,20 @@ const CATS=["Insumos","Medicamentos","Equipamentos","Manutenção","Serviços","
 const brl=(n)=>(n||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 const fmtD=(s)=>{ if(!s)return"—"; const [y,m,d]=s.split("-"); return `${d}/${m}`; };
 
-function demoDesp(){ const rel=(n)=>{const x=new Date();x.setDate(x.getDate()+n);return x.toISOString().slice(0,10);};
+function demoDesp(){ const rel=(n)=>{const x=new Date();x.setDate(x.getDate()+n);return _dl(x);};
   return [
     {id:"1",data:rel(-2),descricao:"Reagentes de coleta",categoria:"Insumos",fornecedor:"LabSupply",valor:2400,comprovante_path:null},
     {id:"2",data:rel(-5),descricao:"Manutenção autoclave",categoria:"Manutenção",fornecedor:"TecMed",valor:850,comprovante_path:null},
     {id:"3",data:rel(-9),descricao:"Aluguel da sala",categoria:"Aluguel",fornecedor:"Imob. Centro",valor:6500,comprovante_path:null},
   ]; }
-function demoAtend(){ const rel=(n)=>{const x=new Date();x.setDate(x.getDate()+n);return x.toISOString().slice(0,10);};
+function demoAtend(){ const rel=(n)=>{const x=new Date();x.setDate(x.getDate()+n);return _dl(x);};
   return [ {data:rel(-1),valor:18000,status:"recebido"},{data:rel(-3),valor:450,status:"recebido"},{data:rel(-4),valor:1200,status:"faturado"},{data:rel(-6),valor:22000,status:"realizado"} ]; }
 
 function App(){
   const now=new Date();
   const [ano,setAno]=useState(now.getFullYear()); const [mes,setMes]=useState(now.getMonth());
   const [desp,setDesp]=useState([]); const [atend,setAtend]=useState([]); const [loading,setLoading]=useState(true);
-  const [form,setForm]=useState({ data:new Date().toISOString().slice(0,10), descricao:"", categoria:"Insumos", fornecedor:"", valor:"", file:null });
+  const [form,setForm]=useState({ data:_dl(new Date()), descricao:"", categoria:"Insumos", fornecedor:"", valor:"", file:null });
   const [saving,setSaving]=useState(false); const [msg,setMsg]=useState("");
   const [aba,setAba]=useState("resumo");   // resumo | receber | caixa | despesas | precos
   const [precos,setPrecos]=useState([]); const [novoPreco,setNovoPreco]=useState({nome:"",valor:""});
@@ -173,7 +175,7 @@ function App(){
     const payload={ data:form.data, descricao:form.descricao, categoria:form.categoria, fornecedor:form.fornecedor||null, valor:Number(form.valor)||0, comprovante_path:path };
     if(sb){ const r=await sb.from("despesas").insert(payload); if(r.error){ setSaving(false); setMsg(r.error.message); return; } await load(); }
     else setDesp(p=>[{...payload,id:"n"+Date.now()},...p]);
-    setForm({ data:new Date().toISOString().slice(0,10), descricao:"", categoria:"Insumos", fornecedor:"", valor:"", file:null });
+    setForm({ data:_dl(new Date()), descricao:"", categoria:"Insumos", fornecedor:"", valor:"", file:null });
     setSaving(false); setMsg("Despesa lançada.");
   }
   async function verComprovante(path){
@@ -306,7 +308,7 @@ function App(){
 }
 
 function RecebidoModal({ at, onClose, onSave }){
-  const [f,setF]=useState({ forma:"pix", data:new Date().toISOString().slice(0,10), parcelas:"" });
+  const [f,setF]=useState({ forma:"pix", data:_dl(new Date()), parcelas:"" });
   const [err,setErr]=useState(""); const [s,setS]=useState(false);
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
   async function submit(){ setS(true); const e=await onSave(f); setS(false); if(e) setErr(e); }
