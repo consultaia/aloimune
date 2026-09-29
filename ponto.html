@@ -89,6 +89,8 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 <body>
 <div id="root"></div>
 <script type="text/babel">
+const _dl=(d)=>{const x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);};
+
 const { useState, useEffect, useRef } = React;
 const sb=(SUPABASE_URL&&SUPABASE_ANON_KEY)?supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
 const fmtDia=(iso)=>{const d=new Date(iso);return d.toLocaleDateString("pt-BR");};
@@ -363,7 +365,7 @@ function Espelho(){
           {colabs.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
         </select>
         <div style={{flex:1}}></div>
-        <button className="btn btn-primary btn-sm" onClick={()=>setEdit({ colaborador_id:selC||colabs[0]?.id||"", tipo:"entrada", data:new Date().toISOString().slice(0,10), hora:"08:00" })}>+ Nova batida</button>
+        <button className="btn btn-primary btn-sm" onClick={()=>setEdit({ colaborador_id:selC||colabs[0]?.id||"", tipo:"entrada", data:_dl(new Date()), hora:"08:00" })}>+ Nova batida</button>
       </div>
 
       <div className="card">
