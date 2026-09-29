@@ -125,6 +125,8 @@
 <div id="root"></div>
 
 <script type="text/babel">
+const _dl=(d)=>{const x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);};
+
 const { useState, useEffect, useMemo } = React;
 const sb = (SUPABASE_URL && SUPABASE_ANON_KEY) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
@@ -132,8 +134,8 @@ const TIPOS = ["Consulta","Consulta imuno","Coleta","Procedimento","Retorno","Ci
 const STATUS = { agendado:"Agendado", confirmado:"Confirmado", realizado:"Realizado", faltou:"Faltou", cancelado:"Cancelado" };
 const DIAS = ["domingo","segunda-feira","terça-feira","quarta-feira","quinta-feira","sexta-feira","sábado"];
 const MESES = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
-const hojeStr = () => new Date().toISOString().slice(0,10);
-const addDias = (s,n)=>{ const [y,m,d]=s.split("-").map(Number); const x=new Date(y,m-1,d); x.setDate(x.getDate()+n); return x.toISOString().slice(0,10); };
+const hojeStr = () => _dl(new Date());
+const addDias = (s,n)=>{ const [y,m,d]=s.split("-").map(Number); const x=new Date(y,m-1,d); x.setDate(x.getDate()+n); return _dl(x); };
 function rotuloData(s){ const [y,m,d]=s.split("-").map(Number); const dt=new Date(y,m-1,d); return `${DIAS[dt.getDay()]}, ${String(d).padStart(2,"0")} ${MESES[m-1]}`; }
 
 function demoData(){
@@ -349,7 +351,7 @@ function App(){
               </div>
               <div className="info">
                 <div className="nome">{r.tipo}{r.paciente?` · ${r.paciente}`:""}</div>
-                <div className="sub">{r.profissional||"—"}</div>
+                <div className="sub">{r.profissional||"—"}{r.origem==="dri" && <span title="Marcada pela Dri no WhatsApp" style={{marginLeft:8,fontSize:11,padding:"1px 7px",borderRadius:99,background:"#DCF8C6",color:"#1B5E20",fontWeight:700}}>Dri</span>}{r.confirmacao_enviada_em && <span title={"Pedido de confirmação enviado pela Dri em "+new Date(r.confirmacao_enviada_em).toLocaleString("pt-BR")} style={{marginLeft:6,fontSize:11,color:"var(--muted)"}}>· confirmação enviada</span>}</div>
               </div>
               <span className={"pill p-"+r.status}>{STATUS[r.status]}</span>
               <div className="acts">
@@ -451,7 +453,7 @@ function ConcluirModal({ ag, precos, onClose, onSave }){
 }
 
 function AgModal({ ag, profs, pacientes, onClose, onSave }){
-  const [f,setF]=useState({ id:ag.id, data:ag.data||new Date().toISOString().slice(0,10), hora:ag.hora?ag.hora.slice(0,5):"",
+  const [f,setF]=useState({ id:ag.id, data:ag.data||_dl(new Date()), hora:ag.hora?ag.hora.slice(0,5):"",
     duracao_min:ag.duracao_min??30, paciente:ag.paciente||"", tipo:ag.tipo||"Consulta", profissional:ag.profissional||"", status:ag.status||"agendado", obs:ag.obs||"" });
   const [err,setErr]=useState(""); const [s,setS]=useState(false);
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
