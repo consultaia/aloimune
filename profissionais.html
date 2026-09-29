@@ -17,6 +17,7 @@
 <script>
   const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
+  const WORKER_ACESSOS = "https://acessos-clinica.janan-almeida.workers.dev"; // lista os logins de médico para vincular ao profissional
 </script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -145,7 +146,7 @@ function App(){
   const selProf = profs.find(p=>p.id===sel);
 
   async function salvarProf(f){
-    const p={ nome:f.nome, especialidade:f.especialidade||null, cor:f.cor||"#0E7C7B", ativo:f.ativo!==false };
+    const p={ nome:f.nome, especialidade:f.especialidade||null, cor:f.cor||"#0E7C7B", ativo:f.ativo!==false, user_id:f.user_id||null };
     if(!p.nome.trim()) return "Informe o nome.";
     if(sb){ const r=f.id? await sb.from("profissionais").update(p).eq("id",f.id) : await sb.from("profissionais").insert(p).select().single();
       if(r.error) return r.error.message; await load(); if(!f.id && r.data) setSel(r.data.id); }
@@ -344,8 +345,16 @@ function SemanaExcecoes({ prof, disp }){
 }
 
 function ProfModal({ p, onClose, onSave }){
-  const [f,setF]=useState({ id:p.id, nome:p.nome||"", especialidade:p.especialidade||"", cor:p.cor||"#0E7C7B", ativo:p.ativo!==false });
+  const [f,setF]=useState({ id:p.id, nome:p.nome||"", especialidade:p.especialidade||"", cor:p.cor||"#0E7C7B", ativo:p.ativo!==false, user_id:p.user_id||"" });
   const [err,setErr]=useState(""); const [s,setS]=useState(false);
+  const [logins,setLogins]=useState(null); // null = carregando/indisponível
+  useEffect(()=>{ (async()=>{
+    if(!sb || !WORKER_ACESSOS) { setLogins([]); return; }
+    try{ const { data:{ session } } = await sb.auth.getSession(); if(!session) { setLogins([]); return; }
+      const r=await fetch(WORKER_ACESSOS,{ method:"POST", headers:{ "Content-Type":"application/json", authorization:"Bearer "+session.access_token }, body:JSON.stringify({ action:"listar" }) });
+      const j=await r.json(); setLogins(j.ok ? (j.usuarios||[]).filter(u=>u.papel==="medico") : []);
+    }catch(e){ setLogins([]); }
+  })(); },[]);
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
   async function submit(){ setS(true); const e=await onSave(f); setS(false); if(e) setErr(e); }
   return (
@@ -357,6 +366,15 @@ function ProfModal({ p, onClose, onSave }){
         <div className="field full"><label>Especialidade</label><input value={f.especialidade} onChange={e=>set("especialidade",e.target.value)} placeholder="Reprodução humana, Imunologia…" /></div>
         <div className="field"><label>Cor na agenda</label><input type="color" value={f.cor} onChange={e=>set("cor",e.target.value)} style={{height:42,padding:4}} /></div>
         <div className="field full check"><input type="checkbox" id="at" checked={f.ativo} onChange={e=>set("ativo",e.target.checked)} /><label htmlFor="at" style={{margin:0}}>Ativo (recebe agendamentos)</label></div>
+        <div className="field full"><label>Login do médico (para ele ver a própria agenda)</label>
+          {logins===null ? <div style={{fontSize:13,color:"var(--muted)"}}>Carregando logins…</div> :
+           <select value={f.user_id||""} onChange={e=>set("user_id",e.target.value)}>
+             <option value="">— sem login vinculado —</option>
+             {logins.map(u=><option key={u.id} value={u.id}>{u.nome||u.email} {u.email?`(${u.email})`:""}</option>)}
+             {f.user_id && !logins.some(u=>u.id===f.user_id) && <option value={f.user_id}>(login atual)</option>}
+           </select>}
+          <div style={{fontSize:12,color:"var(--muted)",marginTop:4}}>Aparecem aqui os acessos criados em <b>Acessos</b> com perfil "Médico". Vinculado, o médico entra com o e-mail dele e cai direto em "Minha agenda".</div>
+        </div>
       </div>
       <div className="modal-actions"><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={submit} disabled={s}>{s?"Salvando…":"Salvar"}</button></div>
     </div></div>
