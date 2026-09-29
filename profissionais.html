@@ -352,7 +352,7 @@ function ProfModal({ p, onClose, onSave }){
     if(!sb || !WORKER_ACESSOS) { setLogins([]); return; }
     try{ const { data:{ session } } = await sb.auth.getSession(); if(!session) { setLogins([]); return; }
       const r=await fetch(WORKER_ACESSOS,{ method:"POST", headers:{ "Content-Type":"application/json", authorization:"Bearer "+session.access_token }, body:JSON.stringify({ action:"listar" }) });
-      const j=await r.json(); setLogins(j.ok ? (j.usuarios||[]).filter(u=>u.papel==="medico") : []);
+      const j=await r.json(); setLogins(j.ok ? (j.usuarios||[]).filter(u=>["medico","gestor","recepcionista"].includes(u.papel)).map(u=>({...u, rotulo:(u.nome||u.email||"")+(u.papel!=="medico"?` · ${u.papel}`:"")})) : []);
     }catch(e){ setLogins([]); }
   })(); },[]);
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
@@ -370,10 +370,10 @@ function ProfModal({ p, onClose, onSave }){
           {logins===null ? <div style={{fontSize:13,color:"var(--muted)"}}>Carregando logins…</div> :
            <select value={f.user_id||""} onChange={e=>set("user_id",e.target.value)}>
              <option value="">— sem login vinculado —</option>
-             {logins.map(u=><option key={u.id} value={u.id}>{u.nome||u.email} {u.email?`(${u.email})`:""}</option>)}
+             {logins.map(u=><option key={u.id} value={u.id}>{u.rotulo} {u.email?`(${u.email})`:""}</option>)}
              {f.user_id && !logins.some(u=>u.id===f.user_id) && <option value={f.user_id}>(login atual)</option>}
            </select>}
-          <div style={{fontSize:12,color:"var(--muted)",marginTop:4}}>Aparecem aqui os acessos criados em <b>Acessos</b> com perfil "Médico". Vinculado, o médico entra com o e-mail dele e cai direto em "Minha agenda".</div>
+          <div style={{fontSize:12,color:"var(--muted)",marginTop:4}}>Aparecem aqui os acessos criados em <b>Acessos</b> (médico, gestor ou recepção). Vinculado, a pessoa ganha "Minha agenda" e "Minha disponibilidade" ao entrar — o médico cai direto nelas; o gestor as vê no topo do menu.</div>
         </div>
       </div>
       <div className="modal-actions"><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={submit} disabled={s}>{s?"Salvando…":"Salvar"}</button></div>
