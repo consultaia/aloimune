@@ -6,7 +6,10 @@
 <title>Pacientes</title>
 
 <!-- ==========================================================================
-     PACIENTES — acompanhamento longitudinal (jornada, pendências, evolução)
+     PACIENTES — acompanhamento operacional (etapa, pendências, retornos)
+     PRONTUARIO=false (padrão): a aba "Evolução" (queixa/achados/conduta) fica
+       desligada — a plataforma guarda só o operacional (LGPD). Para ligar, mude
+       a constante abaixo para true (as tabelas e a auditoria já existem).
      Regras de acesso (feitas no banco, pacientes.sql):
        • gestora (enfermeira) e médicos: veem o clínico (médico: se a paciente é
          compartilhada, se é o responsável, ou se a evolução é dele)
@@ -89,20 +92,23 @@
 <div id="root"></div>
 
 <script type="text/babel">
+const _dl=(d)=>{const x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);};
+
 const { useState, useEffect, useMemo, useRef } = React;
 const sb = (SUPABASE_URL && SUPABASE_ANON_KEY) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
+const PRONTUARIO = false; // true = liga a aba Evolução (prontuário)
 const ETAPAS=[
   ["primeira_consulta","Primeira consulta"],["investigacao","Em investigação"],["aguardando_resultados","Aguardando resultados"],
   ["tratamento","Em tratamento / ciclo"],["gestante","Gestante / alta"],["retorno","Retorno pendente"],
 ];
 const ETAPA_NOME=Object.fromEntries(ETAPAS);
 const TIPOS_PEND={ exame_solicitado:"Exame solicitado", resultado_avaliar:"Resultado a avaliar", retorno:"Retorno", consentimento:"Consentimento", pagamento:"Pagamento", outro:"Outro" };
-const hojeStr=()=>new Date().toISOString().slice(0,10);
+const hojeStr=()=>_dl(new Date());
 const idade=(n)=>{ if(!n) return null; const d=new Date(n), h=new Date(); let a=h.getFullYear()-d.getFullYear(); if(h<new Date(h.getFullYear(),d.getMonth(),d.getDate())) a--; return a; };
 const fmtD=(iso)=> iso ? iso.slice(8,10)+"/"+iso.slice(5,7)+"/"+iso.slice(0,4) : "—";
 const dias=(iso)=> iso ? Math.round((new Date(iso)-new Date(hojeStr()))/864e5) : null;
-const addD=(iso,n)=>{ const [y,m,d]=iso.split("-").map(Number); return new Date(y,m-1,d+n).toISOString().slice(0,10); };
+const addD=(iso,n)=>{ const [y,m,d]=iso.split("-").map(Number); return _dl(new Date(y,m-1,d+n)); };
 const normTel=(t)=>{ let d=(t||"").replace(/\D/g,""); if(!d) return ""; if(d.length<=11) d="55"+d; return d; };
 const STATUS_MSG={pendente:"programada",enviada:"enviada",erro:"erro",cancelada:"cancelada"};
 
@@ -334,7 +340,7 @@ function Drawer({ p, papel, meuProf, profs, pends, ags, msgs, podeClinico, podeE
     if(sb){ const r=await sb.from("clinica_evolucoes").insert(payload); if(r.error){ setMsg(r.error.message); return; } }
     // pendências geradas pela evolução
     if(ne.pendExame) await onAddPend(p.id,{tipo:"exame_solicitado",descricao:ne.pendExame,vencimento:null});
-    if(ne.pendRetorno){ const d=new Date(); d.setDate(d.getDate()+Number(ne.pendRetorno)); await onAddPend(p.id,{tipo:"retorno",descricao:"Retorno em "+ne.pendRetorno+" dias",vencimento:d.toISOString().slice(0,10)}); }
+    if(ne.pendRetorno){ const d=new Date(); d.setDate(d.getDate()+Number(ne.pendRetorno)); await onAddPend(p.id,{tipo:"retorno",descricao:"Retorno em "+ne.pendRetorno+" dias",vencimento:_dl(d)}); }
     setNe({data:hojeStr(),queixa:"",achados:"",conduta:"",texto:"",pendExame:"",pendRetorno:""}); setMsg("Evolução salva."); setEvos(null); await carregarEvos(); await reload();
   }
   async function addP(){ const e=await onAddPend(p.id,np); if(e) setMsg(e); else { setNp({tipo:"exame_solicitado",descricao:"",vencimento:""}); setMsg(""); } }
@@ -350,7 +356,7 @@ function Drawer({ p, papel, meuProf, profs, pends, ags, msgs, podeClinico, podeE
         <div className="tabs" style={{marginTop:12,marginBottom:0}}>
           <button className={tab==="resumo"?"on":""} onClick={()=>setTab("resumo")}>Resumo</button>
           <button className={tab==="pendencias"?"on":""} onClick={()=>setTab("pendencias")}>Pendências{pends.length>0 && <span className="badge">{pends.length}</span>}</button>
-          <button className={tab==="evolucao"?"on":""} onClick={()=>setTab("evolucao")}>Evolução</button>
+          {PRONTUARIO && <button className={tab==="evolucao"?"on":""} onClick={()=>setTab("evolucao")}>Evolução</button>}
           <button className={tab==="timeline"?"on":""} onClick={()=>setTab("timeline")}>Linha do tempo</button>
         </div>
       </div>
