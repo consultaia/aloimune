@@ -139,6 +139,8 @@
 <div id="root"></div>
 
 <script type="text/babel">
+const _dl=(d)=>{const x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);};
+
 const { useState, useEffect, useMemo } = React;
 
 /* MOTOR DE VALIDADE (mesmo do cofre) — por lote, baseado em data. */
@@ -171,7 +173,7 @@ const CATS = ["Medicamentos","Descartáveis","Coleta/laboratório","Imunobiológ
 const sb = (SUPABASE_URL && SUPABASE_ANON_KEY) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 function demoData() {
-  const rel = (n)=>{ const x=new Date(); x.setDate(x.getDate()+n); return x.toISOString().slice(0,10); };
+  const rel = (n)=>{ const x=new Date(); x.setDate(x.getDate()+n); return _dl(x); };
   const insumos = [
     { id:"i1", nome:"Tubo a vácuo EDTA", categoria:"Coleta/laboratório", unidade:"un", estoque_ideal:200, amarelo_pct:50, vermelho_pct:20, aviso_dias:60, controlado:false },
     { id:"i2", nome:"Seringa 3 mL", categoria:"Descartáveis", unidade:"un", estoque_ideal:100, amarelo_pct:50, vermelho_pct:20, aviso_dias:60, controlado:false },
