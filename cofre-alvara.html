@@ -165,6 +165,8 @@
 <div id="root"></div>
 
 <script type="text/babel">
+const _dl=(d)=>{const x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);};
+
 const { useState, useEffect, useMemo } = React;
 
 /* ===========================================================================
@@ -213,7 +215,7 @@ const sb = (SUPABASE_URL && SUPABASE_ANON_KEY)
 /* Dados de exemplo do MODO DEMO (espelham o seed do SQL, relativos a hoje) */
 function demoData() {
   const hoje = new Date();
-  const rel = (n) => { const x = new Date(hoje); x.setDate(x.getDate() + n); return x.toISOString().slice(0,10); };
+  const rel = (n) => { const x = new Date(hoje); x.setDate(x.getDate() + n); return _dl(x); };
   const base = [
     ["Regulatório","Alvará sanitário","VISA municipal",90,65,true],
     ["Regulatório","Alvará de localização e funcionamento","Prefeitura",60,165,true],
