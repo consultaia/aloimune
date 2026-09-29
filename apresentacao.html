@@ -83,6 +83,8 @@
 <div id="root"></div>
 
 <script type="text/babel">
+const _dl=(d)=>{const x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);};
+
 const { useState, useEffect, useMemo, useRef } = React;
 
 const sb = (SUPABASE_URL && SUPABASE_ANON_KEY) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -122,22 +124,22 @@ function demo(){
       const tipo=tipos[(k+mi)%tipos.length];
       const dia=new Date(base); dia.setDate(1+((k*2)%26));
       const st = k%5===0?"realizado" : k%5===1?"faturado" : "recebido";
-      at.push({ data:dia.toISOString().slice(0,10), valor:valBase[tipo]*(1+((k%3)*0.05)), status:st, profissional:profs[k%profs.length], tipo });
+      at.push({ data:_dl(dia), valor:valBase[tipo]*(1+((k%3)*0.05)), status:st, profissional:profs[k%profs.length], tipo });
     }
   }
   // agenda últimos 6 meses: realizados e algumas faltas
   for(let i=0;i<120;i++){ const dia=new Date(d); dia.setDate(d.getDate()-i);
-    ag.push({ data:dia.toISOString().slice(0,10), status: i%9===0?"faltou":"realizado" }); }
+    ag.push({ data:_dl(dia), status: i%9===0?"faltou":"realizado" }); }
   const documentos=[
     {validade:null,aviso_dias:60,obrigatorio:true,arquivo_url:"x"},
-    {validade:new Date(Date.now()+65*864e5).toISOString().slice(0,10),aviso_dias:90},
-    {validade:new Date(Date.now()+30*864e5).toISOString().slice(0,10),aviso_dias:90},
-    {validade:new Date(Date.now()-5*864e5).toISOString().slice(0,10),aviso_dias:60},
-    {validade:new Date(Date.now()+400*864e5).toISOString().slice(0,10),aviso_dias:60},
+    {validade:_dl(new Date(Date.now()+65*864e5)),aviso_dias:90},
+    {validade:_dl(new Date(Date.now()+30*864e5)),aviso_dias:90},
+    {validade:_dl(new Date(Date.now()-5*864e5)),aviso_dias:60},
+    {validade:_dl(new Date(Date.now()+400*864e5)),aviso_dias:60},
   ];
   const despesas=[]; const cats=["Insumos","Aluguel","Manutenção","Salários","Marketing"];
   for(let mi=5;mi>=0;mi--){ const base=new Date(d.getFullYear(),d.getMonth()-mi,8);
-    cats.forEach((c,k)=>{ despesas.push({ data:base.toISOString().slice(0,10), valor:[2400,6500,900,12000,800][k]*(1+((5-mi)*0.03)), categoria:c }); }); }
+    cats.forEach((c,k)=>{ despesas.push({ data:_dl(base), valor:[2400,6500,900,12000,800][k]*(1+((5-mi)*0.03)), categoria:c }); }); }
   return { at, ag, documentos, despesas, estCritico:2, gelExc:1 };
 }
 
@@ -162,7 +164,7 @@ function agregar(raw, periodo){
   const agP=raw.ag.filter(a=>noPeriodo(a.data));
   const realizadosAg=agP.filter(a=>a.status==="realizado").length;
   const faltasAg=agP.filter(a=>a.status==="faltou").length;
-  const hojeS=new Date().toISOString().slice(0,10);
+  const hojeS=_dl(new Date());
   const retPend=raw.ag.filter(a=>a.retorno_em && ["pendente","contatado"].includes(a.retorno_status||"pendente")).length;
   const retVenc=raw.ag.filter(a=>a.retorno_em && a.retorno_em<hojeS && ["pendente","contatado"].includes(a.retorno_status||"pendente")).length;
   const doc={ vigente:0, a_vencer:0, vencido:0 };
