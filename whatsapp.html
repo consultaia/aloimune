@@ -137,6 +137,16 @@ function App(){
     setFila(f=>f.filter(x=>x.telefone!==cv.telefone)); setMsg({t:"ok",x:"Conversa marcada como resolvida. A Dri volta a atender esse número."});
   }
 
+  const [auto,setAuto]=useState(null); const [rodando,setRodando]=useState(false);
+  async function rodarAutoteste(){
+    if(demo){ setAuto({ok:true,etapas:[{etapa:"Modo demonstração",ok:true,detalhe:"sem banco real"}]}); return; }
+    setRodando(true); setAuto(null);
+    try{ const { data:{ session } } = await sb.auth.getSession();
+      const r=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json",authorization:"Bearer "+(session?.access_token||"")},body:JSON.stringify({action:"autoteste"})});
+      const j=await r.json(); setAuto(j.error?{ok:false,etapas:[{etapa:"Autoteste",ok:false,detalhe:j.error}]}:j);
+    }catch(e){ setAuto({ok:false,etapas:[{etapa:"Falar com o Worker",ok:false,detalhe:String(e)}]}); }
+    setRodando(false);
+  }
   const custoMes = stats ? (stats.lembretes+stats.confirmacoes)*CUSTO_MSG : 0;
   const conectado = status && status.whatsapp;
 
@@ -199,6 +209,14 @@ function App(){
           <div className="step"><p><b>Dois modelos de mensagem aprovados</b>"lembrete_retorno" e "confirmacao_consulta", com o texto que a Dri usa quando escreve primeiro. Aprovação em minutos a 24 h.</p></div>
           <div className="step"><p><b>Ligar o número ao cérebro da Dri</b>Colamos o token e o ID do número no Worker e apontamos o webhook da Meta para ele. A partir daí, tudo que chega no número passa pela Dri.</p></div>
           <div className="step"><p><b>Testar com a recepção</b>Marcar, remarcar, mandar áudio, pedir atendente. Só depois divulgar o número.</p></div>
+        </div></div>
+        <div className="panel"><h3>Autoteste antes de demonstrar</h3><div className="body">
+          <p style={{margin:"0 0 10px",fontSize:13.5,color:"var(--muted)"}}>Grava uma consulta de teste na agenda real, confere que ela aparece, apaga, e pede à IA uma marcação em JSON. Se tudo ficar verde, a Dri está pronta para marcar ao vivo. Leva uns 10 segundos.</p>
+          <button className="btn btn-primary" onClick={rodarAutoteste} disabled={rodando}>{rodando?"Rodando…":"Rodar autoteste agora"}</button>
+          {auto && <div style={{marginTop:12}}>
+            <div className={"msg "+(auto.ok?"ok":"bad")} style={{marginBottom:8}}>{auto.ok?"✅ Tudo verde — pode demonstrar.":"❌ Algo falhou — não demonstre antes de corrigir o item vermelho."}</div>
+            <ul style={{margin:0,paddingLeft:18,fontSize:13.5,lineHeight:1.7}}>{(auto.etapas||[]).map((e,i)=><li key={i} style={{color:e.ok?"var(--ok)":"var(--bad)"}}>{e.ok?"✅":"❌"} {e.etapa}{e.detalhe?<span style={{color:"var(--muted)"}}> — {e.detalhe}</span>:null}</li>)}</ul>
+          </div>}
         </div></div>
         <div className="panel"><h3>Estado da conexão agora</h3><div className="body">
           {demo ? <p style={{margin:0,color:"var(--muted)"}}>Modo demonstração.</p> :
