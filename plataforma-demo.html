@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Plataforma da Clínica — Demonstração</title>
+<title>Demonstração — Plataforma de Gestão de Clínicas</title>
 
 <!-- ==========================================================================
      PLATAFORMA — MODO DEMONSTRAÇÃO
@@ -37,7 +37,7 @@
   .demobar b{color:#7FD4C6}
 
   .bar{display:flex; align-items:center; gap:12px; padding:12px 18px; background:var(--card); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:10; flex-wrap:wrap}
-  .bar .logo{width:30px; height:30px; border-radius:9px; background:var(--primary); color:#fff; display:flex; align-items:center; justify-content:center; font-family:"Space Grotesk"; font-weight:700}
+  .bar .logo{width:34px; height:34px; border-radius:9px; background:#fff; border:1px solid var(--line); display:flex; align-items:center; justify-content:center; overflow:hidden} .bar .logo img{width:100%; height:100%; object-fit:contain}
   .bar .title{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:17px}
   .bar .back{font:inherit; font-weight:600; border:1px solid var(--line); background:var(--card); border-radius:9px; padding:7px 13px; cursor:pointer}
   .bar .sp{flex:1}
@@ -213,7 +213,7 @@ function App(){
       <>
         <div className="demobar">Modo <b>demonstração</b> — dados de exemplo, nada é salvo</div>
         <div className="bar">
-          <span className="logo">C</span>
+          <span className="logo" style={{background:"var(--primary)",color:"#fff",fontWeight:800,fontFamily:"Space Grotesk"}}>C</span>
           <div className="switch" style={{marginLeft:4}}>
             <button className={fv==="inventario"?"on":""} onClick={()=>setView("inventario")}>Inventário</button>
             <button className={fv==="agenda"?"on":""} onClick={()=>setView("agenda")}>Agenda</button>
@@ -229,7 +229,7 @@ function App(){
     return (
       <>
         <div className="demobar">Modo <b>demonstração</b> — dados de exemplo, nada é salvo</div>
-        <div className="bar"><span className="logo">C</span><span className="title">Ponto — Quiosque</span><span className="sp"></span>{Switch}</div>
+        <div className="bar"><span className="logo" style={{background:"var(--primary)",color:"#fff",fontWeight:800,fontFamily:"Space Grotesk"}}>C</span><span className="title">Ponto — Quiosque</span><span className="sp"></span>{Switch}</div>
         <iframe className="frame" allow="camera; microphone" src="registro-ponto.html" title="Ponto"></iframe>
       </>
     );
@@ -241,7 +241,7 @@ function App(){
       <>
         <div className="demobar">Modo <b>demonstração</b> — dados de exemplo, nada é salvo</div>
         <div className="bar">
-          <span className="logo">C</span>
+          <span className="logo" style={{background:"var(--primary)",color:"#fff",fontWeight:800,fontFamily:"Space Grotesk"}}>C</span>
           <div className="switch" style={{marginLeft:4}}>
             <button className={mv==="agenda"?"on":""} onClick={()=>setView("agenda")}>Minha agenda</button>
             <button className={mv==="disponibilidade"?"on":""} onClick={()=>setView("disponibilidade")}>Minha disponibilidade</button>
@@ -260,7 +260,7 @@ function App(){
     <>
       <div className="demobar">Modo <b>demonstração</b> — dados de exemplo, nada é salvo</div>
       <div className="bar">
-        <span className="logo">C</span>
+        <span className="logo" style={{background:"var(--primary)",color:"#fff",fontWeight:800,fontFamily:"Space Grotesk"}}>C</span>
         {view==="home"
           ? <span className="title">Plataforma da Clínica</span>
           : <><button className="back" onClick={()=>setView("home")}>‹ Início</button><span className="title">{mod?.nome}</span></>}
