@@ -118,6 +118,8 @@
 <div id="root"></div>
 
 <script type="text/babel">
+const _dl=(d)=>{const x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);};
+
 const { useState, useEffect, useMemo } = React;
 
 const sb = (SUPABASE_URL && SUPABASE_ANON_KEY) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -127,7 +129,7 @@ const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Ag
 const brl = (n)=> (n||0).toLocaleString("pt-BR",{ style:"currency", currency:"BRL" });
 
 function demoData(){
-  const rel=(n)=>{ const x=new Date(); x.setDate(x.getDate()+n); return x.toISOString().slice(0,10); };
+  const rel=(n)=>{ const x=new Date(); x.setDate(x.getDate()+n); return _dl(x); };
   return [
     { id:"1", data:rel(-1), paciente:"A.C.", tipo:"Consulta", profissional:"Dra. Marina", pacote:null, valor:450, status:"recebido" },
     { id:"2", data:rel(-1), paciente:"R.S.", tipo:"Coleta", profissional:"Enf. Paula", pacote:null, valor:180, status:"recebido" },
@@ -229,7 +231,7 @@ function App(){
         <b>{MESES[mes]} {ano}</b>
         <button className="navbtn" onClick={()=>mudarMes(1)}>›</button>
         <div style={{flex:1}}></div>
-        <button className="btn btn-primary" onClick={()=>setEdit({ data:new Date().toISOString().slice(0,10), tipo:"Consulta", status:"realizado", valor:0 })}>+ Novo atendimento</button>
+        <button className="btn btn-primary" onClick={()=>setEdit({ data:_dl(new Date()), tipo:"Consulta", status:"realizado", valor:0 })}>+ Novo atendimento</button>
       </div>
 
       <div className="tiles">
@@ -317,7 +319,7 @@ function App(){
 }
 
 function AtendModal({ at, profs, onClose, onSave }){
-  const [f,setF]=useState({ id:at.id, data:at.data||new Date().toISOString().slice(0,10), paciente:at.paciente||"",
+  const [f,setF]=useState({ id:at.id, data:at.data||_dl(new Date()), paciente:at.paciente||"",
     tipo:at.tipo||"Consulta", profissional:at.profissional||"", pacote:at.pacote||"", valor:at.valor??0, status:at.status||"realizado" });
   const [err,setErr]=useState(""); const [s,setS]=useState(false);
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
