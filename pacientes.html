@@ -117,7 +117,9 @@ function App(){
   const [pacs,setPacs]=useState([]); const [pends,setPends]=useState([]); const [profs,setProfs]=useState([]); const [ags,setAgs]=useState([]); const [msgs,setMsgs]=useState([]);
   const [loading,setLoading]=useState(true); const [aba,setAba]=useState("quadro");
   const [busca,setBusca]=useState(""); const [fProf,setFProf]=useState("");
-  const [sel,setSel]=useState(null); const [novo,setNovo]=useState(false); const [over,setOver]=useState(null);
+  const [selRaw,setSelRaw]=useState(null); const [novo,setNovo]=useState(false); const [over,setOver]=useState(null);
+  const sel=selRaw;
+  const setSel=(p)=>{ setSelRaw(p); if(p && p.id && sb) auditar("visualizou_cadastro", p.id, "paciente="+p.id, "clinica_pacientes"); };
   const [aud,setAud]=useState(null);
   async function carregarAud(){ if(!sb){ setAud([]); return; } const {data,error}=await sb.from("clinica_auditoria").select("*").order("quando",{ascending:false}).limit(300); setAud(error?[]:(data||[])); }
   useEffect(()=>{ if(aba==="auditoria" && aud===null) carregarAud(); },[aba]);
@@ -197,7 +199,7 @@ function App(){
     return null;
   }
   async function cancelarLembrete(m){ if(sb){ const r=await sb.from("clinica_mensagens_programadas").update({status:"cancelada"}).eq("id",m.id); if(r.error) return alert(r.error.message); await load(); } else setMsgs(x=>x.filter(y=>y.id!==m.id)); }
-  async function auditar(acao, registro_id, detalhe){ if(sb) await sb.from("clinica_auditoria").insert({ usuario_id:uid, papel, acao, tabela:"clinica_evolucoes", registro_id, detalhe }); }
+  async function auditar(acao, registro_id, detalhe, tabela){ if(sb) await sb.from("clinica_auditoria").insert({ usuario_id:uid, papel, acao, tabela:tabela||"clinica_evolucoes", registro_id, detalhe }); }
 
   const selAtual = sel ? (pacs.find(p=>p.id===sel.id)||sel) : null;
 
