@@ -160,7 +160,8 @@ const STATUS = {
   ok:          { label: "Na faixa",    rank: 3 },
 };
 
-const sb = (SUPABASE_URL && SUPABASE_ANON_KEY)
+const DEMO_URL = /[?&]demo=1/.test(location.search); // ?demo=1 => modo demonstração (dados fictícios, nada salvo)
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY && !DEMO_URL)
   ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 function demoData() {
