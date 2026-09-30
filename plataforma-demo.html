@@ -96,13 +96,19 @@ const MODULOS = [
   { key:"ponto",        nome:"Ponto",      src:"ponto.html",          ic:"clock" },
   { key:"acessos",      nome:"Acessos",    src:"acessos.html",        ic:"key", soloGestor:true },
   { key:"profissionais",nome:"Profissionais", src:"profissionais.html", ic:"steth" },
+  { key:"pacientes",    nome:"Pacientes",  src:"pacientes.html",      ic:"user" },
   { key:"agenda",       nome:"Agenda",     src:"agenda.html",         ic:"calendar" },
+  { key:"dri",          nome:"Dri · WhatsApp", src:"whatsapp.html",   ic:"chat" },
   { key:"apresentacao", nome:"Apresentação", src:"apresentacao.html", ic:"slides" },
 ];
+// demonstração: todo módulo abre com ?demo=1 (dados fictícios, nada é salvo)
+const demoSrc = (src) => src + (src.includes("?") ? "&" : "?") + "demo=1";
 
 function Icon({ name }){
   const p={
     doc:"M7 3h7l4 4v14H7z M14 3v4h4",
+    chat:"M4 5h16v11H9l-5 4z M8 9h8 M8 12h5",
+    user:"M20 21a8 8 0 0 0-16 0 M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
     box:"M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10",
     temp:"M12 3a2 2 0 0 1 2 2v8a4 4 0 1 1-4 0V5a2 2 0 0 1 2-2z",
     chart:"M4 20V10 M10 20V4 M16 20v-7 M22 20H2",
@@ -138,6 +144,8 @@ function Home({ onAbrir, papel }){
   if(res.documentos.warn) att.push({ sev:"warn", txt:`${res.documentos.warn} documento(s) vencendo em breve`, mod:"documentos" });
   if(res.estoque.warn) att.push({ sev:"warn", txt:`${res.estoque.warn} item(ns) de estoque para repor ou vencendo`, mod:"estoque" });
   if(res.equipe.bad) att.push({ sev:"bad", txt:`${res.equipe.bad} pendência(s) vencida(s) na equipe`, mod:"equipe" });
+  att.push({ sev:"bad", txt:"1 conversa no WhatsApp esperando um atendente", mod:"dri" });
+  att.push({ sev:"warn", txt:"3 paciente(s) com retorno pendente para chamar pela Dri", mod:"pacientes" });
   if(res.equipe.warn) att.push({ sev:"warn", txt:`${res.equipe.warn} pendência(s) da equipe vencendo em breve`, mod:"equipe" });
   if(res.atendimentos.blueN) att.push({ sev:"blue", txt:`${brl(res.atendimentos.blueV)} a faturar (${res.atendimentos.blueN} atendimentos)`, mod:"atendimentos" });
   if(res.agenda.warn) att.push({ sev:"warn", txt:`${res.agenda.warn} agendamento(s) de hoje a confirmar`, mod:"agenda" });
@@ -149,7 +157,12 @@ function Home({ onAbrir, papel }){
     if(key==="ponto") return {cls:"muted", t:"Cadastro e relatório de horas"};
     if(key==="acessos") return {cls:"muted", t:"Logins e perfis da equipe"};
     if(key==="financeiro") return {cls:"muted", t:"Receitas, despesas e resultado"};
-    const r=res[key];
+    if(key==="pacientes") return {cls:"warn", t:"3 retorno(s) a chamar"};
+    if(key==="dri") return {cls:"bad", t:"1 esperando atendente"};
+    if(key==="apresentacao") return {cls:"muted", t:"Indicadores e PDF"};
+    if(key==="profissionais") return {cls:"muted", t:"Cadastro e disponibilidade"};
+    if(key==="escala") return {cls:"muted", t:"Escala da enfermagem"};
+    const r=res[key]; if(!r) return {cls:"muted", t:""};
     if(key==="atendimentos") return r.blueN? {cls:"blue", t:`${brl(r.blueV)} a faturar`} : {cls:"ok", t:"Nada pendente"};
     if(key==="agenda") return r.total? {cls:r.warn?"warn":"blue", t:`${r.total} hoje${r.warn?` · ${r.warn} a confirmar`:""}`} : {cls:"ok", t:"Sem agendamentos hoje"};
     if(r.bad) return {cls:"bad", t:`${r.bad} precisam de atenção`};
@@ -220,7 +233,7 @@ function App(){
           </div>
           <span className="sp"></span>{Switch}
         </div>
-        <iframe className="frame" allow="camera; microphone" src={fv==="agenda" ? "agenda.html" : "estoque.html?somente=inventario"} title={fv==="agenda"?"Agenda":"Inventário"}></iframe>
+        <iframe className="frame" allow="camera; microphone" src={demoSrc(fv==="agenda" ? "agenda.html" : "estoque.html?somente=inventario")} title={fv==="agenda"?"Agenda":"Inventário"}></iframe>
       </>
     );
   }
@@ -249,7 +262,7 @@ function App(){
           <span className="sp"></span>{Switch}
         </div>
         <iframe className="frame" allow="camera; microphone"
-          src={mv==="disponibilidade" ? "profissionais.html?meu=p1" : "agenda.html?profissional=Dra.%20Marina"}
+          src={demoSrc(mv==="disponibilidade" ? "profissionais.html?meu=p1" : "agenda.html?profissional=Dra.%20Marina")}
           title={mv==="disponibilidade"?"Disponibilidade":"Agenda"}></iframe>
       </>
     );
@@ -267,7 +280,7 @@ function App(){
         <span className="sp"></span>
         {Switch}
       </div>
-      {view==="home" ? <Home onAbrir={setView} papel={papel} /> : <iframe className="frame" allow="camera; microphone" src={mod.src} title={mod.nome}></iframe>}
+      {view==="home" ? <Home onAbrir={setView} papel={papel} /> : <iframe className="frame" allow="camera; microphone" src={demoSrc(mod.src)} title={mod.nome}></iframe>}
     </>
   );
 }
