@@ -95,7 +95,8 @@
 
 <script type="text/babel">
 const { useState, useEffect, useRef } = React;
-const sb = (SUPABASE_URL && SUPABASE_ANON_KEY) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const DEMO_URL = /[?&]demo=1/.test(location.search); // demonstração: sem banco, sem logo da clínica, nada é salvo
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY && !DEMO_URL) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 const dist=(a,b)=>{let s=0;for(let i=0;i<a.length;i++){const d=a[i]-b[i];s+=d*d;}return Math.sqrt(s);};
 const hora=()=> new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
 
@@ -247,7 +248,7 @@ function Kiosk(){
 
   return (
     <div className="kiosk" onClick={()=>{ if(dormindo) acordar(); else atividade(); }} onTouchStart={()=>{ if(dormindo) acordar(); else atividade(); }}>
-      <div className="brand"><span className="logo"><img src="icon-192.png" alt="Aloimune" /></span> Ponto</div>
+      <div className="brand"><span className="logo">{DEMO_URL ? <span style={{display:"inline-flex",width:28,height:28,borderRadius:8,background:"#0E7C7B",color:"#fff",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14}}>C</span> : <img src="icon-192.png" alt="Logo da clínica" />}</span> Ponto</div>
       <Relogio/>
       {dormindo && <div className="repouso"><div className="rin"><div className="zz">●</div><div className="rt">Toque para bater o ponto</div><div className="rs">recepção · ponto eletrônico</div></div></div>}
 
