@@ -92,7 +92,8 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const _dl=(d)=>{const x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);};
 
 const { useState, useEffect, useRef } = React;
-const sb=(SUPABASE_URL&&SUPABASE_ANON_KEY)?supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
+const DEMO_URL = /[?&]demo=1/.test(location.search); // ?demo=1 => modo demonstração (dados fictícios, nada salvo)
+const sb=(SUPABASE_URL&&SUPABASE_ANON_KEY&&!DEMO_URL)?supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
 const fmtDia=(iso)=>{const d=new Date(iso);return d.toLocaleDateString("pt-BR");};
 const fmtH=(iso)=>new Date(iso).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
 
