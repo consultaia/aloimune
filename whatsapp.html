@@ -90,7 +90,8 @@
 <script type="text/babel">
 const { useState, useEffect, useMemo } = React;
 const configurado = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
-const sb = configurado ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const DEMO_URL = /[?&]demo=1/.test(location.search); // ?demo=1 => modo demonstração (dados fictícios, nada salvo)
+const sb = (configurado && !DEMO_URL) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 const fmtTel = (t)=>{ const d=String(t||"").replace(/\D/g,""); if(d.length===13) return `+${d.slice(0,2)} (${d.slice(2,4)}) ${d.slice(4,9)}-${d.slice(9)}`; if(d.length===12) return `+${d.slice(0,2)} (${d.slice(2,4)}) ${d.slice(4,8)}-${d.slice(8)}`; return t||"—"; };
 const fmtDT = (iso)=> iso ? new Date(iso).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "";
 const brl = (v)=> (Number(v)||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
@@ -106,7 +107,7 @@ function App(){
   const [papel,setPapel]=useState(null);
   const [fila,setFila]=useState([]); const [stats,setStats]=useState(null); const [status,setStatus]=useState(null);
   const [tab,setTab]=useState("fila"); const [msg,setMsg]=useState(null); const [erroRLS,setErroRLS]=useState(false);
-  const demo=!configurado;
+  const demo=!sb;
 
   async function carregar(){
     if(demo){ setFila(DEMO.fila); setStats(DEMO.stats); setStatus({whatsapp:false, ia:true, demo:true}); return; }
