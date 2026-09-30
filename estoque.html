@@ -170,7 +170,8 @@ const RANK_VAL = { vencido:0, a_vencer:1, vigente:2, permanente:3 };
 const VAL_LABEL = { vencido:"Vencido", a_vencer:"A vencer", vigente:"Vigente", permanente:"Sem validade" };
 const CATS = ["Medicamentos","Descartáveis","Coleta/laboratório","Imunobiológicos","Insumos de FIV","Escritório","Outros"];
 
-const sb = (SUPABASE_URL && SUPABASE_ANON_KEY) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const DEMO_URL = /[?&]demo=1/.test(location.search); // ?demo=1 => modo demonstração (dados fictícios, nada salvo)
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY && !DEMO_URL) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 function demoData() {
   const rel = (n)=>{ const x=new Date(); x.setDate(x.getDate()+n); return _dl(x); };
