@@ -95,7 +95,8 @@
 const _dl=(d)=>{const x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);};
 
 const { useState, useEffect, useMemo, useRef } = React;
-const sb = (SUPABASE_URL && SUPABASE_ANON_KEY) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const DEMO_URL = /[?&]demo=1/.test(location.search); // ?demo=1 => modo demonstração (dados fictícios, nada salvo)
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY && !DEMO_URL) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 const PRONTUARIO = false; // true = liga a aba Evolução (prontuário)
 const ETAPAS=[
@@ -206,7 +207,7 @@ function App(){
   return (
     <div className="wrap">
       <div className="top">
-        <div><h1>Pacientes</h1><p>Acompanhamento longitudinal — jornada, pendências e evolução</p></div>
+        <div><h1>Pacientes</h1><p>Cadastro, pendências e retornos — sem prontuário</p></div>
         <span className={"mode "+(sb?"live":"demo")}>{sb?"● Conectado ao Supabase":"○ Modo demo — nada é salvo"}</span>
       </div>
 
