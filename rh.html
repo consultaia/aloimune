@@ -108,7 +108,8 @@ function computeStatus(dataStr, aviso_dias=30, hoje=new Date()){
 }
 window.computeStatus = computeStatus;
 
-const sb = (SUPABASE_URL && SUPABASE_ANON_KEY) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const DEMO_URL = /[?&]demo=1/.test(location.search); // ?demo=1 => modo demonstração (dados fictícios, nada salvo)
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY && !DEMO_URL) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 function demoData(){
   const rel=(n)=>{ const x=new Date(); x.setDate(x.getDate()+n); return _dl(x); };
