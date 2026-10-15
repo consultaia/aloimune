@@ -97,6 +97,7 @@ const MODULOS = [
   { key:"acessos",      nome:"Acessos",    src:"acessos.html",        ic:"key", soloGestor:true },
   { key:"profissionais",nome:"Profissionais", src:"profissionais.html", ic:"steth" },
   { key:"pacientes",    nome:"Pacientes",  src:"pacientes.html",      ic:"user" },
+  { key:"acompanhamento", nome:"Acompanhamento", src:"acompanhamento.html", ic:"form" },
   { key:"agenda",       nome:"Agenda",     src:"agenda.html",         ic:"calendar" },
   { key:"dri",          nome:"Dri · WhatsApp", src:"whatsapp.html",   ic:"chat" },
   { key:"apresentacao", nome:"Apresentação", src:"apresentacao.html", ic:"slides" },
@@ -120,6 +121,7 @@ function Icon({ name }){
     grid:"M3 4h18v16H3z M3 10h18 M3 15h18 M9 4v16",
     clock:"M12 8v4l3 2 M12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20z",
     key:"M15 7a4 4 0 1 1-4 4 M11 11l-8 8v3h3l1-1v-2h2v-2h2l1-1",
+    form:"M9 3h6v3H9z M7 4H5v17h14V4h-2 M8 11l2 2 4-4 M8 17h8",
   }[name];
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={p}/></svg>;
 }
@@ -158,6 +160,7 @@ function Home({ onAbrir, papel }){
     if(key==="acessos") return {cls:"muted", t:"Logins e perfis da equipe"};
     if(key==="financeiro") return {cls:"muted", t:"Receitas, despesas e resultado"};
     if(key==="pacientes") return {cls:"warn", t:"3 retorno(s) a chamar"};
+    if(key==="acompanhamento") return {cls:"warn", t:"3 atrasado(s) · 2 para hoje"};
     if(key==="dri") return {cls:"bad", t:"1 esperando atendente"};
     if(key==="apresentacao") return {cls:"muted", t:"Indicadores e PDF"};
     if(key==="profissionais") return {cls:"muted", t:"Cadastro e disponibilidade"};
@@ -221,7 +224,7 @@ function App(){
   );
 
   if(papel==="funcionario"){
-    const fv = view==="agenda" ? "agenda" : "inventario";
+    const fv = view==="agenda" ? "agenda" : view==="acompanhamento" ? "acompanhamento" : "inventario";
     return (
       <>
         <div className="demobar">Modo <b>demonstração</b> — dados de exemplo, nada é salvo</div>
@@ -230,10 +233,11 @@ function App(){
           <div className="switch" style={{marginLeft:4}}>
             <button className={fv==="inventario"?"on":""} onClick={()=>setView("inventario")}>Inventário</button>
             <button className={fv==="agenda"?"on":""} onClick={()=>setView("agenda")}>Agenda</button>
+            <button className={fv==="acompanhamento"?"on":""} onClick={()=>setView("acompanhamento")}>Acompanhamento</button>
           </div>
           <span className="sp"></span>{Switch}
         </div>
-        <iframe className="frame" allow="camera; microphone" src={demoSrc(fv==="agenda" ? "agenda.html" : "estoque.html?somente=inventario")} title={fv==="agenda"?"Agenda":"Inventário"}></iframe>
+        <iframe className="frame" allow="camera; microphone" src={demoSrc(fv==="agenda" ? "agenda.html" : fv==="acompanhamento" ? "acompanhamento.html?papel=funcionario" : "estoque.html?somente=inventario")} title={fv==="agenda"?"Agenda":fv==="acompanhamento"?"Acompanhamento":"Inventário"}></iframe>
       </>
     );
   }
@@ -249,7 +253,7 @@ function App(){
   }
 
   if(papel==="medico"){
-    const mv = view==="disponibilidade" ? "disponibilidade" : "agenda";
+    const mv = view==="disponibilidade" ? "disponibilidade" : view==="acompanhamento" ? "acompanhamento" : "agenda";
     return (
       <>
         <div className="demobar">Modo <b>demonstração</b> — dados de exemplo, nada é salvo</div>
@@ -257,13 +261,14 @@ function App(){
           <span className="logo" style={{background:"var(--primary)",color:"#fff",fontWeight:800,fontFamily:"Space Grotesk"}}>C</span>
           <div className="switch" style={{marginLeft:4}}>
             <button className={mv==="agenda"?"on":""} onClick={()=>setView("agenda")}>Minha agenda</button>
+            <button className={mv==="acompanhamento"?"on":""} onClick={()=>setView("acompanhamento")}>Acompanhamento</button>
             <button className={mv==="disponibilidade"?"on":""} onClick={()=>setView("disponibilidade")}>Minha disponibilidade</button>
           </div>
           <span className="sp"></span>{Switch}
         </div>
         <iframe className="frame" allow="camera; microphone"
-          src={demoSrc(mv==="disponibilidade" ? "profissionais.html?meu=p1" : "agenda.html?profissional=Dra.%20Marina")}
-          title={mv==="disponibilidade"?"Disponibilidade":"Agenda"}></iframe>
+          src={demoSrc(mv==="disponibilidade" ? "profissionais.html?meu=p1" : mv==="acompanhamento" ? "acompanhamento.html?papel=medico" : "agenda.html?profissional=Dra.%20Marina")}
+          title={mv==="disponibilidade"?"Disponibilidade":mv==="acompanhamento"?"Acompanhamento":"Agenda"}></iframe>
       </>
     );
   }

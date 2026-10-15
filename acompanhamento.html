@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Acompanhamento</title>
+
+<!-- ==========================================================================
+     ACOMPANHAMENTO PÓS-CONSULTA — substitui o Google Forms
+     "ALOIMUNE | ACOMPANHAMENTO PÓS-CONSULTA"
+     • Equipe (funcionário, recepção, médico): "Novo acompanhamento" — paciente,
+       telefone, data da consulta, próximo passo, prazo, responsável, situação,
+       observações. Funcionário vê/corrige só os que ele registrou.
+     • Gestor: "Panorama" (atrasados, para hoje, próximos dias, quem já está
+       agendado na Agenda, por responsável e por próximo passo) e
+       "Acompanhamentos" (ver/editar tudo, mudar situação, histórico, CSV).
+     • Botão "Copiar para WhatsApp" gera o texto no mesmo formato do formulário.
+     Rode acompanhamento-schema.sql no Supabase antes.
+     ?demo=1 => dados fictícios, nada salvo (&papel=funcionario para ver a tela
+     da equipe).
+     ========================================================================== -->
+<script>
+  const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  :root{
+    --bg:#F5F7F8; --card:#FFFFFF; --ink:#12212B; --muted:#5C6B75; --line:#E3E8EB;
+    --primary:#0E7C7B; --primary-ink:#0A5E5D; --ok:#2E7D5B; --ok-bg:#E7F4EE;
+    --warn:#B26B00; --warn-bg:#FAEED4; --bad:#C0392B; --bad-bg:#FBE5E2; --blue:#2F6DB5; --blue-bg:#E6EFF9;
+    --radius:14px; --shadow:0 1px 2px rgba(18,33,43,.06), 0 8px 24px rgba(18,33,43,.06);
+  }
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1280px;margin:0 auto;padding:22px 18px 60px}
+  .top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  h1{font-family:"Space Grotesk";font-size:26px;margin:0} .top p{margin:4px 0 0;color:var(--muted);font-size:14px}
+  .mode{font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px} .mode.live{background:var(--ok-bg);color:var(--ok)} .mode.demo{background:var(--warn-bg);color:var(--warn)}
+  .btn{font:inherit;font-weight:600;border-radius:9px;cursor:pointer;padding:9px 13px;border:1px solid transparent;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+  .btn-primary{background:var(--primary);color:#fff} .btn-ghost{background:#fff;border-color:var(--line);color:var(--ink)} .btn-sm{padding:6px 10px;font-size:12.5px} .btn:disabled{opacity:.5;cursor:default}
+  .btn-bad{background:transparent;border-color:#F0C9C3;color:var(--bad)}
+  .tabs{display:inline-flex;background:#EEF1F3;border-radius:10px;padding:3px;margin-bottom:14px;flex-wrap:wrap}
+  .tabs button{font:inherit;font-weight:600;font-size:13.5px;border:none;background:none;color:var(--muted);padding:8px 14px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+  .tabs button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+  .badge{font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;background:#C6D0D4;color:#12212B} .badge.bad{background:var(--bad);color:#fff} .badge.warn{background:var(--warn);color:#fff}
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  input,select,textarea{font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);min-width:0} textarea{min-height:80px;resize:vertical;width:100%}
+  input:focus,select:focus,textarea:focus{outline:2px solid #BFE3E2;border-color:var(--primary)}
+  .note{background:var(--ok-bg);border:1px solid #CDE7DD;border-radius:12px;padding:11px 13px;font-size:13.5px;color:var(--primary-ink);line-height:1.55;margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .lock{background:var(--warn-bg);color:var(--warn);border-radius:12px;padding:12px 14px;font-size:13.5px;margin-bottom:12px;line-height:1.5}
+  .empty{color:var(--muted);font-size:14px;padding:20px;text-align:center}
+  .chips{display:flex;gap:5px;flex-wrap:wrap} .chip{font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;background:#EEF1F3;color:#3B4A55;white-space:nowrap}
+  .chip.bad{background:var(--bad-bg);color:var(--bad)} .chip.warn{background:var(--warn-bg);color:var(--warn)} .chip.ok{background:var(--ok-bg);color:var(--ok)} .chip.blue{background:var(--blue-bg);color:var(--blue)}
+  table{width:100%;border-collapse:collapse;background:var(--card)}
+  th{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);background:#FBFCFC;white-space:nowrap}
+  td{padding:10px 12px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:middle} tr:last-child td{border-bottom:none} tr.row:hover td{background:#F7FAFB;cursor:pointer}
+  .tscroll{overflow-x:auto;border-radius:12px;border:1px solid var(--line);background:var(--card)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+  .card h3{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px} .grid .full{grid-column:1/-1}
+  .field{display:flex;flex-direction:column;gap:4px} .field>label{font-size:12.5px;color:var(--muted);font-weight:600} .field .req{color:var(--bad)}
+  .field .hint{font-size:12px;color:var(--muted)}
+  .opts{display:flex;flex-wrap:wrap;gap:8px}
+  .opt{font:inherit;font-size:13.5px;font-weight:500;padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer}
+  .opt.on{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:600}
+  .opt.s-pendente.on{background:var(--warn);border-color:var(--warn)} .opt.s-em_andamento.on{background:var(--blue);border-color:var(--blue)} .opt.s-concluido.on{background:var(--ok);border-color:var(--ok)}
+  .quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .msg{font-size:13px} .msg.bad{color:var(--bad)} .msg.ok{color:var(--ok)}
+  .form{max-width:760px;display:flex;flex-direction:column;gap:12px}
+  .form .card.head{border-top:4px solid var(--primary)}
+  .stick{position:sticky;bottom:0;background:linear-gradient(transparent,var(--bg) 30%);padding:14px 0 4px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .sit{font:inherit;font-size:12.5px;font-weight:600;padding:4px 8px;border-radius:8px;border:1px solid var(--line)}
+  .sit.pendente{background:var(--warn-bg);color:var(--warn);border-color:#F0DDB0} .sit.em_andamento{background:var(--blue-bg);color:var(--blue);border-color:#C9DBF0} .sit.concluido{background:var(--ok-bg);color:var(--ok);border-color:#CDE7DD}
+  /* panorama */
+  .kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:14px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;cursor:pointer;text-align:left;font:inherit;color:inherit}
+  .kpi:hover{border-color:var(--primary)} .kpi .v{font-family:"Space Grotesk";font-size:26px;font-weight:700} .kpi .l{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .kpi.bad .v{color:var(--bad)} .kpi.warn .v{color:var(--warn)} .kpi.ok .v{color:var(--ok)} .kpi.blue .v{color:var(--blue)}
+  .cols{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:14px;align-items:start}
+  .li{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px;cursor:pointer} .li:last-child{border-bottom:none}
+  .li .d{flex:1;min-width:0} .li .n{font-weight:600} .li .s{font-size:12px;color:var(--muted)}
+  .when{font-family:"Space Grotesk";font-weight:700;font-size:13px;min-width:58px;text-align:center;padding:5px 6px;border-radius:9px;background:#EEF1F3;color:#3B4A55;line-height:1.15}
+  .when small{display:block;font-family:Inter;font-weight:600;font-size:10.5px}
+  .when.bad{background:var(--bad-bg);color:var(--bad)} .when.warn{background:var(--warn-bg);color:var(--warn)} .when.blue{background:var(--blue-bg);color:var(--blue)}
+  .bars{display:flex;flex-direction:column;gap:7px} .bar{display:grid;grid-template-columns:150px 1fr 54px;gap:8px;align-items:center;font-size:13px}
+  .bar .t{height:10px;border-radius:5px;background:#EEF1F3;overflow:hidden;display:flex} .bar .t i{display:block;height:100%;background:var(--primary)} .bar .t i.bad{background:var(--bad)}
+  .bar .k{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .bar .c{text-align:right;font-weight:600;white-space:nowrap} .bar .c em{font-style:normal;color:var(--bad);font-size:11.5px;margin-left:3px}
+  /* drawer */
+  .overlay{position:fixed;inset:0;background:rgba(18,33,43,.45);display:flex;justify-content:flex-end;z-index:50}
+  .drawer{width:min(720px,100%);height:100%;background:var(--bg);overflow:auto;box-shadow:-12px 0 40px rgba(18,33,43,.2);display:flex;flex-direction:column}
+  .dh{background:var(--card);border-bottom:1px solid var(--line);padding:14px 20px;position:sticky;top:0;z-index:2;display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}
+  .dh h2{font-family:"Space Grotesk";margin:0;font-size:20px} .dh .s{font-size:13px;color:var(--muted);margin-top:2px}
+  .dbody{padding:16px 20px;display:flex;flex-direction:column;gap:12px}
+  .tl{border-left:2px solid var(--line);margin-left:6px;padding-left:14px} .tli{position:relative;padding:4px 0 10px;font-size:13px}
+  .tli::before{content:"";position:absolute;left:-20px;top:9px;width:10px;height:10px;border-radius:50%;background:var(--primary)} .tli .w{font-size:12px;color:var(--muted)}
+  @media (max-width:1000px){ .kpis{grid-template-columns:repeat(3,minmax(0,1fr))} .cols{grid-template-columns:minmax(0,1fr)} }
+  @media (max-width:640px){ .grid{grid-template-columns:minmax(0,1fr)} .kpis{grid-template-columns:repeat(2,minmax(0,1fr))} .bar{grid-template-columns:100px 1fr 50px} .wrap{padding:16px 12px 60px} .hide-sm{display:none} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const _dl=(d)=>{const x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);};
+
+const { useState, useEffect, useMemo, useRef } = React;
+const DEMO_URL = /[?&]demo=1/.test(location.search); // ?demo=1 => modo demonstração (dados fictícios, nada salvo)
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY && !DEMO_URL) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+/* ---------------- as perguntas do formulário ---------------- */
+const PASSOS=[
+  ["etapa1","1ª etapa do tratamento"],["etapa2","2ª etapa do tratamento"],["etapa3","3ª etapa do tratamento"],
+  ["consulta","Consulta"],["retorno","Retorno"],["usg","USG"],["reforco_crossmatch","Reforço de Crossmatch"],
+  ["reforco_intralipid","Reforço de Intralipid"],["vacina","Vacina"],["exames_pre","Exames pré-tratamento"],["outro","Outro"],
+];
+const PASSO=Object.fromEntries(PASSOS);
+const SITUACOES=[["pendente","Pendente"],["em_andamento","Em andamento"],["concluido","Concluído"]];
+const SIT=Object.fromEntries(SITUACOES);
+const passoNome=(a)=> a.proximo_passo==="outro" ? ("Outro"+(a.proximo_passo_outro?": "+a.proximo_passo_outro:"")) : (PASSO[a.proximo_passo]||"—");
+
+/* ---------------- utilidades ---------------- */
+const hojeStr=()=>_dl(new Date());
+const fmtD=(iso)=> iso ? iso.slice(8,10)+"/"+iso.slice(5,7)+"/"+iso.slice(0,4) : "—";
+const fmtDC=(iso)=> iso ? iso.slice(8,10)+"/"+iso.slice(5,7) : "—";
+const fmtDH=(ts)=>{ if(!ts) return "—"; const d=new Date(ts); return d.toLocaleDateString("pt-BR")+" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}); };
+const dias=(iso)=> iso ? Math.round((new Date(iso+"T12:00:00")-new Date(hojeStr()+"T12:00:00"))/864e5) : null;
+const addD=(iso,n)=>{ const [y,m,d]=iso.split("-").map(Number); return _dl(new Date(y,m-1,d+n)); };
+const semAcento=(s)=> (s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().trim().replace(/\s+/g," ");
+const telLink=(t)=>{ let d=(t||"").replace(/\D/g,""); if(!d) return null; if(d.length<=11) d="55"+d; return "https://wa.me/"+d; };
+const lsGet=(k,d)=>{ try{ return localStorage.getItem(k)||d; }catch(e){ return d; } };
+const lsSet=(k,v)=>{ try{ localStorage.setItem(k,v); }catch(e){} };
+const aberto=(a)=> a.situacao!=="concluido";
+// como o prazo está: atrasado / hoje / em breve / ok
+function estadoPrazo(a){
+  if(!aberto(a)) return {cls:"ok", t:"concluído"};
+  if(!a.prazo) return {cls:"", t:"sem prazo"};
+  const d=dias(a.prazo);
+  if(d<0) return {cls:"bad", t:`atrasado ${-d} dia${d===-1?"":"s"}`};
+  if(d===0) return {cls:"warn", t:"vence hoje"};
+  if(d<=7) return {cls:"blue", t:`em ${d} dia${d===1?"":"s"}`};
+  return {cls:"", t:`em ${d} dias`};
+}
+
+// mesmo texto do formulário, pronto para colar no WhatsApp
+function textoWhats(a){
+  const x=(c)=> c ? "(X)" : "( )";
+  return [
+    "*ALOIMUNE | ACOMPANHAMENTO PÓS-CONSULTA* 📝","",
+    `👤 *Paciente:* ${a.paciente||""}`,
+    `📱 *Telefone/WhatsApp:* ${a.telefone||""}`,
+    `📅 *Data da consulta:* ${a.data_consulta?fmtD(a.data_consulta):""}`,"",
+    "*📌 PRÓXIMO PASSO:*","",
+    ...PASSOS.map(([k,n])=> k==="outro" ? `${x(a.proximo_passo==="outro")} Outro: ${a.proximo_passo==="outro"&&a.proximo_passo_outro?a.proximo_passo_outro:"_______________"}` : `${x(a.proximo_passo===k)} ${n}`),"",
+    `📆 *Prazo para acompanhamento:* ${a.prazo?fmtD(a.prazo):""}`,"",
+    `👩‍💼 *Responsável pelo contato:* ${a.responsavel||""}`,"",
+    "*📋 SITUAÇÃO:*",
+    ...SITUACOES.map(([k,n])=>`${x(a.situacao===k)} ${n}`),"",
+    "📝 *OBSERVAÇÕES:*", a.observacoes||"________________________",
+  ].join("\n");
+}
+async function copiar(txt){
+  try{ await navigator.clipboard.writeText(txt); return true; }
+  catch(e){ const t=document.createElement("textarea"); t.value=txt; document.body.appendChild(t); t.select(); let ok=false; try{ ok=document.execCommand("copy"); }catch(_){} t.remove(); return ok; }
+}
+function BotaoCopiar({ a, sm }){
+  const [ok,setOk]=useState(false);
+  return <button className={"btn btn-ghost"+(sm?" btn-sm":"")} onClick={async(e)=>{ e.stopPropagation(); if(await copiar(textoWhats(a))){ setOk(true); setTimeout(()=>setOk(false),1800); } else alert(textoWhats(a)); }}>{ok?"✓ Copiado":"Copiar para WhatsApp"}</button>;
+}
+
+const VAZIO=()=>({ paciente:"", paciente_id:null, telefone:"", data_consulta:hojeStr(), proximo_passo:"", proximo_passo_outro:"",
+  prazo:"", responsavel:lsGet("acomp_responsavel",""), situacao:"pendente", observacoes:"" });
+function paraBanco(f){
+  const nul=(v)=> v===""||v==null ? null : (typeof v==="string" ? (v.trim()||null) : v);
+  return { paciente:(f.paciente||"").trim().replace(/\s+/g," "), paciente_id:f.paciente_id||null, telefone:nul(f.telefone), data_consulta:nul(f.data_consulta),
+    proximo_passo:f.proximo_passo, proximo_passo_outro: f.proximo_passo==="outro" ? nul(f.proximo_passo_outro) : null,
+    prazo:nul(f.prazo), responsavel:nul(f.responsavel), situacao:f.situacao||"pendente", observacoes:nul(f.observacoes) };
+}
+const daBanco=(r)=>({ ...VAZIO(), ...Object.fromEntries(Object.entries(r).map(([k,v])=>[k, v==null ? "" : v])), paciente_id:r.paciente_id||null });
+function validar(p){
+  if(!p.paciente) return "Informe o nome da paciente.";
+  if(!p.proximo_passo) return "Marque o próximo passo.";
+  if(p.proximo_passo==="outro" && !p.proximo_passo_outro) return "Descreva o próximo passo em “Outro”.";
+  return null;
+}
+
+/* ---------------- demonstração ---------------- */
+function demo(){
+  const h=hojeStr();
+  const N=[["Ana Paula Souza","71 99999-0001"],["Carla Mendes","71 98888-0002"],["Beatriz Lima","71 97777-0003"],["Daniela Rocha","71 96666-0004"],["Fernanda Alves","71 95555-0005"],
+           ["Gabriela Nunes","71 94444-0006"],["Helena Prado","71 93333-0007"],["Isabela Torres","71 92222-0008"],["Juliana Reis","71 91111-0009"],["Karina Melo","71 90000-0010"],["Larissa Costa","71 98123-0011"]];
+  const P=["etapa1","reforco_intralipid","usg","retorno","reforco_crossmatch","etapa2","exames_pre","vacina","consulta","etapa3","outro"];
+  const pz=[-5,-2,0,0,2,4,9,15,-1,6,3]; const st=["pendente","em_andamento","pendente","pendente","pendente","em_andamento","pendente","pendente","concluido","pendente","em_andamento"];
+  const R=["Joana (recepção)","Carlos (enfermagem)","Joana (recepção)","Dra. Marina","Carlos (enfermagem)"];
+  const acs=N.map(([n,t],i)=>({ id:"d"+i, criado_em:addD(h,-(14-i))+"T10:00:00Z", criado_por:i%2?"u-func":"u-outro", criado_por_nome:i%2?"Joana (recepção)":"Carlos (enfermagem)",
+    paciente_id:"p"+i, paciente:n, telefone:t, data_consulta:addD(h,-(14-i)), proximo_passo:P[i], proximo_passo_outro:P[i]==="outro"?"Teste de NK":null,
+    prazo:addD(h,pz[i]), responsavel:R[i%R.length], situacao:st[i], concluido_em: st[i]==="concluido"? addD(h,-1)+"T15:00:00Z":null,
+    observacoes: i===0? "Ligou 2x, sem resposta. Tentar à tarde." : null, ativo:true }));
+  acs.push({...acs[2], id:"dx", criado_em:addD(h,-40)+"T10:00:00Z", data_consulta:addD(h,-40), proximo_passo:"consulta", prazo:addD(h,-30), situacao:"concluido", concluido_em:addD(h,-31)+"T10:00:00Z", observacoes:null});
+  const ags=[{id:"g1",data:addD(h,3),hora:"09:00",paciente:"Daniela Rocha",paciente_id:"p3",status:"confirmado",tipo:"Retorno"},
+             {id:"g2",data:addD(h,8),hora:"14:30",paciente:"Fernanda Alves",paciente_id:"p4",status:"agendado",tipo:"Crossmatch"},
+             {id:"g3",data:addD(h,1),hora:"10:00",paciente:"Gabriela Nunes",paciente_id:"p5",status:"agendado",tipo:"Imunoterapia"}];
+  return {acs, ags, pacs:N.map(([n,t],i)=>({id:"p"+i,nome:n,telefone:t}))};
+}
+
+/* ================================================================== APP */
+function App(){
+  const [papel,setPapel]=useState(undefined); const [uid,setUid]=useState(null); const [meuNome,setMeuNome]=useState("");
+  const [acs,setAcs]=useState([]); const [ags,setAgs]=useState([]); const [pacs,setPacs]=useState([]);
+  const [loading,setLoading]=useState(true); const [erro,setErro]=useState("");
+  const [aba,setAba]=useState(null); const [sel,setSel]=useState(null); const [prefill,setPrefill]=useState(null);
+  const [filtro,setFiltro]=useState({busca:"",situacao:"abertos",passo:"",resp:"",prazo:""});
+
+  async function load(){
+    setErro("");
+    if(sb){
+      const { data:{ session } } = await sb.auth.getSession();
+      if(!session){ setPapel(null); setLoading(false); return; }
+      setUid(session.user.id);
+      const pf=await sb.from("perfis").select("papel,nome").eq("id",session.user.id).maybeSingle();
+      setPapel(pf.data?.papel||"sem_acesso"); setMeuNome(pf.data?.nome||"");
+      const [a,g,p]=await Promise.all([
+        sb.from("clinica_acompanhamentos").select("*").eq("ativo",true).order("prazo",{ascending:true,nullsFirst:false}).limit(5000),
+        sb.from("agendamentos").select("id,data,hora,status,tipo,profissional,paciente,paciente_id").gte("data",hojeStr()).neq("status","cancelado").order("data").limit(2000),
+        sb.from("clinica_pacientes").select("id,nome,telefone").eq("ativo",true).order("nome").limit(5000),
+      ]);
+      if(a.error) setErro(a.error.message); else setAcs(a.data||[]);
+      setAgs(g.error?[]:(g.data||[])); setPacs(p.error?[]:(p.data||[])); // agenda/pacientes são opcionais (dependem do perfil)
+    } else {
+      const pq=(location.search.match(/[?&]papel=([a-z_]+)/)||[])[1];
+      const d=demo(); setPapel(pq||"gestor"); setUid("u-func"); setMeuNome(pq==="funcionario"?"Joana (recepção)":"Gestora");
+      setAcs(x=>x.length?x:d.acs); setAgs(d.ags); setPacs(d.pacs);
+    }
+    setLoading(false);
+  }
+  useEffect(()=>{ load(); },[]);
+  useEffect(()=>{ if(!sb) return; const ch=sb.channel("acomp-rt").on("postgres_changes",{event:"*",schema:"public",table:"clinica_acompanhamentos"},()=>load()).subscribe(); return ()=>{ sb.removeChannel(ch); }; },[]);
+
+  const veTudo=["gestor","auditoria","recepcionista","medico"].includes(papel);
+  const podeCriar=["gestor","recepcionista","medico","funcionario"].includes(papel);
+  const podeEditar=(a)=> ["gestor","recepcionista","medico"].includes(papel) || (papel==="funcionario" && a.criado_por===uid);
+  const ehGestor=papel==="gestor";
+
+  const abas = veTudo
+    ? [["panorama","Panorama"],["lista","Acompanhamentos"],...(podeCriar?[["novo","Novo acompanhamento"]]:[])]
+    : [["novo","Novo acompanhamento"],["lista","Meus acompanhamentos"]];
+  const abaAtual = aba && abas.some(x=>x[0]===aba) ? aba : abas[0][0];
+
+  // próximo horário na Agenda de cada paciente (por id do cadastro ou pelo nome)
+  const proxAg=useMemo(()=>{ const m={}; ags.forEach(g=>{ [g.paciente_id, "n:"+semAcento(g.paciente)].filter(Boolean).forEach(k=>{ if(!m[k] || (g.data+g.hora)<(m[k].data+m[k].hora)) m[k]=g; }); }); return m; },[ags]);
+  const agDe=(a)=> (a.paciente_id && proxAg[a.paciente_id]) || proxAg["n:"+semAcento(a.paciente)] || null;
+  const responsaveis=useMemo(()=> [...new Set([meuNome,...acs.map(a=>a.responsavel)].filter(Boolean))].sort(),[acs,meuNome]);
+  const atrasados=acs.filter(a=>aberto(a) && a.prazo && a.prazo<hojeStr()).length;
+
+  async function salvar(f, id){
+    const p=paraBanco(f); const e=validar(p); if(e) return e;
+    if(sb){
+      const r= id ? await sb.from("clinica_acompanhamentos").update(p).eq("id",id).select().single()
+                  : await sb.from("clinica_acompanhamentos").insert(p).select().single();
+      if(r.error) return r.error.message;
+      setAcs(prev=> id ? prev.map(x=>x.id===id?r.data:x) : [r.data,...prev]);
+      return {ok:true, a:r.data};
+    }
+    const old=acs.find(x=>x.id===id)||{};
+    const novo={...old,...p, id:id||("n"+Date.now()), criado_por:old.criado_por||uid, criado_por_nome:old.criado_por_nome||meuNome, criado_em:old.criado_em||new Date().toISOString(),
+      atualizado_em:new Date().toISOString(), concluido_em: p.situacao==="concluido" ? (old.concluido_em||new Date().toISOString()) : null, ativo:true};
+    setAcs(prev=> id ? prev.map(x=>x.id===id?novo:x) : [novo,...prev]);
+    return {ok:true, a:novo};
+  }
+  async function mudarSituacao(a, situacao){
+    if(a.situacao===situacao) return;
+    if(sb){ const r=await sb.from("clinica_acompanhamentos").update({situacao}).eq("id",a.id).select().single(); if(r.error) return alert(r.error.message); setAcs(prev=>prev.map(x=>x.id===a.id?r.data:x)); }
+    else setAcs(prev=>prev.map(x=>x.id===a.id?{...x,situacao,concluido_em:situacao==="concluido"?new Date().toISOString():null}:x));
+  }
+  async function arquivar(a){
+    if(!confirm(`Arquivar o acompanhamento de ${a.paciente}? Ele some das listas (fica guardado no banco).`)) return;
+    if(sb){ const r=await sb.from("clinica_acompanhamentos").update({ativo:false}).eq("id",a.id); if(r.error) return alert(r.error.message); }
+    setAcs(prev=>prev.filter(x=>x.id!==a.id)); setSel(null);
+  }
+  const proximoPasso=(a)=>{ setSel(null); setPrefill({ paciente:a.paciente, paciente_id:a.paciente_id||null, telefone:a.telefone||"", data_consulta:a.data_consulta||hojeStr(), responsavel:a.responsavel||"" }); setAba("novo"); };
+  const irPara=(patch)=>{ setFiltro({busca:"",situacao:"abertos",passo:"",resp:"",prazo:"",...patch}); setAba("lista"); };
+
+  if(loading) return <div className="wrap"><div className="empty">Carregando…</div></div>;
+  if(papel===null) return <div className="wrap"><div className="lock">Você não está logada. Entre de novo na plataforma.</div></div>;
+  if(!veTudo && !podeCriar) return <div className="wrap"><div className="lock">Seu perfil (<b>{papel}</b>) não tem acesso ao acompanhamento. Peça ao gestor.</div></div>;
+
+  const comum={ agDe, podeEditar, onAbrir:setSel, onSituacao:mudarSituacao };
+  return (
+    <div className="wrap">
+      <div className="top">
+        <div><h1>Acompanhamento pós-consulta</h1>
+          <p>{veTudo ? "Próximo passo de cada paciente, prazo, responsável e situação — e quem já está na agenda." : "Registre o próximo passo de cada paciente depois da consulta."}</p></div>
+        <span className={"mode "+(sb?"live":"demo")}>{sb?"● Conectado ao Supabase":"○ Modo demo — nada é salvo"}</span>
+      </div>
+      {erro && <div className="lock">Não consegui ler os acompanhamentos: {erro}.{/relation|does not exist|schema cache/i.test(erro) && <> Rode <b>acompanhamento-schema.sql</b> no Supabase (SQL Editor).</>}</div>}
+      <div className="tabs">
+        {abas.map(([k,n])=>(
+          <button key={k} className={abaAtual===k?"on":""} onClick={()=>setAba(k)}>{n}
+            {k==="panorama" && atrasados>0 && <span className="badge bad">{atrasados}</span>}
+          </button>))}
+      </div>
+
+      {abaAtual==="panorama" && <Panorama acs={acs} ags={ags} irPara={irPara} {...comum} />}
+      {abaAtual==="lista" && <Lista acs={veTudo?acs:acs.filter(a=>a.criado_por===uid)} veTudo={veTudo} filtro={filtro} setFiltro={setFiltro} responsaveis={responsaveis} {...comum} />}
+      {abaAtual==="novo" && <Novo prefill={prefill} limparPrefill={()=>setPrefill(null)} pacs={pacs} acs={acs} responsaveis={responsaveis} meuNome={meuNome} onSalvar={salvar} onAbrir={setSel} agDe={agDe} />}
+
+      {sel && <Drawer a={acs.find(x=>x.id===sel.id)||sel} pode={podeEditar(sel)} ehGestor={ehGestor} pacs={pacs} responsaveis={responsaveis} agDe={agDe}
+        historicoDe={acs.filter(x=> x.id!==sel.id && ((sel.paciente_id && x.paciente_id===sel.paciente_id) || semAcento(x.paciente)===semAcento(sel.paciente)))}
+        onClose={()=>setSel(null)} onSalvar={salvar} onArquivar={arquivar} onProximo={proximoPasso} onAbrir={setSel} />}
+    </div>
+  );
+}
+
+/* ================================================================== PANORAMA (gestor) */
+function Panorama({ acs, ags, agDe, irPara, onAbrir, onSituacao, podeEditar }){
+  const h=hojeStr();
+  const ab=acs.filter(aberto);
+  const atras=ab.filter(a=>a.prazo && a.prazo<h), hoje=ab.filter(a=>a.prazo===h), semana=ab.filter(a=>a.prazo>h && a.prazo<=addD(h,7));
+  const conc30=acs.filter(a=>a.situacao==="concluido" && a.concluido_em && a.concluido_em.slice(0,10)>=addD(h,-30)).length;
+  const agendados=ab.filter(a=>agDe(a));
+  const fila=[...ab].sort((a,b)=> (a.prazo||"9999").localeCompare(b.prazo||"9999"));
+  const contar=(lst,fn)=>{ const m={}; lst.forEach(a=>{ const k=fn(a)||"(sem responsável)"; m[k]=m[k]||{t:0,b:0}; m[k].t++; if(a.prazo&&a.prazo<h) m[k].b++; }); return Object.entries(m).sort((x,y)=>y[1].t-x[1].t); };
+  const porResp=contar(ab,a=>a.responsavel), porPasso=contar(ab,a=>a.proximo_passo==="outro"?"Outro":PASSO[a.proximo_passo]);
+  const K=({v,l,cls,onClick})=> <button className={"kpi "+(cls||"")} onClick={onClick}><div className="v">{v}</div><div className="l">{l}</div></button>;
+  const Barras=({itens,onClick})=>{ const mx=Math.max(1,...itens.map(x=>x[1].t)); return <div className="bars">{itens.map(([k,c])=>(
+    <div className="bar" key={k} style={{cursor:"pointer"}} onClick={()=>onClick(k)}><span className="k" title={k}>{k}</span>
+      <span className="t" style={{width:(c.t/mx*100)+"%"}}><i className="bad" style={{width:(c.b/c.t*100)+"%"}}></i><i style={{flex:1}}></i></span>
+      <span className="c">{c.t}{c.b>0 && <em>{c.b} atr.</em>}</span></div>))}</div>; };
+
+  if(!acs.length) return <div className="card"><div className="empty">Nenhum acompanhamento ainda. A equipe registra em <b>Novo acompanhamento</b> logo depois da consulta.</div></div>;
+  return (<>
+    <div className="kpis">
+      <K v={atras.length} l="Atrasados" cls={atras.length?"bad":"ok"} onClick={()=>irPara({prazo:"atrasados"})} />
+      <K v={hoje.length} l="Vencem hoje" cls={hoje.length?"warn":""} onClick={()=>irPara({prazo:"hoje"})} />
+      <K v={semana.length} l="Próximos 7 dias" cls="blue" onClick={()=>irPara({prazo:"semana"})} />
+      <K v={ab.filter(a=>a.situacao==="pendente").length} l="Pendentes (sem contato)" onClick={()=>irPara({situacao:"pendente"})} />
+      <K v={ab.filter(a=>a.situacao==="em_andamento").length} l="Em andamento" onClick={()=>irPara({situacao:"em_andamento"})} />
+      <K v={conc30} l="Concluídos em 30 dias" cls="ok" onClick={()=>irPara({situacao:"concluido"})} />
+    </div>
+    <div className="cols">
+      <div className="card">
+        <h3>Fila de contato · por prazo</h3>
+        {!fila.length ? <div className="empty">Nada em aberto. 🎉</div> : fila.slice(0,30).map(a=>{ const e=estadoPrazo(a); const g=agDe(a); return (
+          <div className="li" key={a.id} onClick={()=>onAbrir(a)}>
+            <span className={"when "+e.cls}>{a.prazo?fmtDC(a.prazo):"—"}<small>{e.t}</small></span>
+            <div className="d"><div className="n">{a.paciente}</div>
+              <div className="s">{passoNome(a)} · {a.responsavel||"sem responsável"}</div>
+              {g && <div className="chips" style={{marginTop:3}}><span className="chip blue">Agendada {fmtDC(g.data)} {g.hora?.slice(0,5)}{g.tipo?` · ${g.tipo}`:""}</span></div>}
+            </div>
+            {podeEditar(a) ? <select className={"sit "+a.situacao} value={a.situacao} onClick={e=>e.stopPropagation()} onChange={e=>onSituacao(a,e.target.value)}>{SITUACOES.map(([k,n])=><option key={k} value={k}>{n}</option>)}</select>
+              : <span className={"sit "+a.situacao}>{SIT[a.situacao]}</span>}
+          </div>); })}
+        {fila.length>30 && <div style={{marginTop:8}}><button className="btn btn-ghost btn-sm" onClick={()=>irPara({})}>Ver todos ({fila.length})</button></div>}
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <div className="card">
+          <h3>Já agendados na Agenda · {agendados.length} de {ab.length} em aberto</h3>
+          {!agendados.length ? <div className="empty">{ags.length?"Nenhuma paciente em acompanhamento tem horário marcado.":"Sem horários futuros na Agenda (ou sem acesso a ela)."}</div> :
+            [...agendados].sort((a,b)=>agDe(a).data.localeCompare(agDe(b).data)).slice(0,12).map(a=>{ const g=agDe(a); return (
+              <div className="li" key={a.id} onClick={()=>onAbrir(a)}>
+                <span className="when blue">{fmtDC(g.data)}<small>{g.hora?.slice(0,5)}</small></span>
+                <div className="d"><div className="n">{a.paciente}</div><div className="s">{g.tipo||"Agendamento"}{g.profissional?` · ${g.profissional}`:""} · passo: {passoNome(a)}</div></div>
+              </div>); })}
+        </div>
+        <div className="card"><h3>Em aberto por responsável</h3><Barras itens={porResp} onClick={(k)=>irPara({resp:k==="(sem responsável)"?"__vazio":k})} /></div>
+        <div className="card"><h3>Em aberto por próximo passo</h3><Barras itens={porPasso} onClick={(k)=>irPara({passo:(PASSOS.find(p=>p[1]===k)||["outro"])[0]})} /></div>
+      </div>
+    </div>
+  </>);
+}
+
+/* ================================================================== LISTA */
+function Lista({ acs, veTudo, filtro, setFiltro, responsaveis, agDe, podeEditar, onAbrir, onSituacao }){
+  const set=(k,v)=>setFiltro(f=>({...f,[k]:v}));
+  const h=hojeStr(); const b=semAcento(filtro.busca); const bt=filtro.busca.replace(/\D/g,"");
+  const vis=acs.filter(a=> (!b || semAcento(a.paciente).includes(b) || (bt.length>=4 && (a.telefone||"").replace(/\D/g,"").includes(bt)))
+    && (filtro.situacao==="" || (filtro.situacao==="abertos" ? aberto(a) : a.situacao===filtro.situacao))
+    && (!filtro.passo || a.proximo_passo===filtro.passo)
+    && (!filtro.resp || (filtro.resp==="__vazio" ? !a.responsavel : a.responsavel===filtro.resp))
+    && (!filtro.prazo || (aberto(a) && a.prazo && (filtro.prazo==="atrasados" ? a.prazo<h : filtro.prazo==="hoje" ? a.prazo===h : a.prazo>h && a.prazo<=addD(h,7)))))
+    .sort((x,y)=> (aberto(y)-aberto(x)) || (x.prazo||"9999").localeCompare(y.prazo||"9999"));
+
+  function exportar(){
+    const cols=[["Paciente",a=>a.paciente],["Telefone",a=>a.telefone],["Data da consulta",a=>fmtD(a.data_consulta)],["Próximo passo",a=>passoNome(a)],
+      ["Prazo",a=>fmtD(a.prazo)],["Responsável",a=>a.responsavel],["Situação",a=>SIT[a.situacao]],["Concluído em",a=>a.concluido_em?fmtDH(a.concluido_em):""],
+      ["Agendamento",a=>{ const g=agDe(a); return g?`${fmtD(g.data)} ${g.hora||""} ${g.tipo||""}`.trim():""; }],["Observações",a=>a.observacoes],["Registrado por",a=>a.criado_por_nome],["Registrado em",a=>fmtDH(a.criado_em)]];
+    const esc=(v)=>{ const s=v==null||v==="—"?"":String(v); return /[";\n]/.test(s)? '"'+s.replace(/"/g,'""')+'"' : s; };
+    const csv="﻿"+[cols.map(c=>c[0]).join(";"),...vis.map(a=>cols.map(c=>esc(c[1](a))).join(";"))].join("\n");
+    const el=document.createElement("a"); el.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})); el.download=`acompanhamentos-${h}.csv`; el.click();
+  }
+  const filtrado = filtro.prazo || filtro.passo || filtro.resp;
+  return (<>
+    <div className="toolbar">
+      <input placeholder="Buscar paciente ou telefone" value={filtro.busca} onChange={e=>set("busca",e.target.value)} style={{flex:"1 1 220px"}} />
+      <select value={filtro.situacao} onChange={e=>set("situacao",e.target.value)}><option value="abertos">Em aberto</option>{SITUACOES.map(([k,n])=><option key={k} value={k}>{n}</option>)}<option value="">Todas as situações</option></select>
+      <select value={filtro.prazo} onChange={e=>set("prazo",e.target.value)}><option value="">Qualquer prazo</option><option value="atrasados">Atrasados</option><option value="hoje">Vencem hoje</option><option value="semana">Próximos 7 dias</option></select>
+      <select value={filtro.passo} onChange={e=>set("passo",e.target.value)}><option value="">Todos os passos</option>{PASSOS.map(([k,n])=><option key={k} value={k}>{n}</option>)}</select>
+      {veTudo && <select value={filtro.resp} onChange={e=>set("resp",e.target.value)}><option value="">Todos os responsáveis</option>{responsaveis.map(r=><option key={r}>{r}</option>)}<option value="__vazio">(sem responsável)</option></select>}
+      {filtrado && <button className="btn btn-ghost btn-sm" onClick={()=>setFiltro(f=>({...f,prazo:"",passo:"",resp:""}))}>Limpar filtros</button>}
+      {veTudo && <button className="btn btn-ghost btn-sm" onClick={exportar} disabled={!vis.length}>Exportar CSV ({vis.length})</button>}
+    </div>
+    {!vis.length ? <div className="card"><div className="empty">{acs.length? "Nada com esses filtros." : "Nenhum acompanhamento registrado ainda."}</div></div> :
+    <div className="tscroll"><table>
+      <thead><tr><th>Prazo</th><th>Paciente</th><th>Próximo passo</th><th className="hide-sm">Responsável</th><th>Situação</th><th className="hide-sm">Agenda</th><th className="hide-sm">Consulta</th></tr></thead>
+      <tbody>{vis.map(a=>{ const e=estadoPrazo(a); const g=agDe(a); return (
+        <tr key={a.id} className="row" onClick={()=>onAbrir(a)}>
+          <td style={{whiteSpace:"nowrap"}}><b>{a.prazo?fmtD(a.prazo):"—"}</b>{aberto(a) && <div><span className={"chip "+e.cls}>{e.t}</span></div>}</td>
+          <td><b>{a.paciente}</b><div style={{fontSize:12,color:"var(--muted)"}}>{a.telefone||""}</div>{a.observacoes && <div style={{fontSize:12,color:"var(--muted)",maxWidth:280,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={a.observacoes}>📝 {a.observacoes}</div>}</td>
+          <td>{passoNome(a)}</td>
+          <td className="hide-sm">{a.responsavel||<span style={{color:"var(--muted)"}}>—</span>}</td>
+          <td>{podeEditar(a) ? <select className={"sit "+a.situacao} value={a.situacao} onClick={ev=>ev.stopPropagation()} onChange={ev=>onSituacao(a,ev.target.value)}>{SITUACOES.map(([k,n])=><option key={k} value={k}>{n}</option>)}</select> : <span className={"sit "+a.situacao}>{SIT[a.situacao]}</span>}</td>
+          <td className="hide-sm" style={{whiteSpace:"nowrap"}}>{g ? <span className="chip blue">{fmtDC(g.data)} {g.hora?.slice(0,5)}</span> : <span style={{color:"var(--muted)"}}>—</span>}</td>
+          <td className="hide-sm" style={{whiteSpace:"nowrap",color:"var(--muted)"}}>{fmtD(a.data_consulta)}</td>
+        </tr>); })}</tbody>
+    </table></div>}
+  </>);
+}
+
+/* ================================================================== FORMULÁRIO */
+function Campo({ l, req, hint, children, cls }){
+  return <div className={"field "+(cls||"")}><label>{l}{req && <span className="req"> *</span>}</label>{children}{hint && <span className="hint">{hint}</span>}</div>;
+}
+function FormAcomp({ f, set, pacs, responsaveis, travado }){
+  const up=(k)=>(e)=>set({...f,[k]:e.target.value});
+  const base=f.data_consulta||hojeStr();
+  function escolherPaciente(nome){
+    const p=pacs.find(x=>semAcento(x.nome)===semAcento(nome));
+    set({...f, paciente:nome, paciente_id:p?p.id:null, telefone: p && p.telefone && !f.telefone ? p.telefone : f.telefone});
+  }
+  return (
+    <fieldset disabled={travado} style={{border:"none",padding:0,margin:0,display:"flex",flexDirection:"column",gap:12,minWidth:0}}>
+      <div className="card head">
+        <div className="grid">
+          <Campo l="👤 Paciente" req cls="full" hint={f.paciente_id ? "✓ Paciente do cadastro" : pacs.length ? "Comece a digitar para buscar no cadastro" : null}>
+            <input list="lst-pac" value={f.paciente||""} onChange={e=>escolherPaciente(e.target.value)} autoComplete="off" />
+            <datalist id="lst-pac">{pacs.map(p=><option key={p.id} value={p.nome} />)}</datalist></Campo>
+          <Campo l="📱 Telefone / WhatsApp"><input type="tel" inputMode="tel" value={f.telefone||""} onChange={up("telefone")} placeholder="(71) 9 9999-9999" /></Campo>
+          <Campo l="📅 Data da consulta"><input type="date" value={f.data_consulta||""} onChange={up("data_consulta")} /></Campo>
+        </div>
+      </div>
+      <div className="card"><h3>📌 Próximo passo <span className="req" style={{color:"var(--bad)"}}>*</span></h3>
+        <div className="opts">{PASSOS.map(([k,n])=><button type="button" key={k} className={"opt"+(f.proximo_passo===k?" on":"")} onClick={()=>set({...f,proximo_passo:k})}>{n}</button>)}</div>
+        {f.proximo_passo==="outro" && <input style={{marginTop:10,width:"100%"}} placeholder="Qual?" value={f.proximo_passo_outro||""} onChange={up("proximo_passo_outro")} autoFocus />}
+      </div>
+      <div className="card">
+        <div className="grid">
+          <Campo l="📆 Prazo para acompanhamento">
+            <input type="date" value={f.prazo||""} onChange={up("prazo")} />
+            {!travado && <div className="quick">{[[7,"+7 dias"],[15,"+15 dias"],[30,"+30 dias"],[90,"+3 meses"]].map(([n,l])=><button type="button" key={n} className="btn btn-ghost btn-sm" onClick={()=>set({...f,prazo:addD(base,n)})}>{l}</button>)}</div>}
+          </Campo>
+          <Campo l="👩‍💼 Responsável pelo contato">
+            <input list="lst-resp" value={f.responsavel||""} onChange={up("responsavel")} autoComplete="off" />
+            <datalist id="lst-resp">{responsaveis.map(r=><option key={r} value={r} />)}</datalist>
+          </Campo>
+        </div>
+      </div>
+      <div className="card"><h3>📋 Situação</h3>
+        <div className="opts">{SITUACOES.map(([k,n])=><button type="button" key={k} className={"opt s-"+k+(f.situacao===k?" on":"")} onClick={()=>set({...f,situacao:k})}>{n}</button>)}</div>
+      </div>
+      <div className="card"><h3>📝 Observações</h3><textarea value={f.observacoes||""} onChange={up("observacoes")} placeholder="Tentativas de contato, combinados, pendências…" /></div>
+    </fieldset>
+  );
+}
+
+function Novo({ prefill, limparPrefill, pacs, acs, responsaveis, meuNome, onSalvar, onAbrir, agDe }){
+  const inicial=()=>({...VAZIO(), responsavel: lsGet("acomp_responsavel","") || meuNome, ...(prefill||{})});
+  const [f,setF]=useState(inicial); const [busy,setBusy]=useState(false); const [msg,setMsg]=useState(null); const [feito,setFeito]=useState(null);
+  const topo=useRef(null);
+  useEffect(()=>{ if(prefill){ setF(inicial()); setFeito(null); setMsg(null); } },[prefill]);
+  const abertosDela = f.paciente.trim().length>3 ? acs.filter(a=> aberto(a) && ((f.paciente_id && a.paciente_id===f.paciente_id) || semAcento(a.paciente)===semAcento(f.paciente))) : [];
+  async function enviar(){
+    setMsg(null); setBusy(true); const r=await onSalvar(f); setBusy(false);
+    if(typeof r==="string") return setMsg({bad:true,t:r});
+    if(f.responsavel) lsSet("acomp_responsavel", f.responsavel);
+    setFeito(r.a); setF({...VAZIO(), responsavel:f.responsavel}); limparPrefill();
+    topo.current && topo.current.scrollIntoView({behavior:"smooth"});
+  }
+  return (
+    <div className="form" ref={topo}>
+      {feito && <div className="note">✓ Acompanhamento de <b>{feito.paciente}</b> salvo. <BotaoCopiar a={feito} sm /> <button className="btn btn-ghost btn-sm" onClick={()=>onAbrir(feito)}>Ver / corrigir</button></div>}
+      {prefill && !feito && <div className="note">Próximo passo para <b>{prefill.paciente}</b>.</div>}
+      <FormAcomp f={f} set={(v)=>{ setF(v); if(feito) setFeito(null); }} pacs={pacs} responsaveis={responsaveis} />
+      {abertosDela.length>0 && <div className="lock">{f.paciente} já tem {abertosDela.length} acompanhamento(s) em aberto: {abertosDela.map(a=><button key={a.id} className="btn btn-ghost btn-sm" style={{margin:"4px 6px 0 0"}} onClick={()=>onAbrir(a)}>{passoNome(a)} · {a.prazo?fmtDC(a.prazo):"sem prazo"}</button>)}</div>}
+      {f.paciente && agDe(f) && <div className="note" style={{background:"var(--blue-bg)",borderColor:"#C9DBF0",color:"var(--blue)"}}>📅 Já tem horário na Agenda: {fmtD(agDe(f).data)} {agDe(f).hora?.slice(0,5)}{agDe(f).tipo?` · ${agDe(f).tipo}`:""}</div>}
+      <div className="stick">
+        <button className="btn btn-primary" onClick={enviar} disabled={busy}>{busy?"Salvando…":"Salvar acompanhamento"}</button>
+        <button className="btn btn-ghost" onClick={()=>{ if(confirm("Limpar o formulário?")){ setF({...VAZIO(), responsavel:f.responsavel}); limparPrefill(); } }}>Limpar</button>
+        {msg && <span className={"msg "+(msg.bad?"bad":"ok")}>{msg.t}</span>}
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================== DRAWER (ver / editar) */
+function Drawer({ a, pode, ehGestor, pacs, responsaveis, agDe, historicoDe, onClose, onSalvar, onArquivar, onProximo, onAbrir }){
+  const [f,setF]=useState(()=>daBanco(a)); const [busy,setBusy]=useState(false); const [msg,setMsg]=useState(null);
+  const [hist,setHist]=useState(null); const [verHist,setVerHist]=useState(false);
+  const sujo = JSON.stringify(paraBanco(f))!==JSON.stringify(paraBanco(daBanco(a)));
+  useEffect(()=>{ setF(daBanco(a)); },[a.id, a.atualizado_em]);
+  useEffect(()=>{ if(!verHist || hist) return; if(!sb){ setHist([{id:1,quando:a.criado_em,quem_nome:a.criado_por_nome,acao:"criou"}]); return; }
+    sb.from("clinica_acompanhamentos_historico").select("*").eq("acompanhamento_id",a.id).order("quando",{ascending:false}).limit(200).then(r=>setHist(r.data||[])); },[verHist]);
+  async function salvar(){ setBusy(true); setMsg(null); const r=await onSalvar(f, a.id); setBusy(false);
+    if(typeof r==="string") setMsg({bad:true,t:r}); else { setMsg({t:"Salvo."}); setHist(null); } }
+  async function concluirEProximo(){ setBusy(true); const r=await onSalvar({...f, situacao:"concluido"}, a.id); setBusy(false);
+    if(typeof r==="string") return setMsg({bad:true,t:r}); onProximo(r.a); }
+  const fechar=()=>{ if(sujo && !confirm("Há alterações não salvas. Fechar mesmo assim?")) return; onClose(); };
+  const e=estadoPrazo(a); const wa=telLink(a.telefone); const g=agDe(a);
+  const NOMES={paciente:"paciente",telefone:"telefone",data_consulta:"data da consulta",proximo_passo:"próximo passo",proximo_passo_outro:"outro (qual)",prazo:"prazo",responsavel:"responsável",situacao:"situação",observacoes:"observações",paciente_id:"vínculo com cadastro",ativo:"arquivado"};
+  const valH=(k,v)=> v==null||v==="" ? "vazio" : k==="situacao" ? (SIT[v]||v) : k==="proximo_passo" ? (PASSO[v]||v) : /^\d{4}-\d\d-\d\d$/.test(v) ? fmtD(v) : String(v);
+  return (
+    <div className="overlay" onClick={fechar}><div className="drawer" onClick={ev=>ev.stopPropagation()}>
+      <div className="dh">
+        <div style={{flex:"1 1 260px",minWidth:0}}>
+          <h2>{a.paciente}</h2>
+          <div className="s">{passoNome(a)} · consulta {fmtD(a.data_consulta)} · registrado por {a.criado_por_nome||"—"}</div>
+          <div className="chips" style={{marginTop:6}}><span className={"sit "+a.situacao}>{SIT[a.situacao]}</span>{aberto(a) && <span className={"chip "+e.cls}>{a.prazo?`prazo ${fmtDC(a.prazo)} · `:""}{e.t}</span>}{g && <span className="chip blue">Agendada {fmtDC(g.data)} {g.hora?.slice(0,5)}</span>}</div>
+        </div>
+        <BotaoCopiar a={a} sm />
+        {wa && <a className="btn btn-ghost btn-sm" href={wa} target="_blank" rel="noreferrer">Abrir WhatsApp</a>}
+        <button className="btn btn-ghost btn-sm" onClick={fechar}>Fechar</button>
+      </div>
+      <div className="dbody">
+        {!pode && <div className="lock">Somente leitura — só quem registrou ou o gestor podem editar.</div>}
+        <FormAcomp f={f} set={setF} pacs={pacs} responsaveis={responsaveis} travado={!pode} />
+        {pode && <div className="stick">
+          <button className="btn btn-primary" onClick={salvar} disabled={busy||!sujo}>{busy?"Salvando…":"Salvar alterações"}</button>
+          {sujo && <button className="btn btn-ghost" onClick={()=>setF(daBanco(a))}>Desfazer</button>}
+          {aberto(a) && <button className="btn btn-ghost" onClick={concluirEProximo} disabled={busy}>Concluir e registrar próximo passo</button>}
+          {!aberto(a) && <button className="btn btn-ghost" onClick={()=>onProximo(a)}>Registrar próximo passo</button>}
+          {ehGestor && <button className="btn btn-bad" onClick={()=>onArquivar(a)} style={{marginLeft:"auto"}}>Arquivar</button>}
+          {msg && <span className={"msg "+(msg.bad?"bad":"ok")}>{msg.t}</span>}
+        </div>}
+        {historicoDe.length>0 && <div className="card"><h3>Outros acompanhamentos dessa paciente</h3>
+          {[...historicoDe].sort((x,y)=>(y.data_consulta||"").localeCompare(x.data_consulta||"")).map(x=>(
+            <div className="li" key={x.id} onClick={()=>onAbrir(x)}><div className="d"><div className="n">{passoNome(x)}</div><div className="s">consulta {fmtD(x.data_consulta)} · prazo {fmtD(x.prazo)} · {x.responsavel||"—"}</div></div><span className={"sit "+x.situacao}>{SIT[x.situacao]}</span></div>))}
+        </div>}
+        <div className="card">
+          <h3 style={{display:"flex",justifyContent:"space-between",alignItems:"center",margin:0}}>Histórico de alterações<button className="btn btn-ghost btn-sm" onClick={()=>setVerHist(v=>!v)}>{verHist?"Esconder":"Mostrar"}</button></h3>
+          {verHist && (hist===null ? <div className="empty">Carregando…</div> : !hist.length ? <div className="empty">Sem registros.</div> :
+            <div className="tl" style={{marginTop:10}}>{hist.map(x=>(
+              <div className="tli" key={x.id}><div className="w">{fmtDH(x.quando)} · {x.quem_nome||"—"}</div>
+                {x.acao==="criou" ? "Registrou o acompanhamento" : Object.entries(x.campos||{}).map(([k,[de,para]])=>(
+                  <div key={k}><b>{NOMES[k]||k}</b>: {k==="ativo" ? (para?"restaurado":"arquivado") : k==="paciente_id" ? (para?"vinculado ao cadastro":"desvinculado") : <>{valH(k,de)} → {valH(k,para)}</>}</div>))}
+              </div>))}</div>)}
+        </div>
+      </div>
+    </div></div>
+  );
+}
+
+class ErroNaTela extends React.Component{
+  constructor(p){ super(p); this.state={erro:null}; }
+  static getDerivedStateFromError(e){ return {erro:e}; }
+  render(){ if(this.state.erro) return <div style={{padding:24,fontFamily:"monospace",fontSize:13,color:"#C0392B",whiteSpace:"pre-wrap"}}><b>A página encontrou um erro:</b>{"\n\n"}{String(this.state.erro.message||this.state.erro)}</div>; return this.props.children; }
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<ErroNaTela><App /></ErroNaTela>);
+</script>
+</body>
+</html>
