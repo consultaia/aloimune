@@ -202,7 +202,7 @@ const MODULOS = [
   { key:"acessos",      nome:"Acessos",    src:"acessos.html",         ic:"key", soloGestor:true },
   { key:"profissionais",nome:"Profissionais", src:"profissionais.html", ic:"steth" },
   { key:"pacientes",    nome:"Pacientes",  src:"pacientes.html",      ic:"user" },
-  { key:"triagem",      nome:"Triagem",    src:"triagem.html",        ic:"form" },
+  { key:"acompanhamento", nome:"Acompanhamento", src:"acompanhamento.html", ic:"form" },
   { key:"agenda",       nome:"Agenda",     src:"agenda.html",          ic:"calendar" },
   { key:"dri",          nome:"Dri · WhatsApp", src:"whatsapp.html",    ic:"chat" },
   { key:"apresentacao", nome:"Apresentação", src:"apresentacao.html",  ic:"slides" },
@@ -387,7 +387,7 @@ function Home({ onAbrir, papel }){
     if(key==="ponto") return {cls:"muted", t:"Cadastro e relatório de horas"};
     if(key==="acessos") return {cls:"muted", t:"Logins e perfis da equipe"};
     if(key==="financeiro") return {cls:"muted", t:"Receitas, despesas e resultado"};
-    if(key==="triagem") return {cls:"muted", t:"Fichas, exames e cirurgias"};
+    if(key==="acompanhamento") return {cls:"muted", t:"Pós-consulta: próximos passos e prazos"};
     if(key==="pacientes"){ const r=pronto?res.pacientes:null; if(!r) return {cls:"muted", t:"Jornada e pendências"}; return r.venc? {cls:"bad", t:`${r.venc} pendência(s) vencida(s)`} : r.total? {cls:"warn", t:`${r.total} pendência(s) em aberto`} : {cls:"ok", t:"Sem pendências"}; }
     const r=pronto ? res[key] : null;
     if(!r) return {cls:"muted", t:"—"};
@@ -566,7 +566,7 @@ function App(){
       <><div className="bar"><span className="logo"><img src="icon-192.png" alt="Aloimune" /></span><span className="title">Área do médico</span><span className="sp"></span>{sair}</div>
       <div className="center">Seu login ainda não está vinculado a um profissional. Peça ao gestor para vincular seu cadastro.</div></>
     );
-    const mv = view==="disponibilidade" ? "disponibilidade" : view==="pacientes" ? "pacientes" : "agenda";
+    const mv = view==="disponibilidade" ? "disponibilidade" : view==="pacientes" ? "pacientes" : view==="acompanhamento" ? "acompanhamento" : "agenda";
     return (
       <>
         <div className="bar">
@@ -574,20 +574,21 @@ function App(){
           <div className="switch" style={{marginLeft:4}}>
             <button className={mv==="agenda"?"on":""} onClick={()=>setView("agenda")}>Minha agenda</button>
             <button className={mv==="pacientes"?"on":""} onClick={()=>setView("pacientes")}>Pacientes</button>
+            <button className={mv==="acompanhamento"?"on":""} onClick={()=>setView("acompanhamento")}>Acompanhamento</button>
             <button className={mv==="disponibilidade"?"on":""} onClick={()=>setView("disponibilidade")}>Minha disponibilidade</button>
           </div>
           <span className="sp"></span>{sair}
         </div>
         <iframe className="frame" allow="camera; microphone"
-          src={withV(mv==="disponibilidade" ? ("profissionais.html?meu="+meuProf.id) : mv==="pacientes" ? "pacientes.html" : ("agenda.html?profissional="+encodeURIComponent(meuProf.nome)))}
-          title={mv==="disponibilidade"?"Disponibilidade":mv==="pacientes"?"Pacientes":"Agenda"}></iframe>
+          src={withV(mv==="disponibilidade" ? ("profissionais.html?meu="+meuProf.id) : mv==="pacientes" ? "pacientes.html" : mv==="acompanhamento" ? "acompanhamento.html" : ("agenda.html?profissional="+encodeURIComponent(meuProf.nome)))}
+          title={mv==="disponibilidade"?"Disponibilidade":mv==="pacientes"?"Pacientes":mv==="acompanhamento"?"Acompanhamento":"Agenda"}></iframe>
       </>
     );
   }
 
   // FUNCIONÁRIO: inventário + agenda (só leitura).
   if(papel==="recepcionista"){
-    const opts=[...(meuProf?[{key:"minha-agenda",nome:"Minha agenda",src:"agenda.html?profissional="+encodeURIComponent(meuProf.nome),ic:"calendar"}]:[]),{key:"agenda",nome:"Agenda",src:"agenda.html",ic:"calendar"},{key:"dri",nome:"Dri · WhatsApp",src:"whatsapp.html",ic:"chat"},{key:"pacientes",nome:"Pacientes",src:"pacientes.html",ic:"user"},{key:"triagem",nome:"Triagem",src:"triagem.html",ic:"form"},{key:"atendimentos",nome:"Atendimentos",src:"produtividade.html",ic:"chart"},{key:"profissionais",nome:"Profissionais",src:"profissionais.html",ic:"steth"},{key:"inventario",nome:"Inventário",src:"estoque.html?somente=inventario",ic:"box"}];
+    const opts=[...(meuProf?[{key:"minha-agenda",nome:"Minha agenda",src:"agenda.html?profissional="+encodeURIComponent(meuProf.nome),ic:"calendar"}]:[]),{key:"agenda",nome:"Agenda",src:"agenda.html",ic:"calendar"},{key:"dri",nome:"Dri · WhatsApp",src:"whatsapp.html",ic:"chat"},{key:"pacientes",nome:"Pacientes",src:"pacientes.html",ic:"user"},{key:"acompanhamento",nome:"Acompanhamento",src:"acompanhamento.html",ic:"form"},{key:"atendimentos",nome:"Atendimentos",src:"produtividade.html",ic:"chart"},{key:"profissionais",nome:"Profissionais",src:"profissionais.html",ic:"steth"},{key:"inventario",nome:"Inventário",src:"estoque.html?somente=inventario",ic:"box"}];
     const cur=opts.find(o=>o.key===view)||opts[0];
     return (
       <div className="shell">
@@ -602,7 +603,7 @@ function App(){
   }
 
   if(papel==="funcionario"){
-    const fv = view==="agenda" ? "agenda" : view==="triagem" ? "triagem" : "inventario";
+    const fv = view==="agenda" ? "agenda" : view==="acompanhamento" ? "acompanhamento" : "inventario";
     return (
       <>
         <div className="bar">
@@ -610,11 +611,11 @@ function App(){
           <div className="switch" style={{marginLeft:4}}>
             <button className={fv==="inventario"?"on":""} onClick={()=>setView("inventario")}>Inventário</button>
             <button className={fv==="agenda"?"on":""} onClick={()=>setView("agenda")}>Agenda</button>
-            <button className={fv==="triagem"?"on":""} onClick={()=>setView("triagem")}>Triagem</button>
+            <button className={fv==="acompanhamento"?"on":""} onClick={()=>setView("acompanhamento")}>Acompanhamento</button>
           </div>
           <span className="sp"></span>{sair}
         </div>
-        <iframe className="frame" allow="camera; microphone" src={withV(fv==="agenda" ? "agenda.html" : fv==="triagem" ? "triagem.html" : "estoque.html?somente=inventario")} title={fv==="agenda"?"Agenda":fv==="triagem"?"Triagem":"Inventário"}></iframe>
+        <iframe className="frame" allow="camera; microphone" src={withV(fv==="agenda" ? "agenda.html" : fv==="acompanhamento" ? "acompanhamento.html" : "estoque.html?somente=inventario")} title={fv==="agenda"?"Agenda":fv==="acompanhamento"?"Acompanhamento":"Inventário"}></iframe>
       </>
     );
   }
