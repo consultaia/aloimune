@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Triagem</title>
+
+<!-- ==========================================================================
+     TRIAGEM — ficha de triagem e acompanhamento (substitui o Google Forms)
+     • Funcionário: entra com o código, preenche "Nova ficha" e vê/corrige as
+       fichas que ele mesmo digitou ("Minhas fichas").
+     • Gestor: "Panorama" (quem está agendado, pendente de acompanhamento,
+       aguardando exames…), "Fichas" (ver/editar tudo, exames, status, data da
+       cirurgia, histórico de alterações) e "Importar" (CSV do Google Planilhas).
+     Rode triagem-schema.sql no Supabase antes (tabelas, RLS e histórico).
+     ?demo=1 => dados fictícios, nada salvo (?demo=1&papel=funcionario para ver
+     a tela do funcionário).
+     ========================================================================== -->
+<script>
+  const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  :root{
+    --bg:#F5F7F8; --card:#FFFFFF; --ink:#12212B; --muted:#5C6B75; --line:#E3E8EB;
+    --primary:#0E7C7B; --primary-ink:#0A5E5D; --ok:#2E7D5B; --ok-bg:#E7F4EE;
+    --warn:#B26B00; --warn-bg:#FAEED4; --bad:#C0392B; --bad-bg:#FBE5E2; --blue:#2F6DB5; --blue-bg:#E6EFF9;
+    --radius:14px; --shadow:0 1px 2px rgba(18,33,43,.06), 0 8px 24px rgba(18,33,43,.06);
+  }
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1280px;margin:0 auto;padding:22px 18px 60px}
+  .top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  h1{font-family:"Space Grotesk";font-size:26px;margin:0} .top p{margin:4px 0 0;color:var(--muted);font-size:14px}
+  .mode{font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px} .mode.live{background:var(--ok-bg);color:var(--ok)} .mode.demo{background:var(--warn-bg);color:var(--warn)}
+  .btn{font:inherit;font-weight:600;border-radius:9px;cursor:pointer;padding:9px 13px;border:1px solid transparent}
+  .btn-primary{background:var(--primary);color:#fff} .btn-ghost{background:transparent;border-color:var(--line);color:var(--ink)} .btn-sm{padding:6px 10px;font-size:12.5px} .btn:disabled{opacity:.5;cursor:default}
+  .btn-bad{background:transparent;border-color:#F0C9C3;color:var(--bad)}
+  .tabs{display:inline-flex;background:#EEF1F3;border-radius:10px;padding:3px;margin-bottom:14px;flex-wrap:wrap}
+  .tabs button{font:inherit;font-weight:600;font-size:13.5px;border:none;background:none;color:var(--muted);padding:8px 14px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+  .tabs button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+  .badge{font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;background:#C6D0D4;color:#12212B} .badge.bad{background:var(--bad);color:#fff} .badge.warn{background:var(--warn);color:#fff}
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  input,select,textarea{font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);min-width:0} textarea{min-height:70px;resize:vertical;width:100%}
+  input:focus,select:focus,textarea:focus{outline:2px solid #BFE3E2;border-color:var(--primary)}
+  .note{background:var(--ok-bg);border:1px solid #CDE7DD;border-radius:12px;padding:11px 13px;font-size:13.5px;color:var(--primary-ink);line-height:1.55;margin-bottom:12px}
+  .lock{background:var(--warn-bg);color:var(--warn);border-radius:12px;padding:12px 14px;font-size:13.5px;margin-bottom:12px;line-height:1.5}
+  .empty{color:var(--muted);font-size:14px;padding:20px;text-align:center}
+  .chips{display:flex;gap:5px;flex-wrap:wrap} .chip{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#EEF1F3;color:#3B4A55;white-space:nowrap}
+  .chip.bad{background:var(--bad-bg);color:var(--bad)} .chip.warn{background:var(--warn-bg);color:var(--warn)} .chip.ok{background:var(--ok-bg);color:var(--ok)} .chip.blue{background:var(--blue-bg);color:var(--blue)}
+  table{width:100%;border-collapse:collapse;background:var(--card);border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+  th{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);background:#FBFCFC;white-space:nowrap}
+  td{padding:10px 12px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:middle} tr:last-child td{border-bottom:none} tr.row:hover td{background:#F7FAFB;cursor:pointer}
+  .tscroll{overflow-x:auto;border-radius:12px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+  .card h3{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px} .grid .full{grid-column:1/-1}
+  .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  .field{display:flex;flex-direction:column;gap:4px} .field label{font-size:12.5px;color:var(--muted);font-weight:600} .field .req{color:var(--bad)}
+  .field .hint{font-size:12px;color:var(--muted)}
+  .checks{display:flex;flex-direction:column;gap:6px} .checks label{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink);font-weight:500;cursor:pointer}
+  .checks input{width:17px;height:17px;accent-color:var(--primary)}
+  .msg{font-size:13px;margin-top:8px} .msg.bad{color:var(--bad)} .msg.ok{color:var(--ok)}
+  /* formulário estilo Google Forms */
+  .form{max-width:760px;display:flex;flex-direction:column;gap:12px}
+  .form .card{border-top:4px solid transparent} .form .card.head{border-top-color:var(--primary)}
+  .stick{position:sticky;bottom:0;background:linear-gradient(transparent,var(--bg) 30%);padding:14px 0 4px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  /* panorama */
+  .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;cursor:pointer;text-align:left;font:inherit;color:inherit}
+  .kpi:hover{border-color:var(--primary)} .kpi .v{font-family:"Space Grotesk";font-size:26px;font-weight:700} .kpi .l{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .kpi.bad .v{color:var(--bad)} .kpi.warn .v{color:var(--warn)} .kpi.ok .v{color:var(--ok)} .kpi.blue .v{color:var(--blue)}
+  .cols{display:grid;grid-template-columns:1.25fr 1fr;gap:14px;align-items:start}
+  .li{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px;cursor:pointer} .li:last-child{border-bottom:none}
+  .li .d{flex:1;min-width:0} .li .n{font-weight:600} .li .s{font-size:12px;color:var(--muted)}
+  .when{font-family:"Space Grotesk";font-weight:700;font-size:13px;min-width:54px;text-align:center;padding:5px 6px;border-radius:9px;background:var(--blue-bg);color:var(--blue)}
+  .bars{display:flex;flex-direction:column;gap:7px} .bar{display:grid;grid-template-columns:150px 1fr 34px;gap:8px;align-items:center;font-size:13px}
+  .bar .t{height:10px;border-radius:5px;background:#EEF1F3;overflow:hidden} .bar .t i{display:block;height:100%;background:var(--primary);border-radius:5px}
+  .bar .k{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .bar .c{text-align:right;font-weight:600}
+  /* drawer */
+  .overlay{position:fixed;inset:0;background:rgba(18,33,43,.45);display:flex;justify-content:flex-end;z-index:50}
+  .drawer{width:min(820px,100%);height:100%;background:var(--bg);overflow:auto;box-shadow:-12px 0 40px rgba(18,33,43,.2);display:flex;flex-direction:column}
+  .dh{background:var(--card);border-bottom:1px solid var(--line);padding:14px 20px;position:sticky;top:0;z-index:2;display:flex;gap:12px;align-items:flex-start}
+  .dh h2{font-family:"Space Grotesk";margin:0;font-size:20px} .dh .s{font-size:13px;color:var(--muted);margin-top:2px}
+  .dbody{padding:16px 20px}
+  .tl{border-left:2px solid var(--line);margin-left:6px;padding-left:14px} .tli{position:relative;padding:4px 0 10px;font-size:13px}
+  .tli::before{content:"";position:absolute;left:-20px;top:9px;width:10px;height:10px;border-radius:50%;background:var(--primary)} .tli .w{font-size:12px;color:var(--muted)}
+  .exg{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+  .exg .field.alt input,.exg .field.alt select{border-color:var(--bad);background:var(--bad-bg)}
+  @media (max-width:1000px){ .kpis{grid-template-columns:repeat(3,1fr)} .cols{grid-template-columns:1fr} .exg{grid-template-columns:repeat(2,minmax(0,1fr))} }
+  @media (max-width:640px){ .grid,.grid3{grid-template-columns:1fr} .kpis{grid-template-columns:repeat(2,1fr)} .bar{grid-template-columns:100px 1fr 30px} .wrap{padding:16px 12px 60px} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const _dl=(d)=>{const x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);};
+
+const { useState, useEffect, useMemo, useRef } = React;
+const DEMO_URL = /[?&]demo=1/.test(location.search); // ?demo=1 => modo demonstração (dados fictícios, nada salvo)
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY && !DEMO_URL) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+/* ---------------- o formulário (mesmas perguntas do Google Forms do mutirão) ---------------- */
+const QUEIXAS=["Dor crônica relacionada às mamas","Gigantomastia","Desconforto físico","Alterações físicas","Dificuldade para atividades / postura"];
+const COMORBIDADES=["Nega","HAS","DM","Obesidade","Asma","Doença tireoidiana","Depressão","Ansiedade","Compulsão alimentar","Tabagismo","Trombose prévia"];
+const RACAS=["Branca","Preta","Parda","Amarela","Indígena","Não declarou"];
+// exames pré-operatórios (mesmas colunas da planilha do gestor)
+const EXAMES=[
+  {k:"hemoglobina",n:"Hemoglobina",t:"num",al:["hemoglobina","hemograma","hb"]},
+  {k:"glicemia",n:"Glicemia",t:"num",al:["glicemia","glicemia jejum"]},
+  {k:"sodio",n:"Sódio",t:"num",al:["sodio","na"]},
+  {k:"potassio",n:"Potássio",t:"num",al:["potassio","k"]},
+  {k:"ureia",n:"Ureia",t:"num",al:["ureia"]},
+  {k:"creatinina",n:"Creatinina",t:"num",al:["creat","creat.","creatinina"]},
+  {k:"tp",n:"TP",t:"num",al:["tp"]},
+  {k:"ttpa",n:"TTPa",t:"num",al:["ttpa"]},
+  {k:"hiv",n:"Teste HIV",t:"soro",al:["teste hiv","hiv","hiv i e ii"]},
+  {k:"hepb",n:"Hepatite B",t:"soro",al:["teste hep. b","hep. b","hepatite b","hbsag"]},
+  {k:"hepc",n:"Hepatite C",t:"soro",al:["teste hep. c","hep. c","hepatite c","antihcv (igg e igm)","anti-hcv"]},
+  {k:"rx_torax",n:"Rx de tórax",t:"laudo",al:["rx torax","rx torax pa e perfil","rx"]},
+  {k:"usg_mama",n:"USG de mama",t:"laudo",al:["usg mama","usg de mama","usg"]},
+  {k:"ecg",n:"ECG",t:"laudo",al:["ecg"]},
+  {k:"mamografia",n:"Mamografia",t:"laudo",al:["mamografia","mamografia (se > 40 anos)"],seIdade:40},
+];
+const OPC_SORO=["Não reagente","Reagente"]; const OPC_LAUDO=["Normal","Alterado","Não se aplica"];
+const exameAlterado=(e,v)=> (e.t==="soro" && v==="Reagente") || (e.t==="laudo" && v==="Alterado");
+const examesDevidos=(f)=>{ const i=idade(f.nascimento); return EXAMES.filter(e=> !e.seIdade || i==null || i>=e.seIdade); };
+const examesPendentes=(f)=> examesDevidos(f).filter(e=> { const v=(f.exames||{})[e.k]; return v==null || String(v).trim()===""; });
+
+const STATUS=[
+  ["triada","Triada","chip"],["aguardando_exames","Aguardando exames","chip warn"],["apta","Apta","chip ok"],["inapta","Inapta","chip bad"],
+  ["agendada","Cirurgia agendada","chip blue"],["operada","Operada · pós-op","chip blue"],["alta","Alta","chip ok"],["desistiu","Desistiu / sem contato","chip"],
+];
+const ST=Object.fromEntries(STATUS.map(([k,n,c])=>[k,{n,c}]));
+const ENCERRADO=["inapta","alta","desistiu"];
+
+/* ---------------- utilidades ---------------- */
+const hojeStr=()=>_dl(new Date());
+const idade=(n)=>{ if(!n) return null; const d=new Date(n+"T12:00:00"), h=new Date(); if(isNaN(d)) return null; let a=h.getFullYear()-d.getFullYear(); if(h<new Date(h.getFullYear(),d.getMonth(),d.getDate())) a--; return a; };
+const fmtD=(iso)=> iso ? iso.slice(8,10)+"/"+iso.slice(5,7)+"/"+iso.slice(0,4) : "—";
+const fmtDC=(iso)=> iso ? iso.slice(8,10)+"/"+iso.slice(5,7) : "—";
+const fmtDH=(ts)=>{ if(!ts) return "—"; const d=new Date(ts); return d.toLocaleDateString("pt-BR")+" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}); };
+const dias=(iso)=> iso ? Math.round((new Date(iso+"T12:00:00")-new Date(hojeStr()+"T12:00:00"))/864e5) : null;
+const addD=(iso,n)=>{ const [y,m,d]=iso.split("-").map(Number); return _dl(new Date(y,m-1,d+n)); };
+const semAcento=(s)=> (s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().trim().replace(/\s+/g," ");
+const num=(v)=>{ if(v==null) return null; const m=String(v).replace(",",".").match(/-?\d+(\.\d+)?/); return m? Number(m[0]) : null; };
+const alturaM=(v)=>{ const n=num(v); if(n==null||n<=0) return null; return n>3 ? Math.round(n)/100 : n; }; // 160 -> 1,60
+const calcIMC=(peso,alt)=>{ const p=num(peso), a=alturaM(alt); if(!p||!a) return null; return Math.round(p/(a*a)*10)/10; };
+const br=(n,c=1)=> n==null||n==="" ? "—" : Number(n).toLocaleString("pt-BR",{minimumFractionDigits:0,maximumFractionDigits:c});
+const telLink=(t)=>{ let d=(t||"").replace(/\D/g,""); if(!d) return null; if(d.length<=11) d="55"+d; return "https://wa.me/"+d; };
+const lsGet=(k,d)=>{ try{ return localStorage.getItem(k)||d; }catch(e){ return d; } };
+const lsSet=(k,v)=>{ try{ localStorage.setItem(k,v); }catch(e){} };
+
+// motivos pelos quais a paciente precisa de alguém olhando por ela
+function motivos(f){
+  const r=[]; const h=hojeStr();
+  if(!f.ativo || ENCERRADO.includes(f.status)) return r;
+  if(f.proximo_contato && f.proximo_contato<=h) r.push({sev:"bad", t: f.proximo_contato===h ? "Contato combinado para hoje" : `Contato atrasado (${fmtDC(f.proximo_contato)})`});
+  if(f.status==="triada" && dias(f.data_triagem)<=-7) r.push({sev:"warn", t:`Triada há ${-dias(f.data_triagem)} dias sem encaminhamento`});
+  if(f.status==="aguardando_exames"){ const p=examesPendentes(f).length; if(p) r.push({sev:"warn", t:`${p} exame(s) pendente(s)`}); else r.push({sev:"warn", t:"Exames completos — avaliar se está apta"}); }
+  if(f.status==="apta" && !f.data_cirurgia) r.push({sev:"warn", t:"Apta sem data de cirurgia"});
+  if(f.status==="agendada" && f.data_cirurgia && f.data_cirurgia<h) r.push({sev:"bad", t:"Data da cirurgia passou — atualizar status"});
+  if(f.status==="agendada" && !f.data_cirurgia) r.push({sev:"warn", t:"Agendada sem data informada"});
+  if(f.status==="operada" && !f.proximo_contato) r.push({sev:"warn", t:"Sem retorno pós-op marcado"});
+  return r;
+}
+function alertas(f){
+  const a=[]; const i=idade(f.nascimento);
+  if(i!=null && (i<16 || i>60)) a.push({c:"chip bad", t:`${i} anos · fora de 16–60`});
+  const imc=f.imc ?? calcIMC(f.peso,f.altura);
+  if(imc!=null && imc>=35) a.push({c:"chip warn", t:`IMC ${br(imc)}`});
+  const alt=EXAMES.filter(e=>exameAlterado(e,(f.exames||{})[e.k]));
+  if(alt.length) a.push({c:"chip bad", t:`Alterado: ${alt.map(e=>e.n).join(", ")}`});
+  return a;
+}
+
+const FICHA_VAZIA=()=>({ data_triagem:hojeStr(), campanha:lsGet("triagem_campanha",""), nome:"", nascimento:"", raca_cor:"", prontuario:"", telefone:"",
+  queixas:[], queixa_outra:"", comorbidades:[], comorbidade_outra:"", peso:"", altura:"", pa:"", menarca:"", gestacoes:"", abortos:"", menopausa:"",
+  exames:{}, status:"triada", data_cirurgia:"", proximo_contato:"", observacoes:"", ativo:true });
+
+function paraBanco(f){
+  const nul=(v)=> v===""||v==null ? null : v;
+  const int=(v)=>{ const n=num(v); return n==null?null:Math.round(n); };
+  const exames={}; Object.entries(f.exames||{}).forEach(([k,v])=>{ if(v!=null && String(v).trim()!=="") exames[k]=String(v).trim(); });
+  return {
+    data_triagem:f.data_triagem||hojeStr(), campanha:nul((f.campanha||"").trim()), nome:(f.nome||"").trim().replace(/\s+/g," "),
+    nascimento:nul(f.nascimento), raca_cor:nul(f.raca_cor), prontuario:nul((f.prontuario||"").trim()), telefone:nul((f.telefone||"").trim()),
+    queixas:f.queixas||[], queixa_outra:nul((f.queixa_outra||"").trim()), comorbidades:f.comorbidades||[], comorbidade_outra:nul((f.comorbidade_outra||"").trim()),
+    peso:num(f.peso), altura:alturaM(f.altura), imc:calcIMC(f.peso,f.altura), pa:nul((f.pa||"").trim()), menarca:nul((f.menarca||"").toString().trim()),
+    gestacoes:int(f.gestacoes), abortos:int(f.abortos), menopausa:nul((f.menopausa||"").trim()),
+    exames, status:f.status||"triada", data_cirurgia:nul(f.data_cirurgia), proximo_contato:nul(f.proximo_contato), observacoes:nul((f.observacoes||"").trim()),
+    ativo: f.ativo!==false,
+  };
+}
+const daBanco=(r)=>({ ...FICHA_VAZIA(), ...Object.fromEntries(Object.entries(r).map(([k,v])=>[k, v==null ? (k==="exames"?{}:Array.isArray(FICHA_VAZIA()[k])?[]:"") : v])) });
+
+/* ---------------- dados de demonstração ---------------- */
+function demoFichas(){
+  const h=hojeStr(); const N=["Ana Paula dos Anjos","Maria das Dores Bernardes","Jadila Gusmão Amorim","Edirandia Ferreira","Carla Laís Coqueiro","Lara Dalva Ramos","Rosilene Matos Lima","Claudineia Caires","Dinalva de Sousa","Juliana Gonçalves","Jezica Brito Lopes","Eliete Oliveira","Eva de Jesus Santos","Mislene Gonçalves Brito"];
+  const st=["triada","aguardando_exames","aguardando_exames","apta","apta","agendada","agendada","operada","inapta","triada","aguardando_exames","agendada","alta","desistiu"];
+  return N.map((n,i)=>{
+    const ex={}; if(i%3!==0) EXAMES.slice(0, 6+(i%9)).forEach(e=> ex[e.k]= e.t==="num" ? String([13.2,92,140,4.1,28,0.8,12,30][EXAMES.indexOf(e)]||"") : e.t==="soro" ? "Não reagente" : (i===8&&e.k==="ecg") ? "Alterado" : "Normal");
+    return { id:"d"+i, criado_em:addD(h,-(20-i))+"T10:00:00Z", criado_por: i%2? "u-func":"u-outro", criado_por_nome: i%2? "Joana (recepção)":"Carlos (enfermagem)",
+      campanha: i<9 ? "Mutirão Vitória da Conquista" : "Mutirão Jequié", data_triagem:addD(h,-(20-i)), nome:n, nascimento:`${1966+i*3}-0${1+i%9}-1${i%9}`,
+      telefone:"77 9 98"+(10+i)+"-12"+(30+i), queixas:[QUEIXAS[i%4]], comorbidades: i%3? ["Nega"] : ["HAS","Obesidade"], peso:62+i*3, altura:1.52+(i%5)*0.04,
+      imc:calcIMC(62+i*3,1.52+(i%5)*0.04), pa:"120x80", menarca:String(11+i%3), exames:ex, status:st[i], ativo:true,
+      data_cirurgia: ["agendada","operada","alta"].includes(st[i]) ? addD(h, i===6? -2 : (i-5)*4) : null,
+      proximo_contato: i===1? addD(h,-3) : i===7? addD(h,5) : i===4? h : null, observacoes: i===8? "ECG com alteração — encaminhar cardiologia" : null };
+  });
+}
+
+/* ================================================================== APP */
+function App(){
+  const [papel,setPapel]=useState(undefined); const [uid,setUid]=useState(null);
+  const [fichas,setFichas]=useState([]); const [loading,setLoading]=useState(true); const [erro,setErro]=useState("");
+  const [aba,setAba]=useState(null); const [sel,setSel]=useState(null);
+  const [filtro,setFiltro]=useState({busca:"",status:"",campanha:"",autor:"",motivo:false});
+
+  async function load(){
+    setErro("");
+    if(sb){
+      const { data:{ session } } = await sb.auth.getSession();
+      if(!session){ setPapel(null); setLoading(false); return; }
+      setUid(session.user.id);
+      const pf=await sb.from("perfis").select("papel").eq("id",session.user.id).maybeSingle();
+      setPapel(pf.data?.papel||"sem_acesso");
+      const r=await sb.from("triagem_fichas").select("*").eq("ativo",true).order("data_triagem",{ascending:false}).order("criado_em",{ascending:false}).limit(5000);
+      if(r.error) setErro(r.error.message); else setFichas(r.data||[]);
+    } else {
+      const pq=(location.search.match(/[?&]papel=([a-z_]+)/)||[])[1];
+      setPapel(pq||"gestor"); setUid("u-func"); setFichas(f=> f.length? f : demoFichas());
+    }
+    setLoading(false);
+  }
+  useEffect(()=>{ load(); },[]);
+  useEffect(()=>{ if(!sb) return; const ch=sb.channel("triagem-rt").on("postgres_changes",{event:"*",schema:"public",table:"triagem_fichas"},()=>load()).subscribe(); return ()=>{ sb.removeChannel(ch); }; },[]);
+
+  const veTudo=["gestor","auditoria","recepcionista","medico"].includes(papel);
+  const podeCriar=["gestor","recepcionista","medico","funcionario"].includes(papel);
+  const podeEditar=(f)=> ["gestor","recepcionista","medico"].includes(papel) || (papel==="funcionario" && f.criado_por===uid);
+  const ehGestor=papel==="gestor";
+
+  const abas = veTudo
+    ? [["panorama","Panorama"],["fichas","Fichas"],...(podeCriar?[["nova","Nova ficha"]]:[]),...(ehGestor?[["importar","Importar planilha"]]:[])]
+    : [["nova","Nova ficha"],["fichas","Minhas fichas"]];
+  const abaAtual = aba && abas.some(a=>a[0]===aba) ? aba : abas[0][0];
+
+  const pendentes=useMemo(()=> fichas.map(f=>({f,m:motivos(f)})).filter(x=>x.m.length),[fichas]);
+  const campanhas=useMemo(()=> [...new Set(fichas.map(f=>f.campanha).filter(Boolean))].sort(),[fichas]);
+
+  async function salvar(form){
+    const p=paraBanco(form);
+    if(!p.nome) return "Informe o nome da paciente.";
+    if(sb){
+      const r= form.id ? await sb.from("triagem_fichas").update(p).eq("id",form.id).select().single()
+                       : await sb.from("triagem_fichas").insert(p).select().single();
+      if(r.error) return r.error.message;
+      setFichas(prev=> form.id ? prev.map(x=>x.id===form.id?r.data:x) : [r.data,...prev]);
+      return {ok:true, ficha:r.data};
+    }
+    const nova={...p, id:form.id||("n"+Date.now()), criado_por: form.criado_por||uid, criado_por_nome: form.criado_por_nome||"Você (demo)", criado_em: form.criado_em||new Date().toISOString(), atualizado_em:new Date().toISOString()};
+    setFichas(prev=> form.id ? prev.map(x=>x.id===form.id?nova:x) : [nova,...prev]);
+    return {ok:true, ficha:nova};
+  }
+  async function arquivar(f){
+    if(!confirm(`Arquivar a ficha de ${f.nome}? Ela some das listas (fica guardada no banco).`)) return;
+    if(sb){ const r=await sb.from("triagem_fichas").update({ativo:false}).eq("id",f.id); if(r.error) return alert(r.error.message); }
+    setFichas(prev=>prev.filter(x=>x.id!==f.id)); setSel(null);
+  }
+  const irPara=(patch)=>{ setFiltro({busca:"",status:"",campanha:"",autor:"",motivo:false,...patch}); setAba("fichas"); };
+
+  if(loading) return <div className="wrap"><div className="empty">Carregando…</div></div>;
+  if(papel===null) return <div className="wrap"><div className="lock">Você não está logada. Entre de novo na plataforma.</div></div>;
+  if(!veTudo && !podeCriar) return <div className="wrap"><div className="lock">Seu perfil (<b>{papel}</b>) não tem acesso à triagem. Peça ao gestor.</div></div>;
+
+  return (
+    <div className="wrap">
+      <div className="top">
+        <div><h1>Triagem e acompanhamento</h1>
+          <p>{veTudo ? "Fichas de triagem, exames, agendamento da cirurgia e quem precisa de acompanhamento." : "Preencha a ficha de cada paciente atendida. Você pode corrigir as fichas que digitou."}</p></div>
+        <span className={"mode "+(sb?"live":"demo")}>{sb?"● Conectado ao Supabase":"○ Modo demo — nada é salvo"}</span>
+      </div>
+      {erro && <div className="lock">Não consegui ler as fichas: {erro}.{/relation|does not exist|schema cache/i.test(erro) && <> Rode <b>triagem-schema.sql</b> no Supabase (SQL Editor).</>}</div>}
+      <div className="tabs">
+        {abas.map(([k,n])=>(
+          <button key={k} className={abaAtual===k?"on":""} onClick={()=>setAba(k)}>{n}
+            {k==="panorama" && pendentes.length>0 && <span className={"badge "+(pendentes.some(x=>x.m.some(m=>m.sev==="bad"))?"bad":"warn")}>{pendentes.length}</span>}
+          </button>))}
+      </div>
+
+      {abaAtual==="panorama" && <Panorama fichas={fichas} pendentes={pendentes} campanhas={campanhas} onAbrir={setSel} irPara={irPara} />}
+      {abaAtual==="fichas" && <Lista fichas={veTudo?fichas:fichas.filter(f=>f.criado_por===uid)} veTudo={veTudo} filtro={filtro} setFiltro={setFiltro} campanhas={campanhas} onAbrir={setSel} />}
+      {abaAtual==="nova" && <NovaFicha fichas={fichas} campanhas={campanhas} onSalvar={salvar} onAbrir={setSel} />}
+      {abaAtual==="importar" && <Importar fichas={fichas} campanhas={campanhas} onFim={load} setFichas={setFichas} />}
+
+      {sel && <Drawer ficha={fichas.find(x=>x.id===sel.id)||sel} campanhas={campanhas} pode={podeEditar(sel)} ehGestor={ehGestor}
+        onClose={()=>setSel(null)} onSalvar={salvar} onArquivar={arquivar} />}
+    </div>
+  );
+}
+
+/* ================================================================== PANORAMA (gestor) */
+function Panorama({ fichas, pendentes, campanhas, onAbrir, irPara }){
+  const [camp,setCamp]=useState("");
+  const fs=camp? fichas.filter(f=>f.campanha===camp) : fichas;
+  const pend=camp? pendentes.filter(x=>x.f.campanha===camp) : pendentes;
+  const h=hojeStr();
+  const cont=(s)=>fs.filter(f=>f.status===s).length;
+  const proximas=fs.filter(f=>f.status==="agendada" && f.data_cirurgia).sort((a,b)=>a.data_cirurgia.localeCompare(b.data_cirurgia));
+  const prox30=proximas.filter(f=>f.data_cirurgia>=h && dias(f.data_cirurgia)<=30).length;
+  const semana=fs.filter(f=>f.data_triagem>=addD(h,-6)).length;
+  const ordem=(x)=> x.m.some(m=>m.sev==="bad")?0:1;
+  const porStatus=STATUS.map(([k,n])=>[n,cont(k),k]).filter(x=>x[1]);
+  const max=Math.max(1,...porStatus.map(x=>x[1]));
+  const agrupa=(fn)=>{ const m={}; fs.forEach(f=>{ (fn(f)||["—"]).forEach(k=>{ m[k]=(m[k]||0)+1; }); }); return Object.entries(m).sort((a,b)=>b[1]-a[1]); };
+  const porAutor=agrupa(f=>[f.criado_por_nome||"—"]);
+  const porQueixa=agrupa(f=>(f.queixas&&f.queixas.length)?f.queixas:null);
+  const K=({v,l,cls,onClick})=> <button className={"kpi "+(cls||"")} onClick={onClick}><div className="v">{v}</div><div className="l">{l}</div></button>;
+  const Barras=({itens,onClick})=>{ const mx=Math.max(1,...itens.map(x=>x[1])); return <div className="bars">{itens.slice(0,8).map(([k,c])=>(
+    <div className="bar" key={k} style={onClick?{cursor:"pointer"}:null} onClick={onClick?()=>onClick(k):null}><span className="k" title={k}>{k}</span><span className="t"><i style={{width:(c/mx*100)+"%"}}></i></span><span className="c">{c}</span></div>))}</div>; };
+
+  if(!fichas.length) return <div className="card"><div className="empty">Nenhuma ficha ainda. Peça para a equipe preencher em <b>Nova ficha</b>, ou traga as respostas antigas do Google Forms em <b>Importar planilha</b>.</div></div>;
+  return (<>
+    {campanhas.length>1 && <div className="toolbar"><select value={camp} onChange={e=>setCamp(e.target.value)}><option value="">Todas as campanhas</option>{campanhas.map(c=><option key={c}>{c}</option>)}</select></div>}
+    <div className="kpis">
+      <K v={fs.length} l={`Triadas · ${semana} nesta semana`} onClick={()=>irPara({campanha:camp})} />
+      <K v={pend.length} l="Pendentes de acompanhamento" cls={pend.some(x=>x.m.some(m=>m.sev==="bad"))?"bad":"warn"} onClick={()=>irPara({campanha:camp,motivo:true})} />
+      <K v={cont("aguardando_exames")} l="Aguardando exames" cls="warn" onClick={()=>irPara({campanha:camp,status:"aguardando_exames"})} />
+      <K v={cont("apta")} l="Aptas sem data de cirurgia" cls="ok" onClick={()=>irPara({campanha:camp,status:"apta"})} />
+      <K v={cont("agendada")} l={`Cirurgias agendadas · ${prox30} em 30 dias`} cls="blue" onClick={()=>irPara({campanha:camp,status:"agendada"})} />
+      <K v={cont("operada")+cont("alta")} l="Operadas" onClick={()=>irPara({campanha:camp,status:"operada"})} />
+    </div>
+    <div className="cols">
+      <div className="card">
+        <h3>Pendentes de acompanhamento</h3>
+        {!pend.length ? <div className="empty">Ninguém pendente. 🎉</div> :
+          [...pend].sort((a,b)=>ordem(a)-ordem(b)).slice(0,40).map(({f,m})=>(
+            <div className="li" key={f.id} onClick={()=>onAbrir(f)}>
+              <div className="d"><div className="n">{f.nome}</div><div className="s">{ST[f.status]?.n}{f.telefone?` · ${f.telefone}`:""}{f.campanha&&!camp?` · ${f.campanha}`:""}</div></div>
+              <div className="chips" style={{justifyContent:"flex-end"}}>{m.map((x,i)=><span key={i} className={"chip "+x.sev}>{x.t}</span>)}</div>
+            </div>))}
+        {pend.length>40 && <div className="s" style={{marginTop:8}}><button className="btn btn-ghost btn-sm" onClick={()=>irPara({campanha:camp,motivo:true})}>Ver todas ({pend.length})</button></div>}
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <div className="card">
+          <h3>Agenda de cirurgias</h3>
+          {!proximas.length ? <div className="empty">Nenhuma cirurgia agendada.</div> :
+            proximas.slice(0,15).map(f=>{ const d=dias(f.data_cirurgia); return (
+              <div className="li" key={f.id} onClick={()=>onAbrir(f)}>
+                <span className="when" style={d<0?{background:"var(--bad-bg)",color:"var(--bad)"}:d<=7?{background:"var(--warn-bg)",color:"var(--warn)"}:null}>{fmtDC(f.data_cirurgia)}</span>
+                <div className="d"><div className="n">{f.nome}</div><div className="s">{d<0?`passou há ${-d} dia(s)`:d===0?"hoje":`em ${d} dia(s)`}{examesPendentes(f).length?` · ${examesPendentes(f).length} exame(s) pendente(s)`:""}</div></div>
+              </div>); })}
+        </div>
+        <div className="card"><h3>Funil</h3><Barras itens={porStatus.map(([n,c])=>[n,c])} onClick={(n)=>irPara({campanha:camp,status:STATUS.find(s=>s[1]===n)[0]})} /></div>
+        <div className="card"><h3>Fichas por quem digitou</h3><Barras itens={porAutor} /></div>
+        <div className="card"><h3>Queixas</h3><Barras itens={porQueixa} /></div>
+      </div>
+    </div>
+  </>);
+}
+
+/* ================================================================== LISTA */
+function Lista({ fichas, veTudo, filtro, setFiltro, campanhas, onAbrir }){
+  const set=(k,v)=>setFiltro(f=>({...f,[k]:v}));
+  const autores=[...new Set(fichas.map(f=>f.criado_por_nome).filter(Boolean))].sort();
+  const b=semAcento(filtro.busca);
+  const ordemSt=Object.fromEntries(STATUS.map((s,i)=>[s[0],i]));
+  const vis=fichas.filter(f=> (!b || semAcento(f.nome).includes(b) || (f.prontuario||"").includes(filtro.busca) || (f.telefone||"").replace(/\D/g,"").includes(filtro.busca.replace(/\D/g,"")||"#"))
+    && (!filtro.status || f.status===filtro.status) && (!filtro.campanha || f.campanha===filtro.campanha) && (!filtro.autor || f.criado_por_nome===filtro.autor)
+    && (!filtro.motivo || motivos(f).length));
+
+  function exportar(){
+    const cols=[["Data da triagem",f=>fmtD(f.data_triagem)],["Campanha",f=>f.campanha],["Nome",f=>f.nome],["Nascimento",f=>fmtD(f.nascimento)],["Idade",f=>idade(f.nascimento)],
+      ["Raça/cor",f=>f.raca_cor],["Prontuário",f=>f.prontuario],["Telefone",f=>f.telefone],["Queixas",f=>[...(f.queixas||[]),f.queixa_outra].filter(Boolean).join(", ")],
+      ["Comorbidades",f=>[...(f.comorbidades||[]),f.comorbidade_outra].filter(Boolean).join(", ")],["Peso",f=>br(f.peso)],["Altura",f=>br(f.altura,2)],["IMC",f=>br(f.imc)],["PA",f=>f.pa],
+      ["Menarca",f=>f.menarca],["Gestações",f=>f.gestacoes],["Abortos",f=>f.abortos],["Menopausa",f=>f.menopausa],
+      ...EXAMES.map(e=>[e.n,f=>(f.exames||{})[e.k]]),["Status",f=>ST[f.status]?.n],["Data da cirurgia",f=>fmtD(f.data_cirurgia)],["Próximo contato",f=>fmtD(f.proximo_contato)],
+      ["Pendências",f=>motivos(f).map(m=>m.t).join("; ")],["Observações",f=>f.observacoes],["Digitado por",f=>f.criado_por_nome]];
+    const esc=(v)=>{ const s=v==null||v==="—"?"":String(v); return /[";\n]/.test(s)? '"'+s.replace(/"/g,'""')+'"' : s; };
+    const csv="﻿"+[cols.map(c=>c[0]).join(";"),...vis.map(f=>cols.map(c=>esc(c[1](f))).join(";"))].join("\n");
+    const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})); a.download=`triagem-${hojeStr()}.csv`; a.click();
+  }
+
+  return (<>
+    <div className="toolbar">
+      <input placeholder="Buscar nome, prontuário ou telefone" value={filtro.busca} onChange={e=>set("busca",e.target.value)} style={{flex:"1 1 220px"}} />
+      <select value={filtro.status} onChange={e=>set("status",e.target.value)}><option value="">Todos os status</option>{STATUS.map(([k,n])=><option key={k} value={k}>{n}</option>)}</select>
+      {campanhas.length>1 && <select value={filtro.campanha} onChange={e=>set("campanha",e.target.value)}><option value="">Todas as campanhas</option>{campanhas.map(c=><option key={c}>{c}</option>)}</select>}
+      {veTudo && autores.length>1 && <select value={filtro.autor} onChange={e=>set("autor",e.target.value)}><option value="">Qualquer pessoa</option>{autores.map(c=><option key={c}>{c}</option>)}</select>}
+      <span className="checks"><label><input type="checkbox" checked={filtro.motivo} onChange={e=>set("motivo",e.target.checked)} />Só pendentes</label></span>
+      {veTudo && <button className="btn btn-ghost btn-sm" onClick={exportar} disabled={!vis.length}>Exportar CSV ({vis.length})</button>}
+    </div>
+    {!vis.length ? <div className="card"><div className="empty">{fichas.length? "Nenhuma ficha com esses filtros." : "Nenhuma ficha ainda."}</div></div> :
+    <div className="tscroll"><table>
+      <thead><tr><th>Triagem</th><th>Paciente</th><th>Idade</th><th>IMC</th><th>Status</th><th>Cirurgia</th><th>Exames</th><th>Acompanhamento</th>{veTudo && <th>Digitado por</th>}</tr></thead>
+      <tbody>{[...vis].sort((a,b)=> filtro.motivo||filtro.status ? (ordemSt[a.status]-ordemSt[b.status]) || a.nome.localeCompare(b.nome) : 0).map(f=>{ const m=motivos(f); const p=examesPendentes(f).length; const al=alertas(f); return (
+        <tr key={f.id} className="row" onClick={()=>onAbrir(f)}>
+          <td style={{whiteSpace:"nowrap"}}>{fmtD(f.data_triagem)}</td>
+          <td><b>{f.nome}</b><div style={{fontSize:12,color:"var(--muted)"}}>{[f.campanha,f.telefone].filter(Boolean).join(" · ")}</div>{al.length>0 && <div className="chips" style={{marginTop:4}}>{al.map((a,i)=><span key={i} className={a.c}>{a.t}</span>)}</div>}</td>
+          <td>{idade(f.nascimento) ?? "—"}</td>
+          <td>{br(f.imc)}</td>
+          <td><span className={ST[f.status]?.c}>{ST[f.status]?.n}</span></td>
+          <td style={{whiteSpace:"nowrap"}}>{f.data_cirurgia? fmtD(f.data_cirurgia) : "—"}</td>
+          <td>{p ? <span className="chip warn">{p} pendente(s)</span> : <span className="chip ok">completos</span>}</td>
+          <td><div className="chips">{m.length ? m.map((x,i)=><span key={i} className={"chip "+x.sev}>{x.t}</span>) : f.proximo_contato ? <span className="chip">contato {fmtDC(f.proximo_contato)}</span> : <span style={{color:"var(--muted)"}}>—</span>}</div></td>
+          {veTudo && <td style={{fontSize:12.5,color:"var(--muted)"}}>{f.criado_por_nome||"—"}</td>}
+        </tr>); })}</tbody>
+    </table></div>}
+  </>);
+}
+
+/* ================================================================== FORMULÁRIO */
+function Campo({ l, req, hint, children, cls }){
+  return <div className={"field "+(cls||"")}><label>{l}{req && <span className="req"> *</span>}</label>{children}{hint && <span className="hint">{hint}</span>}</div>;
+}
+function Checks({ opcoes, valor, onChange, exclusivo }){
+  const tog=(o)=>{ let v=valor.includes(o) ? valor.filter(x=>x!==o) : [...valor,o];
+    if(exclusivo && o===exclusivo && v.includes(o)) v=[o]; else if(exclusivo && o!==exclusivo) v=v.filter(x=>x!==exclusivo);
+    onChange(v); };
+  return <div className="checks">{opcoes.map(o=><label key={o}><input type="checkbox" checked={valor.includes(o)} onChange={()=>tog(o)} />{o}</label>)}</div>;
+}
+
+// secoes: "triagem" (o que a equipe preenche) e "gestao" (exames + status/agenda)
+function FormFicha({ f, set, campanhas, secoes, travado }){
+  const up=(k)=>(e)=>set({...f,[k]:e.target.value});
+  const i=idade(f.nascimento); const imc=calcIMC(f.peso,f.altura);
+  const devidos=examesDevidos(f);
+  const comGestao=secoes.includes("gestao");
+  return (
+    <fieldset disabled={travado} style={{border:"none",padding:0,margin:0,display:"flex",flexDirection:"column",gap:12,minWidth:0}}>
+      {secoes.map(sec=> sec==="triagem" ? <React.Fragment key="t">
+      <div className="card head">
+        <div className="grid">
+          <Campo l="Data da triagem" req><input type="date" value={f.data_triagem||""} onChange={up("data_triagem")} /></Campo>
+          <Campo l="Campanha / local" hint="Ex.: Mutirão Vitória da Conquista">
+            <input list="lst-camp" value={f.campanha||""} onChange={up("campanha")} placeholder="Opcional" />
+            <datalist id="lst-camp">{campanhas.map(c=><option key={c} value={c} />)}</datalist></Campo>
+        </div>
+      </div>
+      <div className="card"><h3>Identificação</h3>
+        <div className="grid">
+          <Campo l="Nome da paciente" req cls="full"><input value={f.nome||""} onChange={up("nome")} autoComplete="off" /></Campo>
+          <Campo l="Data de nascimento" hint={i!=null ? `${i} anos${(i<16||i>60)?" — fora da faixa 16 a 60 anos":""}` : null}><input type="date" value={f.nascimento||""} onChange={up("nascimento")} /></Campo>
+          <Campo l="Raça/cor (autodeclarada)"><select value={f.raca_cor||""} onChange={up("raca_cor")}><option value="">—</option>{RACAS.map(r=><option key={r}>{r}</option>)}</select></Campo>
+          <Campo l="Contato telefônico (WhatsApp)"><input type="tel" inputMode="tel" value={f.telefone||""} onChange={up("telefone")} placeholder="(77) 9 9999-9999" /></Campo>
+          <Campo l="Prontuário"><input value={f.prontuario||""} onChange={up("prontuario")} /></Campo>
+        </div>
+      </div>
+      <div className="card"><h3>Queixas</h3>
+        <Checks opcoes={QUEIXAS} valor={f.queixas||[]} onChange={v=>set({...f,queixas:v})} />
+        <input style={{marginTop:8,width:"100%"}} placeholder="Outra queixa" value={f.queixa_outra||""} onChange={up("queixa_outra")} />
+      </div>
+      <div className="card"><h3>Comorbidades / antecedentes</h3>
+        <Checks opcoes={COMORBIDADES} valor={f.comorbidades||[]} exclusivo="Nega" onChange={v=>set({...f,comorbidades:v})} />
+        <input style={{marginTop:8,width:"100%"}} placeholder="Outra comorbidade / medicação em uso" value={f.comorbidade_outra||""} onChange={up("comorbidade_outra")} />
+      </div>
+      <div className="card"><h3>Medidas</h3>
+        <div className="grid">
+          <Campo l="Peso (kg)"><input inputMode="decimal" value={f.peso??""} onChange={up("peso")} placeholder="Ex.: 72,5" /></Campo>
+          <Campo l="Altura (m)"><input inputMode="decimal" value={f.altura??""} onChange={up("altura")} placeholder="Ex.: 1,62" /></Campo>
+          <Campo l="IMC (kg/m²)" hint="Calculado automaticamente"><input value={imc!=null?br(imc):""} readOnly style={{background:"#F7FAFB",fontWeight:700,color:imc>=35?"var(--warn)":"inherit"}} /></Campo>
+          <Campo l="Pressão arterial (mmHg)"><input value={f.pa||""} onChange={up("pa")} placeholder="Ex.: 120x80" /></Campo>
+        </div>
+      </div>
+      <div className="card"><h3>Histórico ginecológico</h3>
+        <div className="grid">
+          <Campo l="Idade da primeira menstruação"><input inputMode="numeric" value={f.menarca??""} onChange={up("menarca")} /></Campo>
+          <Campo l="Menopausa? Se sim, com qual idade?"><input value={f.menopausa||""} onChange={up("menopausa")} placeholder="Não / Sim, aos 50" /></Campo>
+          <Campo l="Número de gestações"><input type="number" min="0" value={f.gestacoes??""} onChange={up("gestacoes")} /></Campo>
+          <Campo l="Número de abortos"><input type="number" min="0" value={f.abortos??""} onChange={up("abortos")} /></Campo>
+        </div>
+      </div>
+      </React.Fragment> : <React.Fragment key="g">
+      <div className="card"><h3>Acompanhamento</h3>
+        <div className="grid3">
+          <Campo l="Status"><select value={f.status} onChange={e=>{ const s=e.target.value; set({...f,status:s}); }}>{STATUS.map(([k,n])=><option key={k} value={k}>{n}</option>)}</select></Campo>
+          <Campo l="Data da cirurgia"><input type="date" value={f.data_cirurgia||""} onChange={e=>set({...f,data_cirurgia:e.target.value, status: e.target.value && ["triada","aguardando_exames","apta"].includes(f.status) ? "agendada" : f.status})} /></Campo>
+          <Campo l="Próximo contato / retorno" hint="Aparece como pendente nesse dia"><input type="date" value={f.proximo_contato||""} onChange={up("proximo_contato")} /></Campo>
+        </div>
+      </div>
+      <div className="card"><h3>Exames pré-operatórios <span style={{textTransform:"none",letterSpacing:0,fontWeight:500}}>· {devidos.length-examesPendentes(f).length}/{devidos.length} preenchidos</span></h3>
+        <div className="exg">{EXAMES.map(e=>{ const v=(f.exames||{})[e.k]||""; const fora=!devidos.includes(e);
+          const sx=(val)=>set({...f, exames:{...(f.exames||{}), [e.k]:val}});
+          return <Campo key={e.k} l={e.n+(fora?" (se ≥ 40 anos)":"")} cls={exameAlterado(e,v)?"alt":""}>
+            {e.t==="num" ? <input inputMode="decimal" value={v} onChange={ev=>sx(ev.target.value)} />
+              : <select value={v} onChange={ev=>sx(ev.target.value)}><option value="">pendente</option>{(e.t==="soro"?OPC_SORO:OPC_LAUDO).map(o=><option key={o}>{o}</option>)}{v && !(e.t==="soro"?OPC_SORO:OPC_LAUDO).includes(v) && <option>{v}</option>}</select>}
+          </Campo>; })}</div>
+      </div>
+      </React.Fragment>)}
+      <div className="card"><h3>Observações</h3><textarea value={f.observacoes||""} onChange={up("observacoes")} placeholder={comGestao?"Pendências, encaminhamentos, contatos feitos…":"Algo mais que o gestor precisa saber"} /></div>
+    </fieldset>
+  );
+}
+
+function NovaFicha({ fichas, campanhas, onSalvar, onAbrir }){
+  const [f,setF]=useState(FICHA_VAZIA()); const [busy,setBusy]=useState(false); const [msg,setMsg]=useState(null); const [feita,setFeita]=useState(null);
+  const topo=useRef(null);
+  const dup = f.nome.trim().length>5 ? fichas.find(x=> semAcento(x.nome)===semAcento(f.nome) && (!f.nascimento || !x.nascimento || x.nascimento===f.nascimento)) : null;
+  async function enviar(){
+    setMsg(null); if(!f.nome.trim()) return setMsg({bad:true,t:"Informe o nome da paciente."});
+    setBusy(true); const r=await onSalvar(f); setBusy(false);
+    if(typeof r==="string") return setMsg({bad:true,t:r});
+    lsSet("triagem_campanha", f.campanha||"");
+    setFeita(r.ficha); setF({...FICHA_VAZIA(), data_triagem:f.data_triagem, campanha:f.campanha});
+    topo.current && topo.current.scrollIntoView({behavior:"smooth"});
+  }
+  return (
+    <div className="form" ref={topo}>
+      {feita && <div className="note">✓ Ficha de <b>{feita.nome}</b> salva. Já pode preencher a próxima. <button className="btn btn-ghost btn-sm" style={{marginLeft:6}} onClick={()=>onAbrir(feita)}>Ver / corrigir</button></div>}
+      <FormFicha f={f} set={(v)=>{ setF(v); if(feita) setFeita(null); }} campanhas={campanhas} secoes={["triagem"]} />
+      {dup && <div className="lock">Já existe uma ficha de <b>{dup.nome}</b> ({fmtD(dup.data_triagem)}{dup.criado_por_nome?`, por ${dup.criado_por_nome}`:""}). <button className="btn btn-ghost btn-sm" onClick={()=>onAbrir(dup)}>Abrir a existente</button> — ou salve mesmo assim se for outra paciente.</div>}
+      <div className="stick">
+        <button className="btn btn-primary" onClick={enviar} disabled={busy}>{busy?"Salvando…":"Salvar ficha"}</button>
+        <button className="btn btn-ghost" onClick={()=>{ if(confirm("Limpar o formulário?")) setF({...FICHA_VAZIA(), data_triagem:f.data_triagem, campanha:f.campanha}); }}>Limpar</button>
+        {msg && <span className={"msg "+(msg.bad?"bad":"ok")} style={{marginTop:0}}>{msg.t}</span>}
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================== DRAWER (ver / editar ficha) */
+function Drawer({ ficha, campanhas, pode, ehGestor, onClose, onSalvar, onArquivar }){
+  const [f,setF]=useState(()=>daBanco(ficha)); const [busy,setBusy]=useState(false); const [msg,setMsg]=useState(null);
+  const [hist,setHist]=useState(null); const [verHist,setVerHist]=useState(false);
+  const sujo = JSON.stringify(paraBanco(f))!==JSON.stringify(paraBanco(daBanco(ficha)));
+  useEffect(()=>{ setF(daBanco(ficha)); },[ficha.id, ficha.atualizado_em]);
+  useEffect(()=>{ if(!verHist||hist) return; if(!sb){ setHist([{id:1,quando:ficha.criado_em,quem_nome:ficha.criado_por_nome,acao:"criou"}]); return; }
+    sb.from("triagem_historico").select("*").eq("ficha_id",ficha.id).order("quando",{ascending:false}).limit(200).then(r=>setHist(r.data||[])); },[verHist]);
+  async function salvar(){ setBusy(true); setMsg(null); const r=await onSalvar({...f,id:ficha.id,criado_por:ficha.criado_por,criado_por_nome:ficha.criado_por_nome,criado_em:ficha.criado_em}); setBusy(false);
+    if(typeof r==="string") setMsg({bad:true,t:r}); else { setMsg({t:"Salvo."}); setHist(null); } }
+  const fechar=()=>{ if(sujo && !confirm("Há alterações não salvas. Fechar mesmo assim?")) return; onClose(); };
+  const m=motivos(ficha); const al=alertas(ficha); const wa=telLink(ficha.telefone);
+  const NOMES={...Object.fromEntries(Object.keys(FICHA_VAZIA()).map(k=>[k,k.replace(/_/g," ")])), data_triagem:"data da triagem", nascimento:"nascimento", raca_cor:"raça/cor", proximo_contato:"próximo contato", data_cirurgia:"data da cirurgia", observacoes:"observações", ativo:"arquivada"};
+  const valH=(k,v)=> v==null||v==="" ? "vazio" : k==="status" ? (ST[v]?.n||v) : Array.isArray(v) ? (v.join(", ")||"vazio") : typeof v==="object" ? Object.entries(v).map(([a,b])=>`${(EXAMES.find(e=>e.k===a)||{}).n||a}: ${b}`).join(", ") : /^\d{4}-\d\d-\d\d$/.test(v) ? fmtD(v) : String(v);
+  return (
+    <div className="overlay" onClick={fechar}><div className="drawer" onClick={e=>e.stopPropagation()}>
+      <div className="dh">
+        <div style={{flex:1,minWidth:0}}>
+          <h2>{ficha.nome}</h2>
+          <div className="s">{idade(ficha.nascimento)!=null?`${idade(ficha.nascimento)} anos · `:""}triagem {fmtD(ficha.data_triagem)}{ficha.campanha?` · ${ficha.campanha}`:""} · digitado por {ficha.criado_por_nome||"—"}</div>
+          <div className="chips" style={{marginTop:6}}><span className={ST[ficha.status]?.c}>{ST[ficha.status]?.n}</span>{m.map((x,i)=><span key={"m"+i} className={"chip "+x.sev}>{x.t}</span>)}{al.map((a,i)=><span key={"a"+i} className={a.c}>{a.t}</span>)}</div>
+        </div>
+        {wa && <a className="btn btn-ghost btn-sm" href={wa} target="_blank" rel="noreferrer">WhatsApp</a>}
+        <button className="btn btn-ghost btn-sm" onClick={fechar}>Fechar</button>
+      </div>
+      <div className="dbody">
+        {!pode && <div className="lock">Somente leitura{ehGestor?"":" — só quem digitou a ficha ou o gestor podem editar"}.</div>}
+        <FormFicha f={f} set={setF} campanhas={campanhas} secoes={["gestao","triagem"]} travado={!pode} />
+        <div className="card" style={{marginTop:12}}>
+          <h3 style={{display:"flex",justifyContent:"space-between",alignItems:"center",margin:0}}>Histórico de alterações<button className="btn btn-ghost btn-sm" onClick={()=>setVerHist(v=>!v)}>{verHist?"Esconder":"Mostrar"}</button></h3>
+          {verHist && (hist===null ? <div className="empty">Carregando…</div> : !hist.length ? <div className="empty">Sem registros.</div> :
+            <div className="tl" style={{marginTop:10}}>{hist.map(h=>(
+              <div className="tli" key={h.id}><div className="w">{fmtDH(h.quando)} · {h.quem_nome||"—"}</div>
+                {h.acao==="criou" ? "Criou a ficha" : Object.entries(h.campos||{}).map(([k,[a,b]])=>(
+                  <div key={k}><b>{NOMES[k]||k}</b>: {k==="ativo" ? (b?"restaurada":"arquivada") : <>{valH(k,a)} → {valH(k,b)}</>}</div>))}
+              </div>))}</div>)}
+        </div>
+        {pode && <div className="stick">
+          <button className="btn btn-primary" onClick={salvar} disabled={busy||!sujo}>{busy?"Salvando…":"Salvar alterações"}</button>
+          {sujo && <button className="btn btn-ghost" onClick={()=>setF(daBanco(ficha))}>Desfazer</button>}
+          {ehGestor && <button className="btn btn-bad" onClick={()=>onArquivar(ficha)} style={{marginLeft:"auto"}}>Arquivar ficha</button>}
+          {msg && <span className={"msg "+(msg.bad?"bad":"ok")} style={{marginTop:0}}>{msg.t}</span>}
+        </div>}
+      </div>
+    </div></div>
+  );
+}
+
+/* ================================================================== IMPORTAR (CSV do Google Planilhas) */
+function lerCSV(txt){
+  const sep = (txt.split("\n")[0].match(/;/g)||[]).length > (txt.split("\n")[0].match(/,/g)||[]).length ? ";" : ",";
+  const rows=[]; let row=[], cel="", q=false;
+  for(let i=0;i<txt.length;i++){ const c=txt[i];
+    if(q){ if(c==='"'){ if(txt[i+1]==='"'){ cel+='"'; i++; } else q=false; } else cel+=c; }
+    else if(c==='"') q=true; else if(c===sep){ row.push(cel); cel=""; } else if(c==="\n"){ row.push(cel); rows.push(row); row=[]; cel=""; } else if(c!=="\r") cel+=c; }
+  if(cel!==""||row.length){ row.push(cel); rows.push(row); }
+  return rows.filter(r=>r.some(x=>x.trim()!==""));
+}
+const dataBR=(s)=>{ const m=String(s||"").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/); if(!m) return /^\d{4}-\d\d-\d\d/.test(s||"") ? s.slice(0,10) : null;
+  let [_,d,mo,y]=m; if(y.length===2) y=(Number(y)>40?"19":"20")+y; if(+mo>12||+d>31||+mo<1||+d<1) return null; return `${y}-${mo.padStart(2,"0")}-${d.padStart(2,"0")}`; };
+function mapearColuna(h){
+  const n=semAcento(h).replace(/[:?]/g,"").trim();
+  if(!n || n.includes("carimbo") || n==="idade" || n.startsWith("imc") || n.includes("16 a 60") || n==="imprimir") return null;
+  if(n.includes("data da cirurgia")) return "data_cirurgia";
+  if(n.includes("triagem") || n==="data" || n.includes("data da consulta")) return "data_triagem";
+  if(n.includes("nascimento") || n==="dn") return "nascimento";
+  if(n.includes("nome")) return "nome";
+  if(n.includes("raca")) return "raca_cor";
+  if(n.includes("prontuario")) return "prontuario";
+  if(n.includes("queixa")) return "queixas";
+  if(n.includes("comorbid")) return "comorbidades";
+  if(n.startsWith("peso")) return "peso";
+  if(n.startsWith("altura")) return "altura";
+  if(n.startsWith("pa ") || n==="pa" || n.includes("pressao")) return "pa";
+  if(n.includes("menstrua")) return "menarca";
+  if(n.includes("telefon") || n.startsWith("tel") || n.includes("celular")) return "telefone";
+  if(n.includes("gesta")) return "gestacoes";
+  if(n.includes("aborto")) return "abortos";
+  if(n.includes("menopausa")) return "menopausa";
+  if(n.startsWith("apta")) return "apta";
+  if(n.startsWith("observa") || n.includes("pendencia")) return "observacoes";
+  if(n.includes("vincula") || n.includes("autoriza")) return "observacoes";
+  const e=EXAMES.find(e=> e.al.some(a=> n===a || (a.length>3 && n.startsWith(a))));
+  return e ? "ex:"+e.k : null;
+}
+function linhaParaFicha(cab, mapa, r, campanha){
+  const f={...FICHA_VAZIA(), campanha, exames:{}, observacoes:""}; let apta="";
+  cab.forEach((h,i)=>{ const k=mapa[i]; const v=(r[i]||"").trim(); if(!k||!v) return;
+    if(k.startsWith("ex:")){ const e=EXAMES.find(x=>x.k===k.slice(3)); let val=v;
+      if(e.t==="soro"){ const s=semAcento(v); val= /^(neg|nao reag|nr)/.test(s)?"Não reagente": /^(pos|reag)/.test(s)?"Reagente":v; }
+      if(e.t==="laudo"){ const s=semAcento(v); val= /^(ok|normal|bi-?rads [12]\b)/.test(s)?"Normal": /^(na|n\/a|nao se aplica)$/.test(s)?"Não se aplica": /alter/.test(s)?"Alterado":v; }
+      if(e.t==="num" && semAcento(v)==="ok") val="ok";
+      f.exames[e.k]=val; return; }
+    if(k==="data_triagem"||k==="nascimento"||k==="data_cirurgia"){ f[k]=dataBR(v)||(k==="data_triagem"?f.data_triagem:""); return; }
+    if(k==="queixas"||k==="comorbidades"){ const opc=k==="queixas"?QUEIXAS:COMORBIDADES; const partes=v.split(/,|;|\//).map(x=>x.trim()).filter(Boolean); const ok=[], resto=[];
+      partes.forEach(p=>{ const o=opc.find(o=>semAcento(o)===semAcento(p)) || (semAcento(p)==="nega"&&k==="comorbidades"?"Nega":null); o? ok.push(o) : resto.push(p); });
+      f[k]=[...new Set(ok)]; f[k==="queixas"?"queixa_outra":"comorbidade_outra"]=resto.join(", "); return; }
+    if(k==="apta"){ apta=semAcento(v); return; }
+    if(k==="observacoes"){ f.observacoes=[f.observacoes,v].filter(Boolean).join(" · "); return; }
+    if(k==="nome"){ f.nome=v.replace(/\s+/g," "); return; }
+    f[k]=v; });
+  if(apta.startsWith("sim")||apta.startsWith("apta")) f.status = f.data_cirurgia ? (f.data_cirurgia<hojeStr()?"operada":"agendada") : "apta";
+  else if(apta.startsWith("nao")||apta.startsWith("inapta")) f.status="inapta";
+  else if(Object.keys(f.exames).length) f.status="aguardando_exames";
+  return f;
+}
+function Importar({ fichas, campanhas, onFim, setFichas }){
+  const [dados,setDados]=useState(null); const [camp,setCamp]=useState(""); const [busy,setBusy]=useState(false); const [msg,setMsg]=useState(null); const [pularDup,setPularDup]=useState(true);
+  async function abrir(e){ const file=e.target.files[0]; if(!file) return; const txt=await file.text(); const rows=lerCSV(txt);
+    if(rows.length<2) return setMsg({bad:true,t:"Não encontrei linhas nesse arquivo."});
+    const cab=rows[0]; const mapa=cab.map(mapearColuna);
+    if(!mapa.includes("nome")) return setMsg({bad:true,t:"Não achei a coluna com o nome da paciente."});
+    setMsg(null); setDados({cab,mapa,linhas:rows.slice(1),arquivo:file.name}); if(!camp) setCamp(file.name.replace(/\.csv$/i,"").replace(/\s*-\s*[^-]*$/,"").replace(/\(respostas\)/i,"").trim()); }
+  const fichasNovas = dados ? dados.linhas.map(r=>linhaParaFicha(dados.cab,dados.mapa,r,camp.trim())).filter(f=>f.nome && !/^teste$/i.test(f.nome.trim())) : [];
+  const chave=(f)=> semAcento(f.nome)+"|"+(f.nascimento||"");
+  const existentes=new Set(fichas.map(chave));
+  const vistos=new Set(); const aImportar=fichasNovas.filter(f=>{ const k=chave(f); if(pularDup && (existentes.has(k)||vistos.has(k))) return false; vistos.add(k); return true; });
+  async function importar(){
+    setBusy(true); setMsg(null); const payload=aImportar.map(paraBanco);
+    if(sb){ for(let i=0;i<payload.length;i+=200){ const r=await sb.from("triagem_fichas").insert(payload.slice(i,i+200)); if(r.error){ setBusy(false); return setMsg({bad:true,t:`Parou na linha ${i+1}: ${r.error.message}`}); } } await onFim(); }
+    else setFichas(prev=>[...payload.map((p,i)=>({...p,id:"imp"+Date.now()+i,criado_por_nome:"Importação",criado_em:new Date().toISOString()})),...prev]);
+    setBusy(false); setMsg({t:`${payload.length} ficha(s) importada(s).`}); setDados(null);
+  }
+  const NOMECOL={data_triagem:"Data da triagem",nome:"Nome",nascimento:"Nascimento",raca_cor:"Raça/cor",prontuario:"Prontuário",queixas:"Queixas",comorbidades:"Comorbidades",peso:"Peso",altura:"Altura",pa:"PA",menarca:"Menarca",telefone:"Telefone",gestacoes:"Gestações",abortos:"Abortos",menopausa:"Menopausa",apta:"Apta → status",data_cirurgia:"Data da cirurgia",observacoes:"Observações"};
+  return (
+    <div className="form">
+      <div className="note">Traga as respostas antigas do Google Forms (ou a planilha do mutirão): no Google Planilhas, abra a aba e use <b>Arquivo → Fazer download → Valores separados por vírgula (.csv)</b>. Depois escolha o arquivo aqui. As colunas são reconhecidas pelo nome (nome, nascimento, queixas, peso, exames, APTA, data da cirurgia…).</div>
+      <div className="card">
+        <div className="grid">
+          <Campo l="Arquivo CSV"><input type="file" accept=".csv,text/csv" onChange={abrir} /></Campo>
+          <Campo l="Campanha / local dessas fichas"><input list="lst-camp2" value={camp} onChange={e=>setCamp(e.target.value)} /><datalist id="lst-camp2">{campanhas.map(c=><option key={c} value={c} />)}</datalist></Campo>
+        </div>
+        {msg && <div className={"msg "+(msg.bad?"bad":"ok")}>{msg.t}</div>}
+      </div>
+      {dados && <div className="card">
+        <h3>Colunas reconhecidas</h3>
+        <div className="chips" style={{marginBottom:12}}>{dados.cab.map((h,i)=>{ const k=dados.mapa[i]; return <span key={i} className={k?"chip ok":"chip"} title={k?"":"ignorada"}>{h.trim()||"(sem nome)"}{k?` → ${k.startsWith("ex:")?EXAMES.find(e=>e.k===k.slice(3)).n:NOMECOL[k]}`:" · ignorada"}</span>; })}</div>
+        <span className="checks"><label><input type="checkbox" checked={pularDup} onChange={e=>setPularDup(e.target.checked)} />Pular pacientes que já existem (mesmo nome e nascimento)</label></span>
+        <div style={{margin:"12px 0",fontSize:14}}><b>{aImportar.length}</b> ficha(s) para importar{fichasNovas.length-aImportar.length>0?` · ${fichasNovas.length-aImportar.length} repetida(s) pulada(s)`:""}.</div>
+        <div className="tscroll" style={{maxHeight:300,overflow:"auto"}}><table><thead><tr><th>Triagem</th><th>Nome</th><th>Nasc.</th><th>Peso/altura</th><th>Status</th><th>Exames</th></tr></thead>
+          <tbody>{aImportar.slice(0,50).map((f,i)=><tr key={i}><td>{fmtD(f.data_triagem)}</td><td>{f.nome}</td><td>{fmtD(f.nascimento)}</td><td>{br(num(f.peso))} / {br(alturaM(f.altura),2)}</td><td><span className={ST[f.status].c}>{ST[f.status].n}</span></td><td>{Object.keys(f.exames).length}</td></tr>)}</tbody></table></div>
+        <div className="stick"><button className="btn btn-primary" onClick={importar} disabled={busy||!aImportar.length}>{busy?"Importando…":`Importar ${aImportar.length} ficha(s)`}</button><button className="btn btn-ghost" onClick={()=>setDados(null)}>Cancelar</button></div>
+      </div>}
+    </div>
+  );
+}
+
+class ErroNaTela extends React.Component{
+  constructor(p){ super(p); this.state={erro:null}; }
+  static getDerivedStateFromError(e){ return {erro:e}; }
+  render(){ if(this.state.erro) return <div style={{padding:24,fontFamily:"monospace",fontSize:13,color:"#C0392B",whiteSpace:"pre-wrap"}}><b>A página encontrou um erro:</b>{"\n\n"}{String(this.state.erro.message||this.state.erro)}</div>; return this.props.children; }
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<ErroNaTela><App /></ErroNaTela>);
+</script>
+</body>
+</html>
