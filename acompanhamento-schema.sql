@@ -16,6 +16,9 @@
 -- Atualização (out/2026): "próximo passo" passou a aceitar vários. Quem já tinha
 -- rodado a versão anterior só precisa rodar este arquivo de novo — os dados de
 -- proximo_passo são copiados para proximos_passos automaticamente.
+--
+-- Integração com o Google Forms: veja o fim deste arquivo e
+-- google-forms-acompanhamento.gs (script para colar no formulário).
 -- ============================================================================
 
 create table if not exists public.clinica_acompanhamentos (
@@ -138,7 +141,7 @@ create or replace function public.acomp_criado() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
   insert into public.clinica_acompanhamentos_historico (acompanhamento_id, quem, quem_nome, acao)
-  values (new.id, auth.uid(), public.acomp_nome(), 'criou');
+  values (new.id, coalesce(auth.uid(), new.criado_por), coalesce(public.acomp_nome(), new.criado_por_nome), 'criou');
   return new;
 end $$;
 
@@ -194,3 +197,97 @@ create policy acomp_resp_apagar on public.clinica_acompanhamento_responsaveis fo
 grant select, insert, update, delete on public.clinica_acompanhamentos to authenticated;
 grant select, insert, delete on public.clinica_acompanhamento_responsaveis to authenticated;
 grant select on public.clinica_acompanhamentos_historico to authenticated;
+
+-- ============================================================================
+-- INTEGRAÇÃO COM O GOOGLE FORMS
+-- Cada resposta enviada no Forms vira um acompanhamento aqui (situação vinda do
+-- formulário, ou "Pendente"). O script do Forms chama acomp_receber_forms() com
+-- uma senha secreta; sem a senha certa nada é gravado.
+-- Para ver a senha (cole no script do Forms):
+--   select valor from public.clinica_integracoes where chave = 'acomp_forms_segredo';
+-- Para trocar a senha:
+--   update public.clinica_integracoes set valor = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')
+--   where chave = 'acomp_forms_segredo';
+-- ============================================================================
+
+alter table public.clinica_acompanhamentos add column if not exists forms_resposta_id text;  -- evita duplicar a mesma resposta
+create unique index if not exists clinica_acomp_forms_idx on public.clinica_acompanhamentos (forms_resposta_id);
+
+-- guarda segredos de integração; RLS ligado e sem nenhuma policy = ninguém lê pela API
+create table if not exists public.clinica_integracoes (
+  chave     text primary key,
+  valor     text not null,
+  criado_em timestamptz not null default now()
+);
+alter table public.clinica_integracoes enable row level security;
+revoke all on public.clinica_integracoes from anon, authenticated;
+insert into public.clinica_integracoes (chave, valor)
+  values ('acomp_forms_segredo', replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''))
+on conflict (chave) do nothing;
+
+create or replace function public.acomp_receber_forms(segredo text, dados jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_id     uuid;
+  v_pid    uuid;
+  v_uid    uuid;
+  v_nome   text;
+  v_email  text := lower(nullif(trim(dados->>'email'), ''));
+  v_pac    text := nullif(trim(regexp_replace(coalesce(dados->>'paciente', ''), '\s+', ' ', 'g')), '');
+  v_resp   text := nullif(trim(regexp_replace(coalesce(dados->>'responsavel', ''), '\s+', ' ', 'g')), '');
+  v_sit    text := coalesce(nullif(dados->>'situacao', ''), 'pendente');
+  v_passos text[];
+  v_rid    text := nullif(dados->>'resposta_id', '');
+begin
+  if segredo is null or not exists (select 1 from public.clinica_integracoes
+                                    where chave = 'acomp_forms_segredo' and valor = segredo) then
+    raise exception 'senha da integração inválida' using errcode = '28000';
+  end if;
+  if v_pac is null then raise exception 'resposta sem o nome da paciente'; end if;
+
+  -- a mesma resposta reenviada não duplica
+  if v_rid is not null then
+    select id into v_id from public.clinica_acompanhamentos where forms_resposta_id = v_rid;
+    if v_id is not null then return jsonb_build_object('ok', true, 'id', v_id, 'repetida', true); end if;
+  end if;
+
+  select coalesce(array_agg(distinct p), '{}') into v_passos
+    from jsonb_array_elements_text(case when jsonb_typeof(dados->'passos') = 'array' then dados->'passos' else '[]'::jsonb end) p
+   where p = any (array['etapa1','etapa2','etapa3','consulta','retorno','usg',
+                        'reforco_crossmatch','reforco_intralipid','vacina','exames_pre','outro']);
+  if v_sit not in ('pendente','em_andamento','concluido') then v_sit := 'pendente'; end if;
+
+  -- quem respondeu (se o Forms coleta e-mail e a pessoa tem login na plataforma)
+  if v_email is not null then
+    select u.id, coalesce(nullif(pf.nome, ''), u.email) into v_uid, v_nome
+      from auth.users u left join public.perfis pf on pf.id = u.id
+     where lower(u.email) = v_email limit 1;
+  end if;
+  -- liga ao cadastro de pacientes pelo nome, se o módulo Pacientes existir
+  if to_regclass('public.clinica_pacientes') is not null then
+    execute 'select id from public.clinica_pacientes where lower(trim(nome)) = lower($1) limit 1' into v_pid using v_pac;
+  end if;
+
+  insert into public.clinica_acompanhamentos
+    (paciente, paciente_id, telefone, data_consulta, proximos_passos, proximo_passo_outro, prazo, responsavel,
+     situacao, observacoes, criado_por, criado_por_nome, criado_em, forms_resposta_id)
+  values
+    (v_pac, v_pid, nullif(trim(dados->>'telefone'), ''),
+     case when dados->>'data_consulta' ~ '^\d{4}-\d{2}-\d{2}$' then (dados->>'data_consulta')::date end,
+     v_passos,
+     case when 'outro' = any (v_passos) then nullif(trim(dados->>'outro'), '') end,
+     case when dados->>'prazo' ~ '^\d{4}-\d{2}-\d{2}$' then (dados->>'prazo')::date end,
+     v_resp, v_sit, nullif(trim(dados->>'observacoes'), ''),
+     v_uid, coalesce(v_nome, v_email, 'Equipe') || ' · via Forms',
+     coalesce(case when dados->>'enviado_em' ~ '^\d{4}-\d{2}-\d{2}T' then (dados->>'enviado_em')::timestamptz end, now()),
+     v_rid)
+  returning id into v_id;
+
+  if v_resp is not null then
+    insert into public.clinica_acompanhamento_responsaveis (nome) values (v_resp) on conflict do nothing;
+  end if;
+  return jsonb_build_object('ok', true, 'id', v_id);
+end $$;
+
+revoke all on function public.acomp_receber_forms(text, jsonb) from public;
+grant execute on function public.acomp_receber_forms(text, jsonb) to anon, authenticated;
