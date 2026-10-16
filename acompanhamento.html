@@ -74,6 +74,10 @@
   .opt.on{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:600}
   .opt.s-pendente.on{background:var(--warn);border-color:var(--warn)} .opt.s-em_andamento.on{background:var(--blue);border-color:var(--blue)} .opt.s-concluido.on{background:var(--ok);border-color:var(--ok)}
   .quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .resp-box{margin-top:8px;padding:10px;border:1px dashed var(--line);border-radius:10px;background:#FBFCFC;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .resp-nome{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:600;padding:3px 4px 3px 10px;border-radius:999px;background:#EEF1F3}
+  .resp-nome button{border:none;background:transparent;color:var(--bad);font-size:16px;line-height:1;cursor:pointer;padding:0 6px;border-radius:999px}
+  .resp-nome button:hover{background:var(--bad-bg)}
   .msg{font-size:13px} .msg.bad{color:var(--bad)} .msg.ok{color:var(--ok)}
   .form{max-width:760px;display:flex;flex-direction:column;gap:12px}
   .form .card.head{border-top:4px solid var(--primary)}
@@ -125,7 +129,11 @@ const PASSOS=[
 const PASSO=Object.fromEntries(PASSOS);
 const SITUACOES=[["pendente","Pendente"],["em_andamento","Em andamento"],["concluido","Concluído"]];
 const SIT=Object.fromEntries(SITUACOES);
-const passoNome=(a)=> a.proximo_passo==="outro" ? ("Outro"+(a.proximo_passo_outro?": "+a.proximo_passo_outro:"")) : (PASSO[a.proximo_passo]||"—");
+// vários próximos passos por acompanhamento (aceita também registros antigos com um só)
+const passosDe=(a)=> Array.isArray(a.proximos_passos) ? a.proximos_passos : (a.proximo_passo ? [a.proximo_passo] : []);
+const ordenarPassos=(l)=> PASSOS.map(p=>p[0]).filter(k=>l.includes(k));
+const passoNome=(a)=>{ const l=passosDe(a); if(!l.length) return "—";
+  return ordenarPassos(l).map(k=> k==="outro" ? ("Outro"+(a.proximo_passo_outro?": "+a.proximo_passo_outro:"")) : PASSO[k]).join(" + "); };
 
 /* ---------------- utilidades ---------------- */
 const hojeStr=()=>_dl(new Date());
@@ -159,7 +167,7 @@ function textoWhats(a){
     `📱 *Telefone/WhatsApp:* ${a.telefone||""}`,
     `📅 *Data da consulta:* ${a.data_consulta?fmtD(a.data_consulta):""}`,"",
     "*📌 PRÓXIMO PASSO:*","",
-    ...PASSOS.map(([k,n])=> k==="outro" ? `${x(a.proximo_passo==="outro")} Outro: ${a.proximo_passo==="outro"&&a.proximo_passo_outro?a.proximo_passo_outro:"_______________"}` : `${x(a.proximo_passo===k)} ${n}`),"",
+    ...PASSOS.map(([k,n])=> k==="outro" ? `${x(passosDe(a).includes("outro"))} Outro: ${passosDe(a).includes("outro")&&a.proximo_passo_outro?a.proximo_passo_outro:"_______________"}` : `${x(passosDe(a).includes(k))} ${n}`),"",
     `📆 *Prazo para acompanhamento:* ${a.prazo?fmtD(a.prazo):""}`,"",
     `👩‍💼 *Responsável pelo contato:* ${a.responsavel||""}`,"",
     "*📋 SITUAÇÃO:*",
@@ -176,19 +184,19 @@ function BotaoCopiar({ a, sm }){
   return <button className={"btn btn-ghost"+(sm?" btn-sm":"")} onClick={async(e)=>{ e.stopPropagation(); if(await copiar(textoWhats(a))){ setOk(true); setTimeout(()=>setOk(false),1800); } else alert(textoWhats(a)); }}>{ok?"✓ Copiado":"Copiar para WhatsApp"}</button>;
 }
 
-const VAZIO=()=>({ paciente:"", paciente_id:null, telefone:"", data_consulta:hojeStr(), proximo_passo:"", proximo_passo_outro:"",
-  prazo:"", responsavel:lsGet("acomp_responsavel",""), situacao:"pendente", observacoes:"" });
+const VAZIO=()=>({ paciente:"", paciente_id:null, telefone:"", data_consulta:hojeStr(), proximos_passos:[], proximo_passo_outro:"",
+  prazo:"", responsavel:"", situacao:"pendente", observacoes:"" });
 function paraBanco(f){
   const nul=(v)=> v===""||v==null ? null : (typeof v==="string" ? (v.trim()||null) : v);
   return { paciente:(f.paciente||"").trim().replace(/\s+/g," "), paciente_id:f.paciente_id||null, telefone:nul(f.telefone), data_consulta:nul(f.data_consulta),
-    proximo_passo:f.proximo_passo, proximo_passo_outro: f.proximo_passo==="outro" ? nul(f.proximo_passo_outro) : null,
+    proximos_passos:ordenarPassos(f.proximos_passos||[]), proximo_passo_outro: (f.proximos_passos||[]).includes("outro") ? nul(f.proximo_passo_outro) : null,
     prazo:nul(f.prazo), responsavel:nul(f.responsavel), situacao:f.situacao||"pendente", observacoes:nul(f.observacoes) };
 }
-const daBanco=(r)=>({ ...VAZIO(), ...Object.fromEntries(Object.entries(r).map(([k,v])=>[k, v==null ? "" : v])), paciente_id:r.paciente_id||null });
+const daBanco=(r)=>{ const {proximo_passo, ...resto}=r; return { ...VAZIO(), ...Object.fromEntries(Object.entries(resto).map(([k,v])=>[k, v==null ? "" : v])), paciente_id:r.paciente_id||null, proximos_passos:passosDe(r) }; };
 function validar(p){
   if(!p.paciente) return "Informe o nome da paciente.";
-  if(!p.proximo_passo) return "Marque o próximo passo.";
-  if(p.proximo_passo==="outro" && !p.proximo_passo_outro) return "Descreva o próximo passo em “Outro”.";
+  if(!p.proximos_passos.length) return "Marque pelo menos um próximo passo.";
+  if(p.proximos_passos.includes("outro") && !p.proximo_passo_outro) return "Descreva o próximo passo em “Outro”.";
   return null;
 }
 
@@ -201,20 +209,20 @@ function demo(){
   const pz=[-5,-2,0,0,2,4,9,15,-1,6,3]; const st=["pendente","em_andamento","pendente","pendente","pendente","em_andamento","pendente","pendente","concluido","pendente","em_andamento"];
   const R=["Joana (recepção)","Carlos (enfermagem)","Joana (recepção)","Dra. Marina","Carlos (enfermagem)"];
   const acs=N.map(([n,t],i)=>({ id:"d"+i, criado_em:addD(h,-(14-i))+"T10:00:00Z", criado_por:i%2?"u-func":"u-outro", criado_por_nome:i%2?"Joana (recepção)":"Carlos (enfermagem)",
-    paciente_id:"p"+i, paciente:n, telefone:t, data_consulta:addD(h,-(14-i)), proximo_passo:P[i], proximo_passo_outro:P[i]==="outro"?"Teste de NK":null,
+    paciente_id:"p"+i, paciente:n, telefone:t, data_consulta:addD(h,-(14-i)), proximos_passos: i===1 ? ["reforco_intralipid","vacina"] : i===5 ? ["etapa2","usg"] : [P[i]], proximo_passo_outro:P[i]==="outro"?"Teste de NK":null,
     prazo:addD(h,pz[i]), responsavel:R[i%R.length], situacao:st[i], concluido_em: st[i]==="concluido"? addD(h,-1)+"T15:00:00Z":null,
     observacoes: i===0? "Ligou 2x, sem resposta. Tentar à tarde." : null, ativo:true }));
-  acs.push({...acs[2], id:"dx", criado_em:addD(h,-40)+"T10:00:00Z", data_consulta:addD(h,-40), proximo_passo:"consulta", prazo:addD(h,-30), situacao:"concluido", concluido_em:addD(h,-31)+"T10:00:00Z", observacoes:null});
+  acs.push({...acs[2], id:"dx", criado_em:addD(h,-40)+"T10:00:00Z", data_consulta:addD(h,-40), proximos_passos:["consulta"], prazo:addD(h,-30), situacao:"concluido", concluido_em:addD(h,-31)+"T10:00:00Z", observacoes:null});
   const ags=[{id:"g1",data:addD(h,3),hora:"09:00",paciente:"Daniela Rocha",paciente_id:"p3",status:"confirmado",tipo:"Retorno"},
              {id:"g2",data:addD(h,8),hora:"14:30",paciente:"Fernanda Alves",paciente_id:"p4",status:"agendado",tipo:"Crossmatch"},
              {id:"g3",data:addD(h,1),hora:"10:00",paciente:"Gabriela Nunes",paciente_id:"p5",status:"agendado",tipo:"Imunoterapia"}];
-  return {acs, ags, pacs:N.map(([n,t],i)=>({id:"p"+i,nome:n,telefone:t}))};
+  return {acs, ags, pacs:N.map(([n,t],i)=>({id:"p"+i,nome:n,telefone:t})), resp:["Carlos (enfermagem)","Dra. Marina","Joana (recepção)"]};
 }
 
 /* ================================================================== APP */
 function App(){
   const [papel,setPapel]=useState(undefined); const [uid,setUid]=useState(null); const [meuNome,setMeuNome]=useState("");
-  const [acs,setAcs]=useState([]); const [ags,setAgs]=useState([]); const [pacs,setPacs]=useState([]);
+  const [acs,setAcs]=useState([]); const [ags,setAgs]=useState([]); const [pacs,setPacs]=useState([]); const [nomesResp,setNomesResp]=useState([]);
   const [loading,setLoading]=useState(true); const [erro,setErro]=useState("");
   const [aba,setAba]=useState(null); const [sel,setSel]=useState(null); const [prefill,setPrefill]=useState(null);
   const [filtro,setFiltro]=useState({busca:"",situacao:"abertos",passo:"",resp:"",prazo:""});
@@ -227,17 +235,19 @@ function App(){
       setUid(session.user.id);
       const pf=await sb.from("perfis").select("papel,nome").eq("id",session.user.id).maybeSingle();
       setPapel(pf.data?.papel||"sem_acesso"); setMeuNome(pf.data?.nome||"");
-      const [a,g,p]=await Promise.all([
+      const [a,g,p,r]=await Promise.all([
         sb.from("clinica_acompanhamentos").select("*").eq("ativo",true).order("prazo",{ascending:true,nullsFirst:false}).limit(5000),
         sb.from("agendamentos").select("id,data,hora,status,tipo,profissional,paciente,paciente_id").gte("data",hojeStr()).neq("status","cancelado").order("data").limit(2000),
         sb.from("clinica_pacientes").select("id,nome,telefone").eq("ativo",true).order("nome").limit(5000),
+        sb.from("clinica_acompanhamento_responsaveis").select("nome").order("nome"),
       ]);
+      setNomesResp(r.error ? [] : (r.data||[]).map(x=>x.nome));
       if(a.error) setErro(a.error.message); else setAcs(a.data||[]);
       setAgs(g.error?[]:(g.data||[])); setPacs(p.error?[]:(p.data||[])); // agenda/pacientes são opcionais (dependem do perfil)
     } else {
       const pq=(location.search.match(/[?&]papel=([a-z_]+)/)||[])[1];
       const d=demo(); setPapel(pq||"gestor"); setUid("u-func"); setMeuNome(pq==="funcionario"?"Joana (recepção)":"Gestora");
-      setAcs(x=>x.length?x:d.acs); setAgs(d.ags); setPacs(d.pacs);
+      setAcs(x=>x.length?x:d.acs); setAgs(d.ags); setPacs(d.pacs); setNomesResp(x=>x.length?x:d.resp);
     }
     setLoading(false);
   }
@@ -257,7 +267,20 @@ function App(){
   // próximo horário na Agenda de cada paciente (por id do cadastro ou pelo nome)
   const proxAg=useMemo(()=>{ const m={}; ags.forEach(g=>{ [g.paciente_id, "n:"+semAcento(g.paciente)].filter(Boolean).forEach(k=>{ if(!m[k] || (g.data+g.hora)<(m[k].data+m[k].hora)) m[k]=g; }); }); return m; },[ags]);
   const agDe=(a)=> (a.paciente_id && proxAg[a.paciente_id]) || proxAg["n:"+semAcento(a.paciente)] || null;
-  const responsaveis=useMemo(()=> [...new Set([meuNome,...acs.map(a=>a.responsavel)].filter(Boolean))].sort(),[acs,meuNome]);
+  // para os filtros: nomes da lista + nomes que já aparecem nos registros
+  const responsaveis=useMemo(()=> [...new Set([...nomesResp,...acs.map(a=>a.responsavel)].filter(Boolean))].sort((x,y)=>x.localeCompare(y)),[acs,nomesResp]);
+  async function addResp(nome){
+    nome=(nome||"").trim().replace(/\s+/g," "); if(!nome) return "Digite o nome.";
+    if(nomesResp.some(n=>semAcento(n)===semAcento(nome))) return null;
+    if(sb){ const r=await sb.from("clinica_acompanhamento_responsaveis").insert({nome}); if(r.error) return r.error.message; }
+    setNomesResp(l=>[...l,nome].sort((x,y)=>x.localeCompare(y))); return null;
+  }
+  async function delResp(nome){
+    if(!confirm(`Tirar "${nome}" da lista de responsáveis? Os acompanhamentos já registrados com esse nome continuam iguais.`)) return false;
+    if(sb){ const r=await sb.from("clinica_acompanhamento_responsaveis").delete().eq("nome",nome); if(r.error){ alert(r.error.message); return false; } }
+    setNomesResp(l=>l.filter(n=>n!==nome)); return true;
+  }
+  const resp={ nomes:nomesResp, add:addResp, del:delResp };
   const atrasados=acs.filter(a=>aberto(a) && a.prazo && a.prazo<hojeStr()).length;
 
   async function salvar(f, id){
@@ -265,7 +288,7 @@ function App(){
     if(sb){
       const r= id ? await sb.from("clinica_acompanhamentos").update(p).eq("id",id).select().single()
                   : await sb.from("clinica_acompanhamentos").insert(p).select().single();
-      if(r.error) return r.error.message;
+      if(r.error) return r.error.message + (/proximos_passos|column|schema cache/i.test(r.error.message) ? " — rode de novo o acompanhamento-schema.sql no Supabase." : "");
       setAcs(prev=> id ? prev.map(x=>x.id===id?r.data:x) : [r.data,...prev]);
       return {ok:true, a:r.data};
     }
@@ -300,7 +323,7 @@ function App(){
           <p>{veTudo ? "Próximo passo de cada paciente, prazo, responsável e situação — e quem já está na agenda." : "Registre o próximo passo de cada paciente depois da consulta."}</p></div>
         <span className={"mode "+(sb?"live":"demo")}>{sb?"● Conectado ao Supabase":"○ Modo demo — nada é salvo"}</span>
       </div>
-      {erro && <div className="lock">Não consegui ler os acompanhamentos: {erro}.{/relation|does not exist|schema cache/i.test(erro) && <> Rode <b>acompanhamento-schema.sql</b> no Supabase (SQL Editor).</>}</div>}
+      {erro && <div className="lock">Não consegui ler os acompanhamentos: {erro}.{/relation|does not exist|schema cache|column/i.test(erro) && <> Rode <b>acompanhamento-schema.sql</b> no Supabase (SQL Editor).</>}</div>}
       <div className="tabs">
         {abas.map(([k,n])=>(
           <button key={k} className={abaAtual===k?"on":""} onClick={()=>setAba(k)}>{n}
@@ -310,9 +333,9 @@ function App(){
 
       {abaAtual==="panorama" && <Panorama acs={acs} ags={ags} irPara={irPara} {...comum} />}
       {abaAtual==="lista" && <Lista acs={veTudo?acs:acs.filter(a=>a.criado_por===uid)} veTudo={veTudo} filtro={filtro} setFiltro={setFiltro} responsaveis={responsaveis} {...comum} />}
-      {abaAtual==="novo" && <Novo prefill={prefill} limparPrefill={()=>setPrefill(null)} pacs={pacs} acs={acs} responsaveis={responsaveis} meuNome={meuNome} onSalvar={salvar} onAbrir={setSel} agDe={agDe} />}
+      {abaAtual==="novo" && <Novo prefill={prefill} limparPrefill={()=>setPrefill(null)} pacs={pacs} acs={acs} resp={resp} onSalvar={salvar} onAbrir={setSel} agDe={agDe} />}
 
-      {sel && <Drawer a={acs.find(x=>x.id===sel.id)||sel} pode={podeEditar(sel)} ehGestor={ehGestor} pacs={pacs} responsaveis={responsaveis} agDe={agDe}
+      {sel && <Drawer a={acs.find(x=>x.id===sel.id)||sel} pode={podeEditar(sel)} ehGestor={ehGestor} pacs={pacs} resp={resp} agDe={agDe}
         historicoDe={acs.filter(x=> x.id!==sel.id && ((sel.paciente_id && x.paciente_id===sel.paciente_id) || semAcento(x.paciente)===semAcento(sel.paciente)))}
         onClose={()=>setSel(null)} onSalvar={salvar} onArquivar={arquivar} onProximo={proximoPasso} onAbrir={setSel} />}
     </div>
@@ -327,8 +350,8 @@ function Panorama({ acs, ags, agDe, irPara, onAbrir, onSituacao, podeEditar }){
   const conc30=acs.filter(a=>a.situacao==="concluido" && a.concluido_em && a.concluido_em.slice(0,10)>=addD(h,-30)).length;
   const agendados=ab.filter(a=>agDe(a));
   const fila=[...ab].sort((a,b)=> (a.prazo||"9999").localeCompare(b.prazo||"9999"));
-  const contar=(lst,fn)=>{ const m={}; lst.forEach(a=>{ const k=fn(a)||"(sem responsável)"; m[k]=m[k]||{t:0,b:0}; m[k].t++; if(a.prazo&&a.prazo<h) m[k].b++; }); return Object.entries(m).sort((x,y)=>y[1].t-x[1].t); };
-  const porResp=contar(ab,a=>a.responsavel), porPasso=contar(ab,a=>a.proximo_passo==="outro"?"Outro":PASSO[a.proximo_passo]);
+  const contar=(lst,fn,vazio)=>{ const m={}; lst.forEach(a=>{ const ks=fn(a); (ks.length?ks:[vazio]).forEach(k=>{ m[k]=m[k]||{t:0,b:0}; m[k].t++; if(a.prazo&&a.prazo<h) m[k].b++; }); }); return Object.entries(m).sort((x,y)=>y[1].t-x[1].t); };
+  const porResp=contar(ab,a=>a.responsavel?[a.responsavel]:[],"(sem responsável)"), porPasso=contar(ab,a=>passosDe(a).map(k=>PASSO[k]),"(sem passo)");
   const K=({v,l,cls,onClick})=> <button className={"kpi "+(cls||"")} onClick={onClick}><div className="v">{v}</div><div className="l">{l}</div></button>;
   const Barras=({itens,onClick})=>{ const mx=Math.max(1,...itens.map(x=>x[1].t)); return <div className="bars">{itens.map(([k,c])=>(
     <div className="bar" key={k} style={{cursor:"pointer"}} onClick={()=>onClick(k)}><span className="k" title={k}>{k}</span>
@@ -383,7 +406,7 @@ function Lista({ acs, veTudo, filtro, setFiltro, responsaveis, agDe, podeEditar,
   const h=hojeStr(); const b=semAcento(filtro.busca); const bt=filtro.busca.replace(/\D/g,"");
   const vis=acs.filter(a=> (!b || semAcento(a.paciente).includes(b) || (bt.length>=4 && (a.telefone||"").replace(/\D/g,"").includes(bt)))
     && (filtro.situacao==="" || (filtro.situacao==="abertos" ? aberto(a) : a.situacao===filtro.situacao))
-    && (!filtro.passo || a.proximo_passo===filtro.passo)
+    && (!filtro.passo || passosDe(a).includes(filtro.passo))
     && (!filtro.resp || (filtro.resp==="__vazio" ? !a.responsavel : a.responsavel===filtro.resp))
     && (!filtro.prazo || (aberto(a) && a.prazo && (filtro.prazo==="atrasados" ? a.prazo<h : filtro.prazo==="hoje" ? a.prazo===h : a.prazo>h && a.prazo<=addD(h,7)))))
     .sort((x,y)=> (aberto(y)-aberto(x)) || (x.prazo||"9999").localeCompare(y.prazo||"9999"));
@@ -428,7 +451,7 @@ function Lista({ acs, veTudo, filtro, setFiltro, responsaveis, agDe, podeEditar,
 function Campo({ l, req, hint, children, cls }){
   return <div className={"field "+(cls||"")}><label>{l}{req && <span className="req"> *</span>}</label>{children}{hint && <span className="hint">{hint}</span>}</div>;
 }
-function FormAcomp({ f, set, pacs, responsaveis, travado }){
+function FormAcomp({ f, set, pacs, resp, travado }){
   const up=(k)=>(e)=>set({...f,[k]:e.target.value});
   const base=f.data_consulta||hojeStr();
   function escolherPaciente(nome){
@@ -446,9 +469,10 @@ function FormAcomp({ f, set, pacs, responsaveis, travado }){
           <Campo l="📅 Data da consulta"><input type="date" value={f.data_consulta||""} onChange={up("data_consulta")} /></Campo>
         </div>
       </div>
-      <div className="card"><h3>📌 Próximo passo <span className="req" style={{color:"var(--bad)"}}>*</span></h3>
-        <div className="opts">{PASSOS.map(([k,n])=><button type="button" key={k} className={"opt"+(f.proximo_passo===k?" on":"")} onClick={()=>set({...f,proximo_passo:k})}>{n}</button>)}</div>
-        {f.proximo_passo==="outro" && <input style={{marginTop:10,width:"100%"}} placeholder="Qual?" value={f.proximo_passo_outro||""} onChange={up("proximo_passo_outro")} autoFocus />}
+      <div className="card"><h3>📌 Próximo passo <span className="req" style={{color:"var(--bad)"}}>*</span> <span style={{textTransform:"none",letterSpacing:0,fontWeight:500}}>· pode marcar vários</span></h3>
+        <div className="opts">{PASSOS.map(([k,n])=>{ const on=(f.proximos_passos||[]).includes(k); return <button type="button" key={k} aria-pressed={on} className={"opt"+(on?" on":"")}
+          onClick={()=>set({...f,proximos_passos: on ? f.proximos_passos.filter(x=>x!==k) : [...(f.proximos_passos||[]),k]})}>{on?"✓ ":""}{n}</button>; })}</div>
+        {(f.proximos_passos||[]).includes("outro") && <input style={{marginTop:10,width:"100%"}} placeholder="Qual?" value={f.proximo_passo_outro||""} onChange={up("proximo_passo_outro")} autoFocus />}
       </div>
       <div className="card">
         <div className="grid">
@@ -457,8 +481,7 @@ function FormAcomp({ f, set, pacs, responsaveis, travado }){
             {!travado && <div className="quick">{[[7,"+7 dias"],[15,"+15 dias"],[30,"+30 dias"],[90,"+3 meses"]].map(([n,l])=><button type="button" key={n} className="btn btn-ghost btn-sm" onClick={()=>set({...f,prazo:addD(base,n)})}>{l}</button>)}</div>}
           </Campo>
           <Campo l="👩‍💼 Responsável pelo contato">
-            <input list="lst-resp" value={f.responsavel||""} onChange={up("responsavel")} autoComplete="off" />
-            <datalist id="lst-resp">{responsaveis.map(r=><option key={r} value={r} />)}</datalist>
+            <CaixaResponsavel valor={f.responsavel||""} onChange={v=>set({...f,responsavel:v})} resp={resp} travado={travado} />
           </Campo>
         </div>
       </div>
@@ -470,8 +493,33 @@ function FormAcomp({ f, set, pacs, responsaveis, travado }){
   );
 }
 
-function Novo({ prefill, limparPrefill, pacs, acs, responsaveis, meuNome, onSalvar, onAbrir, agDe }){
-  const inicial=()=>({...VAZIO(), responsavel: lsGet("acomp_responsavel","") || meuNome, ...(prefill||{})});
+// caixa de seleção com a lista de nomes; dá para colocar e tirar nomes da lista
+function CaixaResponsavel({ valor, onChange, resp, travado }){
+  const [editar,setEditar]=useState(false); const [novo,setNovo]=useState(""); const [erro,setErro]=useState("");
+  const nomes = valor && !resp.nomes.includes(valor) ? [valor,...resp.nomes] : resp.nomes;
+  async function adicionar(){ setErro(""); const n=novo.trim(); const e=await resp.add(n); if(e) return setErro(e); onChange(resp.nomes.find(x=>semAcento(x)===semAcento(n))||n.replace(/\s+/g," ")); setNovo(""); }
+  return (<>
+    <div style={{display:"flex",gap:6}}>
+      <select value={valor} onChange={e=>onChange(e.target.value)} style={{flex:1}}>
+        <option value="">— escolha —</option>{nomes.map(n=><option key={n} value={n}>{n}</option>)}
+      </select>
+      {!travado && <button type="button" className="btn btn-ghost btn-sm" onClick={()=>setEditar(v=>!v)} title="Colocar ou tirar nomes da lista">{editar?"Fechar":"Editar nomes"}</button>}
+    </div>
+    {editar && !travado && <div className="resp-box">
+      {resp.nomes.length ? resp.nomes.map(n=>(
+        <span key={n} className="resp-nome">{n}<button type="button" onClick={async()=>{ if(await resp.del(n) && valor===n) onChange(""); }} aria-label={"Tirar "+n} title="Tirar da lista">×</button></span>))
+        : <span className="hint">Nenhum nome na lista ainda.</span>}
+      <div style={{display:"flex",gap:6,marginTop:8,width:"100%"}}>
+        <input value={novo} onChange={e=>setNovo(e.target.value)} onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); adicionar(); } }} placeholder="Nome da pessoa" style={{flex:1}} />
+        <button type="button" className="btn btn-primary btn-sm" onClick={adicionar} disabled={!novo.trim()}>Colocar</button>
+      </div>
+      {erro && <span className="msg bad">{erro}</span>}
+    </div>}
+  </>);
+}
+
+function Novo({ prefill, limparPrefill, pacs, acs, resp, onSalvar, onAbrir, agDe }){
+  const inicial=()=>{ const ult=lsGet("acomp_responsavel",""); return {...VAZIO(), responsavel: resp.nomes.includes(ult) ? ult : "", ...(prefill||{})}; };
   const [f,setF]=useState(inicial); const [busy,setBusy]=useState(false); const [msg,setMsg]=useState(null); const [feito,setFeito]=useState(null);
   const topo=useRef(null);
   useEffect(()=>{ if(prefill){ setF(inicial()); setFeito(null); setMsg(null); } },[prefill]);
@@ -487,7 +535,7 @@ function Novo({ prefill, limparPrefill, pacs, acs, responsaveis, meuNome, onSalv
     <div className="form" ref={topo}>
       {feito && <div className="note">✓ Acompanhamento de <b>{feito.paciente}</b> salvo. <BotaoCopiar a={feito} sm /> <button className="btn btn-ghost btn-sm" onClick={()=>onAbrir(feito)}>Ver / corrigir</button></div>}
       {prefill && !feito && <div className="note">Próximo passo para <b>{prefill.paciente}</b>.</div>}
-      <FormAcomp f={f} set={(v)=>{ setF(v); if(feito) setFeito(null); }} pacs={pacs} responsaveis={responsaveis} />
+      <FormAcomp f={f} set={(v)=>{ setF(v); if(feito) setFeito(null); }} pacs={pacs} resp={resp} />
       {abertosDela.length>0 && <div className="lock">{f.paciente} já tem {abertosDela.length} acompanhamento(s) em aberto: {abertosDela.map(a=><button key={a.id} className="btn btn-ghost btn-sm" style={{margin:"4px 6px 0 0"}} onClick={()=>onAbrir(a)}>{passoNome(a)} · {a.prazo?fmtDC(a.prazo):"sem prazo"}</button>)}</div>}
       {f.paciente && agDe(f) && <div className="note" style={{background:"var(--blue-bg)",borderColor:"#C9DBF0",color:"var(--blue)"}}>📅 Já tem horário na Agenda: {fmtD(agDe(f).data)} {agDe(f).hora?.slice(0,5)}{agDe(f).tipo?` · ${agDe(f).tipo}`:""}</div>}
       <div className="stick">
@@ -500,7 +548,7 @@ function Novo({ prefill, limparPrefill, pacs, acs, responsaveis, meuNome, onSalv
 }
 
 /* ================================================================== DRAWER (ver / editar) */
-function Drawer({ a, pode, ehGestor, pacs, responsaveis, agDe, historicoDe, onClose, onSalvar, onArquivar, onProximo, onAbrir }){
+function Drawer({ a, pode, ehGestor, pacs, resp, agDe, historicoDe, onClose, onSalvar, onArquivar, onProximo, onAbrir }){
   const [f,setF]=useState(()=>daBanco(a)); const [busy,setBusy]=useState(false); const [msg,setMsg]=useState(null);
   const [hist,setHist]=useState(null); const [verHist,setVerHist]=useState(false);
   const sujo = JSON.stringify(paraBanco(f))!==JSON.stringify(paraBanco(daBanco(a)));
@@ -513,8 +561,8 @@ function Drawer({ a, pode, ehGestor, pacs, responsaveis, agDe, historicoDe, onCl
     if(typeof r==="string") return setMsg({bad:true,t:r}); onProximo(r.a); }
   const fechar=()=>{ if(sujo && !confirm("Há alterações não salvas. Fechar mesmo assim?")) return; onClose(); };
   const e=estadoPrazo(a); const wa=telLink(a.telefone); const g=agDe(a);
-  const NOMES={paciente:"paciente",telefone:"telefone",data_consulta:"data da consulta",proximo_passo:"próximo passo",proximo_passo_outro:"outro (qual)",prazo:"prazo",responsavel:"responsável",situacao:"situação",observacoes:"observações",paciente_id:"vínculo com cadastro",ativo:"arquivado"};
-  const valH=(k,v)=> v==null||v==="" ? "vazio" : k==="situacao" ? (SIT[v]||v) : k==="proximo_passo" ? (PASSO[v]||v) : /^\d{4}-\d\d-\d\d$/.test(v) ? fmtD(v) : String(v);
+  const NOMES={paciente:"paciente",telefone:"telefone",data_consulta:"data da consulta",proximo_passo:"próximo passo",proximos_passos:"próximo passo",proximo_passo_outro:"outro (qual)",prazo:"prazo",responsavel:"responsável",situacao:"situação",observacoes:"observações",paciente_id:"vínculo com cadastro",ativo:"arquivado"};
+  const valH=(k,v)=> v==null||v==="" ? "vazio" : k==="situacao" ? (SIT[v]||v) : k==="proximo_passo" ? (PASSO[v]||v) : Array.isArray(v) ? (v.map(x=>PASSO[x]||x).join(" + ")||"vazio") : /^\d{4}-\d\d-\d\d$/.test(v) ? fmtD(v) : String(v);
   return (
     <div className="overlay" onClick={fechar}><div className="drawer" onClick={ev=>ev.stopPropagation()}>
       <div className="dh">
@@ -529,7 +577,7 @@ function Drawer({ a, pode, ehGestor, pacs, responsaveis, agDe, historicoDe, onCl
       </div>
       <div className="dbody">
         {!pode && <div className="lock">Somente leitura — só quem registrou ou o gestor podem editar.</div>}
-        <FormAcomp f={f} set={setF} pacs={pacs} responsaveis={responsaveis} travado={!pode} />
+        <FormAcomp f={f} set={setF} pacs={pacs} resp={resp} travado={!pode} />
         {pode && <div className="stick">
           <button className="btn btn-primary" onClick={salvar} disabled={busy||!sujo}>{busy?"Salvando…":"Salvar alterações"}</button>
           {sujo && <button className="btn btn-ghost" onClick={()=>setF(daBanco(a))}>Desfazer</button>}

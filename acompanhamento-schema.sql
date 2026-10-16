@@ -10,6 +10,12 @@
 --   • recepcionista / medico  vê, cria e edita todos
 --   • funcionario ........... cria e vê/edita só os que ele mesmo registrou
 --   • toda alteração fica em clinica_acompanhamentos_historico (quem, quando, o quê)
+--   • a lista de nomes da caixa "Responsável pelo contato" fica em
+--     clinica_acompanhamento_responsaveis (a equipe coloca e tira nomes)
+--
+-- Atualização (out/2026): "próximo passo" passou a aceitar vários. Quem já tinha
+-- rodado a versão anterior só precisa rodar este arquivo de novo — os dados de
+-- proximo_passo são copiados para proximos_passos automaticamente.
 -- ============================================================================
 
 create table if not exists public.clinica_acompanhamentos (
@@ -23,9 +29,7 @@ create table if not exists public.clinica_acompanhamentos (
   paciente             text not null,
   telefone             text,
   data_consulta        date,
-  proximo_passo        text not null
-                       check (proximo_passo in ('etapa1','etapa2','etapa3','consulta','retorno','usg',
-                                                'reforco_crossmatch','reforco_intralipid','vacina','exames_pre','outro')),
+  proximos_passos      text[] not null default '{}',   -- vários: {etapa1, usg, ...}
   proximo_passo_outro  text,
   prazo                date,                 -- prazo para acompanhamento
   responsavel          text,                 -- responsável pelo contato
@@ -35,6 +39,25 @@ create table if not exists public.clinica_acompanhamentos (
   observacoes          text,
   ativo                boolean not null default true
 );
+
+-- migração da versão com um único próximo passo
+alter table public.clinica_acompanhamentos add column if not exists proximos_passos text[] not null default '{}';
+do $$
+begin
+  if exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'clinica_acompanhamentos' and column_name = 'proximo_passo') then
+    drop trigger if exists acomp_carimbo on public.clinica_acompanhamentos;   -- recriado abaixo; evita poluir o histórico
+    update public.clinica_acompanhamentos
+       set proximos_passos = array[proximo_passo]
+     where proximo_passo is not null and cardinality(proximos_passos) = 0;
+    alter table public.clinica_acompanhamentos drop column proximo_passo;
+  end if;
+end $$;
+
+alter table public.clinica_acompanhamentos drop constraint if exists clinica_acomp_passos_check;
+alter table public.clinica_acompanhamentos add constraint clinica_acomp_passos_check
+  check (proximos_passos <@ array['etapa1','etapa2','etapa3','consulta','retorno','usg',
+                                  'reforco_crossmatch','reforco_intralipid','vacina','exames_pre','outro']::text[]);
 
 create index if not exists clinica_acomp_situacao_idx on public.clinica_acompanhamentos (situacao, prazo) where ativo;
 create index if not exists clinica_acomp_paciente_idx on public.clinica_acompanhamentos (paciente_id);
@@ -50,6 +73,16 @@ create table if not exists public.clinica_acompanhamentos_historico (
   campos           jsonb              -- { "situacao": ["pendente","concluido"], ... }  (antes, depois)
 );
 create index if not exists clinica_acomp_hist_idx on public.clinica_acompanhamentos_historico (acompanhamento_id, quando desc);
+
+-- nomes que aparecem na caixa "Responsável pelo contato"
+create table if not exists public.clinica_acompanhamento_responsaveis (
+  nome      text primary key,
+  criado_em timestamptz not null default now()
+);
+insert into public.clinica_acompanhamento_responsaveis (nome)
+  select distinct trim(responsavel) from public.clinica_acompanhamentos
+  where coalesce(trim(responsavel), '') <> ''
+on conflict do nothing;
 
 -- papel e nome de quem está logado (lidos de perfis sem esbarrar no RLS de perfis)
 create or replace function public.acomp_papel() returns text
@@ -120,12 +153,16 @@ create trigger acomp_criado after insert on public.clinica_acompanhamentos
 -- ---------------------------------------------------------------- RLS
 alter table public.clinica_acompanhamentos           enable row level security;
 alter table public.clinica_acompanhamentos_historico enable row level security;
+alter table public.clinica_acompanhamento_responsaveis enable row level security;
 
 drop policy if exists acomp_ler      on public.clinica_acompanhamentos;
 drop policy if exists acomp_criar    on public.clinica_acompanhamentos;
 drop policy if exists acomp_editar   on public.clinica_acompanhamentos;
 drop policy if exists acomp_apagar   on public.clinica_acompanhamentos;
 drop policy if exists acomp_hist_ler on public.clinica_acompanhamentos_historico;
+drop policy if exists acomp_resp_ler    on public.clinica_acompanhamento_responsaveis;
+drop policy if exists acomp_resp_criar  on public.clinica_acompanhamento_responsaveis;
+drop policy if exists acomp_resp_apagar on public.clinica_acompanhamento_responsaveis;
 
 create policy acomp_ler on public.clinica_acompanhamentos for select to authenticated
   using ( public.acomp_papel() in ('gestor','auditoria','recepcionista','medico')
@@ -147,5 +184,13 @@ create policy acomp_hist_ler on public.clinica_acompanhamentos_historico for sel
   using ( exists (select 1 from public.clinica_acompanhamentos a
                   where a.id = clinica_acompanhamentos_historico.acompanhamento_id) );  -- herda o RLS do acompanhamento
 
+create policy acomp_resp_ler on public.clinica_acompanhamento_responsaveis for select to authenticated
+  using ( public.acomp_papel() in ('gestor','auditoria','recepcionista','medico','funcionario') );
+create policy acomp_resp_criar on public.clinica_acompanhamento_responsaveis for insert to authenticated
+  with check ( public.acomp_papel() in ('gestor','recepcionista','medico','funcionario') );
+create policy acomp_resp_apagar on public.clinica_acompanhamento_responsaveis for delete to authenticated
+  using ( public.acomp_papel() in ('gestor','recepcionista','medico','funcionario') );
+
 grant select, insert, update, delete on public.clinica_acompanhamentos to authenticated;
+grant select, insert, delete on public.clinica_acompanhamento_responsaveis to authenticated;
 grant select on public.clinica_acompanhamentos_historico to authenticated;
