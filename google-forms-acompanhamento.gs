@@ -80,7 +80,7 @@ function enviar_(resposta) {
 /* ------------------------------------------------------------- leitura das respostas */
 function normalizar_(s) {
   return String(s || "")
-    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/ª/g, "a").replace(/º/g, "o")
     .toLowerCase()
     .replace(/[^a-z0-9/ ]+/g, " ")
