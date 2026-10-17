@@ -26,15 +26,27 @@ const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
 const SEGREDO = "COLE_AQUI_A_SENHA_DO_SUPABASE";
 
+// ID do formulário: o trecho entre /d/ e /edit no link de edição do Forms
+// (docs.google.com/forms/d/ESTE_TRECHO/edit). Só é usado quando este projeto
+// NÃO foi aberto de dentro do formulário (projeto separado no Apps Script).
+const FORM_ID = "1LfSkijhQMG7PNjHu_VxmuKvZCTmCIAjXmKpGuFI2mKY";
+
+function formulario_() {
+  const ativo = FormApp.getActiveForm();
+  if (ativo) return ativo;
+  if (!FORM_ID) throw new Error("Este projeto não está ligado a um formulário. Preencha FORM_ID com o ID do formulário.");
+  return FormApp.openById(FORM_ID);
+}
+
 /* ------------------------------------------------------------- instalação */
 function instalar() {
   if (!SEGREDO || SEGREDO.indexOf("COLE_AQUI") === 0) throw new Error("Cole a senha do Supabase em SEGREDO antes de instalar.");
-  const form = FormApp.getActiveForm();
+  const form = formulario_();
   ScriptApp.getProjectTriggers()
     .filter(t => t.getHandlerFunction() === "aoEnviar")
     .forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger("aoEnviar").forForm(form).onFormSubmit().create();
-  Logger.log("Instalado. Cada nova resposta de \"" + form.getTitle() + "\" vai para a plataforma.");
+  Logger.log("Instalado no formulário \"" + form.getTitle() + "\" (" + form.getEditUrl() + "). Cada nova resposta vai para a plataforma.");
 }
 
 // chamado pelo Google a cada resposta enviada
@@ -44,7 +56,7 @@ function aoEnviar(e) {
 
 // manda para a plataforma todas as respostas que já existem (não duplica)
 function enviarRespostasAntigas() {
-  const respostas = FormApp.getActiveForm().getResponses();
+  const respostas = formulario_().getResponses();
   let ok = 0, repetidas = 0, erros = [];
   respostas.forEach(function (r, i) {
     try { const res = enviar_(r); if (res && res.repetida) repetidas++; else ok++; }
@@ -56,7 +68,7 @@ function enviarRespostasAntigas() {
 
 // testa com a última resposta do formulário
 function testarUltimaResposta() {
-  const rs = FormApp.getActiveForm().getResponses();
+  const rs = formulario_().getResponses();
   if (!rs.length) throw new Error("O formulário ainda não tem respostas.");
   Logger.log(JSON.stringify(montarDados_(rs[rs.length - 1]), null, 2));
   Logger.log(JSON.stringify(enviar_(rs[rs.length - 1])));
