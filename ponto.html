@@ -25,6 +25,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
@@ -96,6 +97,50 @@ const DEMO_URL = /[?&]demo=1/.test(location.search); // ?demo=1 => modo demonstr
 const sb=(SUPABASE_URL&&SUPABASE_ANON_KEY&&!DEMO_URL)?supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
 const fmtDia=(iso)=>{const d=new Date(iso);return d.toLocaleDateString("pt-BR");};
 const fmtH=(iso)=>new Date(iso).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+
+/* ===== ALMOÇO / INTERVALO =====
+   As batidas continuam sendo só "entrada" e "saída"; o almoço é reconhecido pela ordem do dia:
+   Entrada → Saída para almoço → Volta do almoço → Saída. Se houver mais de uma pausa, o almoço é a maior.
+   Regra da clínica: jornada acima de 6h precisa de pelo menos 1h de intervalo (CLT art. 71: máx. 2h). */
+const ALMOCO_MIN=60, ALMOCO_MAX=120, JORNADA_COM_ALMOCO=6;
+const fmtMin=(m)=>{ m=Math.round(m); const h=Math.floor(m/60), r=m%60; return h ? (h+"h"+(r?String(r).padStart(2,"0"):"")) : (r+"min"); };
+function analisarDia(itens){
+  const its=[...itens].sort((a,b)=>a.momento.localeCompare(b.momento));
+  const rot=its.map(r=> r.tipo==="entrada" ? "Entrada" : "Saída");
+  let total=0, open=null, ok=true;
+  its.forEach(r=>{ if(r.tipo==="entrada"){ if(open) ok=false; open=new Date(r.momento); } else { if(!open) ok=false; else { total+=(new Date(r.momento)-open)/36e5; open=null; } } });
+  if(open) ok=false;
+  // pausas = saída seguida de entrada
+  const pausas=[];
+  for(let i=0;i+1<its.length;i++) if(its[i].tipo==="saida" && its[i+1].tipo==="entrada")
+    pausas.push({i, min:(new Date(its[i+1].momento)-new Date(its[i].momento))/6e4});
+  const almoco = pausas.length ? pausas.reduce((a,b)=> b.min>a.min ? b : a) : null;
+  if(almoco){ rot[almoco.i]="Saída almoço"; rot[almoco.i+1]="Volta almoço"; }
+  const intervalo=pausas.reduce((s,p)=>s+p.min,0);
+  // jornada = do primeiro ao último registro (para saber se o intervalo era obrigatório)
+  const jornada = its.length>=2 ? (new Date(its[its.length-1].momento)-new Date(its[0].momento))/36e5 : 0;
+  const alertas=[];
+  if(!ok){
+    if(its.length && its[its.length-1].tipo==="entrada") alertas.push({sev:"bad", t: almoco||its.length===1 ? "Falta a saída" : "Falta batida"});
+    else alertas.push({sev:"bad", t:"Batidas fora de ordem / faltando"});
+  }
+  if(ok && total>JORNADA_COM_ALMOCO){
+    if(!almoco) alertas.push({sev:"warn", t:`Sem batida de almoço (${total.toFixed(1).replace(".",",")}h direto)`});
+    else if(almoco.min<ALMOCO_MIN) alertas.push({sev:"bad", t:`Almoço de ${fmtMin(almoco.min)} (mínimo 1h)`});
+  }
+  if(almoco && almoco.min>ALMOCO_MAX) alertas.push({sev:"warn", t:`Almoço de ${fmtMin(almoco.min)} (acima de 2h)`});
+  const pega=(lbl)=>{ const i=rot.indexOf(lbl); return i<0?null:its[i]; };
+  const flags={ faltando:!ok, semAlmoco: ok&&total>JORNADA_COM_ALMOCO&&!almoco, almocoCurto: ok&&total>JORNADA_COM_ALMOCO&&!!almoco&&almoco.min<ALMOCO_MIN, almocoLongo: !!almoco&&almoco.min>ALMOCO_MAX };
+  return { its, rot, horas:total, ok, almoco, intervalo, jornada, alertas, flags,
+           entrada: its[0]&&its[0].tipo==="entrada" ? its[0] : null,
+           saidaAlmoco: pega("Saída almoço"), voltaAlmoco: pega("Volta almoço"),
+           saida: its.length>1 && its[its.length-1].tipo==="saida" ? its[its.length-1] : null };
+}
+function Situacao({ a }){
+  if(!a.alertas.length) return <span style={{color:"var(--ok)",fontWeight:600,fontSize:12.5}}>ok</span>;
+  return <div style={{display:"flex",flexDirection:"column",gap:3}}>{a.alertas.map((x,i)=>
+    <span key={i} style={{color:x.sev==="bad"?"var(--bad)":"var(--warn)",fontWeight:600,fontSize:12.5,whiteSpace:"nowrap"}}>⚠ {x.t}</span>)}</div>;
+}
 
 function Enroll(){
   const videoRef=useRef(null);
@@ -253,6 +298,8 @@ function Relatorio(){
       const t=(h)=>new Date(Date.now()-h*36e5).toISOString();
       setRegs([
         {colaborador_id:"1",tipo:"entrada",metodo:"facial",momento:t(9)},
+        {colaborador_id:"1",tipo:"saida",metodo:"facial",momento:t(5)},
+        {colaborador_id:"1",tipo:"entrada",metodo:"facial",momento:t(4)},
         {colaborador_id:"1",tipo:"saida",metodo:"facial",momento:t(1)},
         {colaborador_id:"2",tipo:"entrada",metodo:"pin",momento:t(8)},
         {colaborador_id:"2",tipo:"saida",metodo:"facial",momento:t(2)},
@@ -264,12 +311,10 @@ function Relatorio(){
 
   // agrupa por colaborador + dia
   const grupos={};
-  regs.forEach(r=>{ const dia=new Date(r.momento).toLocaleDateString("pt-BR"); const k=r.colaborador_id+"|"+dia;
+  regs.forEach(r=>{ const dia=_dl(r.momento); const k=r.colaborador_id+"|"+dia;
     (grupos[k]=grupos[k]||{colab:r.colaborador_id,dia,itens:[]}).itens.push(r); });
-  const linhas=Object.values(grupos).map(g=>{
-    let total=0,open=null; g.itens.forEach(r=>{ if(r.tipo==="entrada") open=new Date(r.momento); else if(r.tipo==="saida"&&open){ total+=new Date(r.momento)-open; open=null; } });
-    return {...g, horas: total/36e5};
-  }).sort((a,b)=> (nomes[a.colab]||"").localeCompare(nomes[b.colab]||"") || a.dia.localeCompare(b.dia));
+  const linhas=Object.values(grupos).map(g=>({...g, ...analisarDia(g.itens)}))
+    .sort((a,b)=> (nomes[a.colab]||"").localeCompare(nomes[b.colab]||"") || a.dia.localeCompare(b.dia));
 
   if(loading) return <div className="empty">Carregando…</div>;
   if(linhas.length===0) return <div className="card"><div className="empty">Nenhum registro nos últimos 30 dias.</div></div>;
@@ -277,14 +322,16 @@ function Relatorio(){
   return (
     <div className="card">
       <table>
-        <thead><tr><th>Funcionário</th><th>Dia</th><th>Marcações</th><th>Horas</th></tr></thead>
+        <thead><tr><th>Funcionário</th><th>Dia</th><th>Marcações</th><th>Almoço</th><th>Horas</th><th>Situação</th></tr></thead>
         <tbody>
           {linhas.map((l,i)=>(
             <tr key={i}>
               <td style={{fontWeight:600}}>{nomes[l.colab]||"—"}</td>
-              <td className="mono">{l.dia}</td>
-              <td className="mono">{l.itens.map(r=>`${r.tipo==="entrada"?"▸":"◂"} ${fmtH(r.momento)}`).join("   ")}</td>
+              <td className="mono">{l.dia.split("-").reverse().join("/")}</td>
+              <td className="mono">{l.its.map((r,j)=>`${l.rot[j]} ${fmtH(r.momento)}`).join("  ·  ")}</td>
+              <td className="mono">{l.almoco ? fmtMin(l.almoco.min) : "—"}</td>
               <td className="tot mono">{l.horas.toFixed(1)}h</td>
+              <td><Situacao a={l} /></td>
             </tr>
           ))}
         </tbody>
@@ -314,10 +361,20 @@ function Espelho(){
       setRegs(r.data||[]); setColabs(c.data||[]);
     } else {
       const t=(d,h,mi)=>new Date(now.getFullYear(),now.getMonth(),d,h,mi).toISOString();
-      setColabs([{id:"1",nome:"Paula Ribeiro"},{id:"2",nome:"Bianca Souza"}]);
+      setColabs([{id:"1",nome:"Paula Ribeiro"},{id:"2",nome:"Bianca Souza"},{id:"3",nome:"Carla Nunes"}]);
       setRegs([ {id:"a",colaborador_id:"1",tipo:"entrada",metodo:"facial",momento:t(2,7,58)},
+                {id:"a2",colaborador_id:"1",tipo:"saida",metodo:"facial",momento:t(2,12,1)},
+                {id:"a3",colaborador_id:"1",tipo:"entrada",metodo:"facial",momento:t(2,13,4)},
                 {id:"b",colaborador_id:"1",tipo:"saida",metodo:"facial",momento:t(2,17,3)},
-                {id:"c",colaborador_id:"2",tipo:"entrada",metodo:"pin",momento:t(2,8,10)} ]);
+                {id:"d1",colaborador_id:"2",tipo:"entrada",metodo:"pin",momento:t(2,8,0)},
+                {id:"d2",colaborador_id:"2",tipo:"saida",metodo:"pin",momento:t(2,12,0)},
+                {id:"d3",colaborador_id:"2",tipo:"entrada",metodo:"pin",momento:t(2,12,35)},
+                {id:"d4",colaborador_id:"2",tipo:"saida",metodo:"pin",momento:t(2,17,0)},
+                {id:"e1",colaborador_id:"3",tipo:"entrada",metodo:"facial",momento:t(2,8,0)},
+                {id:"e2",colaborador_id:"3",tipo:"saida",metodo:"facial",momento:t(2,17,0)},
+                {id:"c",colaborador_id:"2",tipo:"entrada",metodo:"pin",momento:t(3,8,10)},
+                {id:"c2",colaborador_id:"2",tipo:"saida",metodo:"pin",momento:t(3,12,10)},
+                {id:"c3",colaborador_id:"2",tipo:"entrada",metodo:"pin",momento:t(3,13,10)} ]);
     }
     setLoading(false);
   }
@@ -327,15 +384,9 @@ function Espelho(){
   const nomes=Object.fromEntries(colabs.map(c=>[c.id,c.nome]));
   const filtr=regs.filter(r=> !selC || r.colaborador_id===selC);
   const grupos={};
-  filtr.forEach(r=>{ const dia=r.momento.slice(0,10); const k=r.colaborador_id+"|"+dia;
+  filtr.forEach(r=>{ const dia=_dl(r.momento); const k=r.colaborador_id+"|"+dia;   // dia no fuso local (não UTC)
     (grupos[k]=grupos[k]||{colab:r.colaborador_id,dia,itens:[]}).itens.push(r); });
-  const linhas=Object.values(grupos).map(g=>{
-    const its=[...g.itens].sort((a,b)=>a.momento.localeCompare(b.momento));
-    let total=0,open=null,ok=true;
-    its.forEach(r=>{ if(r.tipo==="entrada"){ if(open)ok=false; open=new Date(r.momento);} else { if(!open)ok=false; else { total+=(new Date(r.momento)-open)/36e5; open=null; } } });
-    if(open) ok=false;
-    return {...g,its,horas:total,ok};
-  }).sort((a,b)=> (nomes[a.colab]||"").localeCompare(nomes[b.colab]||"") || b.dia.localeCompare(a.dia));
+  const linhas=Object.values(grupos).map(g=>({...g, ...analisarDia(g.itens)})).sort((a,b)=> (nomes[a.colab]||"").localeCompare(nomes[b.colab]||"") || b.dia.localeCompare(a.dia));
 
   async function salvar(f){
     if(!f.colaborador_id||!f.data||!f.hora) return "Preencha funcionário, data e hora.";
@@ -352,11 +403,89 @@ function Espelho(){
 
   const fmtH=(iso)=>new Date(iso).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
   const fmtD=(iso)=>{ const [y,m,d]=iso.slice(0,10).split("-"); return d+"/"+m; };
-  const abrirEdit=(r)=> setEdit({ id:r.id, colaborador_id:r.colaborador_id, tipo:r.tipo, data:r.momento.slice(0,10), hora:r.momento.slice(11,16) });
+  // data e hora no fuso local (antes usava o horário UTC do banco: aparecia 3h adiantado)
+  const abrirEdit=(r)=> setEdit({ id:r.id, colaborador_id:r.colaborador_id, tipo:r.tipo, data:_dl(r.momento), hora:fmtH(r.momento) });
+  const comAlerta=linhas.filter(l=>l.alertas.length).length;
+  // Excel formatado: aba "Espelho" (dia a dia, com total por pessoa) e aba "Resumo"
+  function exportar(){
+    const X=window.XLSX;
+    if(!X){ alert("Não consegui carregar o gerador de Excel. Confira a internet e tente de novo."); return; }
+    const linha={style:"thin",color:{rgb:"D5DDE0"}}; const borda={top:linha,bottom:linha,left:linha,right:linha};
+    const base={border:borda,alignment:{vertical:"center"},font:{name:"Calibri",sz:11}};
+    const S={
+      titulo:{font:{name:"Calibri",bold:true,sz:15,color:{rgb:"0A5E5D"}}},
+      sub:{font:{name:"Calibri",sz:10,italic:true,color:{rgb:"5C6B75"}}},
+      cab:{...base,font:{name:"Calibri",bold:true,color:{rgb:"FFFFFF"}},fill:{fgColor:{rgb:"0E7C7B"}},alignment:{horizontal:"center",vertical:"center",wrapText:true}},
+      txt:base, nome:{...base,font:{name:"Calibri",bold:true}},
+      cen:{...base,alignment:{horizontal:"center",vertical:"center"}},
+      alm:{...base,alignment:{horizontal:"center",vertical:"center"},fill:{fgColor:{rgb:"E6EFF9"}}},
+      ok:{...base,font:{name:"Calibri",bold:true,color:{rgb:"2E7D5B"}},fill:{fgColor:{rgb:"E7F4EE"}}},
+      warn:{...base,font:{name:"Calibri",bold:true,color:{rgb:"8A5300"}},fill:{fgColor:{rgb:"FAEED4"}},alignment:{vertical:"center",wrapText:true}},
+      bad:{...base,font:{name:"Calibri",bold:true,color:{rgb:"C0392B"}},fill:{fgColor:{rgb:"FBE5E2"}},alignment:{vertical:"center",wrapText:true}},
+      tot:{...base,font:{name:"Calibri",bold:true},fill:{fgColor:{rgb:"EEF2F3"}}},
+      totc:{...base,font:{name:"Calibri",bold:true},fill:{fgColor:{rgb:"EEF2F3"}},alignment:{horizontal:"center",vertical:"center"}},
+      mini:{...base,font:{name:"Calibri",sz:9,color:{rgb:"5C6B75"}}},
+    };
+    // valores de data/hora do Excel (dá para somar e filtrar)
+    const serial=(iso)=>{ const [y,m,d]=iso.split("-").map(Number); return (Date.UTC(y,m-1,d)-Date.UTC(1899,11,30))/864e5; };
+    const hm=(r)=>{ if(!r) return null; const d=new Date(r.momento); return (d.getHours()*60+d.getMinutes())/1440; };
+    // cada célula com sua própria cópia do estilo (a biblioteca grava o formato dentro do objeto de estilo)
+    const cel=(v,s,z)=>{ const fmt=z||"General"; const st={...s,numFmt:fmt};
+      return v==null||v==="" ? {v:"",t:"s",s:st} : {v, t:typeof v==="number"?"n":"s", z:fmt, s:st}; };
+    const DS=["dom","seg","ter","qua","qui","sex","sáb"];
+    function aba(rows, larguras, merges, alturas){
+      const ws={}; let maxC=0;
+      rows.forEach((r,ri)=>r.forEach((c,ci)=>{ if(!c) return; ws[X.utils.encode_cell({r:ri,c:ci})]=c; maxC=Math.max(maxC,ci); }));
+      ws["!ref"]=X.utils.encode_range({s:{r:0,c:0},e:{r:rows.length-1,c:maxC}});
+      ws["!cols"]=larguras.map(w=>({wch:w})); ws["!merges"]=merges||[]; ws["!rows"]=alturas||[];
+      return ws;
+    }
+    const periodo=MESES_P[mes]+" "+ano, quem=selC ? (nomes[selC]||"") : "Toda a equipe";
+    const gerado="Gerado em "+new Date().toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"})+" · "+quem+" · almoço mínimo de 1h para jornada acima de 6h";
+    const porPessoa={}; linhas.forEach(l=>{ (porPessoa[l.colab]=porPessoa[l.colab]||[]).push(l); });
+    const pessoas=Object.keys(porPessoa).sort((a,b)=>(nomes[a]||"").localeCompare(nomes[b]||""));
+
+    // ---- aba Espelho
+    const cab=["Funcionário","Data","Dia","Entrada","Saída almoço","Volta almoço","Saída","Almoço","Horas trabalhadas","Situação","Todas as batidas"];
+    const R=[[cel("Espelho de ponto — "+periodo,S.titulo)],[cel(gerado,S.sub)],[],cab.map(h=>cel(h,S.cab))];
+    const alturas=[{hpt:22},{},{},{hpt:30}];
+    pessoas.forEach(id=>{
+      const dias=[...porPessoa[id]].sort((a,b)=>a.dia.localeCompare(b.dia)); let soma=0, rev=0;
+      dias.forEach(l=>{ soma+=l.horas; if(l.alertas.length) rev++;
+        const sev=l.alertas.some(a=>a.sev==="bad")?"bad":l.alertas.length?"warn":"ok";
+        R.push([cel(nomes[l.colab]||"—",S.nome), cel(serial(l.dia),S.cen,"dd/mm/yyyy"), cel(DS[new Date(l.dia+"T12:00").getDay()],S.cen),
+          cel(hm(l.entrada),S.cen,"hh:mm"), cel(hm(l.saidaAlmoco),S.alm,"hh:mm"), cel(hm(l.voltaAlmoco),S.alm,"hh:mm"), cel(hm(l.saida),S.cen,"hh:mm"),
+          cel(l.almoco?l.almoco.min/1440:null,S.alm,"[h]:mm"), cel(l.horas/24,S.cen,"[h]:mm"),
+          cel(l.alertas.map(a=>a.t).join(" · ")||"ok",S[sev]), cel(l.its.map((r,j)=>l.rot[j]+" "+fmtH(r.momento)).join("  |  "),S.mini)]);
+      });
+      R.push([cel("Total — "+(nomes[id]||""),S.tot),cel(dias.length+" dia(s)",S.totc),cel("",S.tot),cel("",S.tot),cel("",S.tot),cel("",S.tot),cel("",S.tot),cel("",S.tot),
+        cel(soma/24,S.totc,"[h]:mm"), cel(rev?rev+" dia(s) para revisar":"tudo certo",rev?S.bad:S.ok), cel("",S.tot)]);
+      R.push([]);
+    });
+    const wsE=aba(R,[24,11,6,9,12,12,9,9,11,40,70],[{s:{r:0,c:0},e:{r:0,c:10}},{s:{r:1,c:0},e:{r:1,c:10}}],alturas);
+
+    // ---- aba Resumo
+    const cabR=["Funcionário","Dias com batida","Horas trabalhadas","Almoço médio","Sem batida de almoço","Almoço menor que 1h","Almoço acima de 2h","Batida faltando","Dias para revisar"];
+    const RR=[[cel("Resumo do mês — "+periodo,S.titulo)],[cel(gerado,S.sub)],[],cabR.map(h=>cel(h,S.cab))];
+    const T={d:0,h:0,a:0,na:0,s:0,c:0,l:0,f:0,r:0};
+    pessoas.forEach(id=>{ const ds=porPessoa[id]; const n=(k)=>ds.filter(l=>l.flags[k]).length;
+      const comAlm=ds.filter(l=>l.almoco); const media=comAlm.length?comAlm.reduce((s,l)=>s+l.almoco.min,0)/comAlm.length:null;
+      const h=ds.reduce((s,l)=>s+l.horas,0), rev=ds.filter(l=>l.alertas.length).length;
+      T.d+=ds.length; T.h+=h; if(media!=null){T.a+=media*comAlm.length; T.na+=comAlm.length;} T.s+=n("semAlmoco"); T.c+=n("almocoCurto"); T.l+=n("almocoLongo"); T.f+=n("faltando"); T.r+=rev;
+      const num=(v,bad)=>cel(v,v&&bad?S.bad:S.cen);
+      RR.push([cel(nomes[id]||"—",S.nome),cel(ds.length,S.cen),cel(h/24,S.cen,"[h]:mm"),cel(media!=null?media/1440:null,S.alm,"[h]:mm"),
+        num(n("semAlmoco"),1),num(n("almocoCurto"),1),num(n("almocoLongo"),1),num(n("faltando"),1),cel(rev,rev?S.bad:S.ok)]);
+    });
+    RR.push([cel("Total",S.tot),cel(T.d,S.totc),cel(T.h/24,S.totc,"[h]:mm"),cel(T.na?T.a/T.na/1440:null,S.totc,"[h]:mm"),cel(T.s,S.totc),cel(T.c,S.totc),cel(T.l,S.totc),cel(T.f,S.totc),cel(T.r,S.totc)]);
+    const wsR=aba(RR,[26,10,11,10,12,12,12,10,10],[{s:{r:0,c:0},e:{r:0,c:8}},{s:{r:1,c:0},e:{r:1,c:8}}],[{hpt:22},{},{},{hpt:32}]);
+
+    const wb=X.utils.book_new(); X.utils.book_append_sheet(wb,wsE,"Espelho"); X.utils.book_append_sheet(wb,wsR,"Resumo");
+    X.writeFile(wb,`espelho-ponto-${MESES_P[mes].toLowerCase()}-${ano}${selC?"-"+(nomes[selC]||"").split(" ")[0].toLowerCase():""}.xlsx`);
+  }
 
   return (
     <div>
-      <div className="note">Espelho de ponto: cada batida registrada. Clique numa batida para corrigir o horário, ou use os botões para incluir/apagar (esquecimento, atestado, ajuste). Toda alteração fica com método "ajuste".</div>
+      <div className="note">Espelho de ponto: cada batida registrada. Clique numa batida para corrigir o horário, ou use os botões para incluir/apagar (esquecimento, atestado, ajuste). Toda alteração fica com método "ajuste". O almoço é reconhecido pela ordem das batidas (entrada → saída almoço → volta almoço → saída); jornada acima de 6h precisa de pelo menos 1h de almoço.</div>
       <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",marginBottom:14}}>
         <button className="btn btn-ghost btn-sm" onClick={()=>mudarMes(-1)}>‹</button>
         <b style={{fontFamily:"'Space Grotesk'",minWidth:130,textAlign:"center"}}>{MESES_P[mes]} {ano}</b>
@@ -365,7 +494,9 @@ function Espelho(){
           <option value="">Todos os funcionários</option>
           {colabs.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
         </select>
+        {comAlerta>0 && <span style={{color:"var(--bad)",fontWeight:600,fontSize:13}}>⚠ {comAlerta} dia(s) para revisar</span>}
         <div style={{flex:1}}></div>
+        <button className="btn btn-ghost btn-sm" onClick={exportar} disabled={!linhas.length}>Exportar Excel</button>
         <button className="btn btn-primary btn-sm" onClick={()=>setEdit({ colaborador_id:selC||colabs[0]?.id||"", tipo:"entrada", data:_dl(new Date()), hora:"08:00" })}>+ Nova batida</button>
       </div>
 
@@ -373,22 +504,23 @@ function Espelho(){
         {loading ? <div className="empty">Carregando…</div> :
          linhas.length===0 ? <div className="empty">Sem batidas neste mês.</div> :
          <table>
-           <thead><tr><th>Funcionário</th><th>Dia</th><th>Batidas</th><th>Horas</th><th>Situação</th><th></th></tr></thead>
+           <thead><tr><th>Funcionário</th><th>Dia</th><th>Batidas</th><th>Almoço</th><th>Horas</th><th>Situação</th><th></th></tr></thead>
            <tbody>
              {linhas.map((l,i)=>(
                <tr key={i}>
                  <td style={{fontWeight:600}}>{nomes[l.colab]||"—"}</td>
                  <td className="mono">{fmtD(l.dia)}</td>
                  <td><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                   {l.its.map(r=>(
-                     <button key={r.id} onClick={()=>abrirEdit(r)} title="corrigir"
-                       style={{font:"inherit",cursor:"pointer",border:"1px solid var(--line)",borderRadius:20,padding:"3px 9px",background:r.tipo==="entrada"?"var(--ok-bg)":"#FBEFD6",color:r.tipo==="entrada"?"var(--ok)":"var(--warn)",fontWeight:600,fontSize:12.5}}>
-                       {r.tipo==="entrada"?"▸":"◂"} {fmtH(r.momento)}{r.metodo==="ajuste"?" ✎":""}
-                     </button>
-                   ))}
+                   {l.its.map((r,j)=>{ const alm=/almoço/.test(l.rot[j]); return (
+                     <button key={r.id} onClick={()=>abrirEdit(r)} title={l.rot[j]+" · clique para corrigir"}
+                       style={{font:"inherit",cursor:"pointer",border:"1px solid var(--line)",borderRadius:20,padding:"3px 9px",
+                         background: alm ? "#E6EFF9" : r.tipo==="entrada"?"var(--ok-bg)":"#FBEFD6", color: alm ? "#1F6FB2" : r.tipo==="entrada"?"var(--ok)":"var(--warn)",fontWeight:600,fontSize:12.5}}>
+                       {alm ? "🍽 " : r.tipo==="entrada"?"▸ ":"◂ "}<span style={{fontWeight:500,fontSize:11}}>{l.rot[j]}</span> {fmtH(r.momento)}{r.metodo==="ajuste"?" ✎":""}
+                     </button>); })}
                  </div></td>
+                 <td className="mono" style={{whiteSpace:"nowrap"}}>{l.almoco ? fmtMin(l.almoco.min) : "—"}</td>
                  <td className="mono" style={{fontWeight:600}}>{l.horas.toFixed(1)}h</td>
-                 <td>{l.ok ? <span style={{color:"var(--ok)",fontWeight:600,fontSize:12.5}}>ok</span> : <span style={{color:"var(--bad)",fontWeight:600,fontSize:12.5}}>⚠ revisar</span>}</td>
+                 <td><Situacao a={l} /></td>
                  <td style={{textAlign:"right"}}><button className="btn btn-ghost btn-sm" onClick={()=>setEdit({ colaborador_id:l.colab, tipo:"saida", data:l.dia, hora:"18:00" })}>+ batida</button></td>
                </tr>
              ))}
@@ -414,7 +546,7 @@ function BatidaModal({ b, colabs, onClose, onSave, onDel }){
           <select value={f.colaborador_id} onChange={e=>set("colaborador_id",e.target.value)}>
             <option value="">— selecione —</option>{colabs.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
           </select></div>
-        <div className="field"><label>Tipo</label><select value={f.tipo} onChange={e=>set("tipo",e.target.value)}><option value="entrada">Entrada</option><option value="saida">Saída</option></select></div>
+        <div className="field"><label>Tipo</label><select value={f.tipo} onChange={e=>set("tipo",e.target.value)}><option value="entrada">Entrada / volta do almoço</option><option value="saida">Saída / saída para almoço</option></select></div>
         <div className="field"><label>Data</label><input type="date" value={f.data} onChange={e=>set("data",e.target.value)} /></div>
         <div className="field"><label>Hora</label><input type="time" value={f.hora} onChange={e=>set("hora",e.target.value)} /></div>
       </div>

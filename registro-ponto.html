@@ -64,6 +64,7 @@
   .b-sec{background:var(--card);color:var(--ink);border:1px solid var(--line);font-size:16px;padding:14px 22px;min-width:0}
   .b-sec:hover{border-color:var(--teal)}
   .suggest{outline:3px solid rgba(255,255,255,.25);outline-offset:2px}
+  .b-alt{opacity:.8;font-size:16px}
 
   .pinpad{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px;width:min(78vw,320px)}
   .pk{font:inherit;font-weight:700;font-size:26px;padding:18px 0;border-radius:14px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
@@ -99,6 +100,18 @@ const DEMO_URL = /[?&]demo=1/.test(location.search); // demonstração: sem banc
 const sb = (SUPABASE_URL && SUPABASE_ANON_KEY && !DEMO_URL) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 const dist=(a,b)=>{let s=0;for(let i=0;i<a.length;i++){const d=a[i]-b[i];s+=d*d;}return Math.sqrt(s);};
 const hora=()=> new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+const demoBatidas=[]; // modo demo: batidas desta sessão
+// Opções de batida conforme o que a pessoa já bateu hoje. No banco continua "entrada"/"saida";
+// o espelho reconhece o almoço pela ordem (entrada → saída almoço → volta almoço → saída).
+function opcoesDoDia(hoje){
+  const n=hoje.length, ult=n ? hoje[n-1].tipo : null;
+  if(ult==="entrada" && n===1) return { msg:"Saindo para o almoço ou encerrando o dia?",
+    botoes:[{tipo:"saida",rot:"Saída para ALMOÇO",feito:"Saída para almoço",sug:true},{tipo:"saida",rot:"Saída — fim do dia",feito:"Saída"}], alt:{tipo:"entrada",rot:"registrar entrada"} };
+  if(ult==="saida" && n===2) return { msg:"Voltando do almoço?",
+    botoes:[{tipo:"entrada",rot:"VOLTA do almoço",feito:"Volta do almoço",sug:true},{tipo:"saida",rot:"Registrar SAÍDA",feito:"Saída"}] };
+  if(ult==="entrada") return { botoes:[{tipo:"saida",rot:"Registrar SAÍDA",feito:"Saída",sug:true},{tipo:"entrada",rot:"Registrar ENTRADA",feito:"Entrada"}] };
+  return { botoes:[{tipo:"entrada",rot:"Registrar ENTRADA",feito:"Entrada",sug:true},{tipo:"saida",rot:"Registrar SAÍDA",feito:"Saída"}] };
+}
 
 function Relogio(){ const [t,setT]=useState(hora());
   useEffect(()=>{const i=setInterval(()=>setT(hora()),1000);return ()=>clearInterval(i);},[]);
@@ -131,6 +144,7 @@ function Kiosk(){
   const [erro,setErro]=useState("");
   const [pessoa,setPessoa]=useState(null);      // {colaborador_id, nome, metodo}
   const [sugestao,setSugestao]=useState("entrada");
+  const [opcoes,setOpcoes]=useState(opcoesDoDia([]));
   const [pin,setPin]=useState("");
   const [feito,setFeito]=useState(null);        // {nome, tipo}
   const enrolled=useRef([]);                     // [{colaborador_id, nome, descritor:[...]}]
@@ -215,24 +229,29 @@ function Kiosk(){
   async function reconhecer(r, metodo){
     atividade();
     clearInterval(timer.current);
-    let sug="entrada";
-    if(sb){ const { data }=await sb.from("registros_ponto").select("tipo").eq("colaborador_id",r.colaborador_id).order("momento",{ascending:false}).limit(1).maybeSingle();
-      sug = data?.tipo==="entrada" ? "saida" : "entrada"; }
-    setPessoa({ colaborador_id:r.colaborador_id, nome:r.nome, metodo }); setSugestao(sug); setFase("confirmar");
+    // batidas de hoje (desde a meia-noite local) decidem o botão sugerido
+    const ini=new Date(); ini.setHours(0,0,0,0);
+    let hoje=[];
+    if(sb){ const { data }=await sb.from("registros_ponto").select("tipo,momento").eq("colaborador_id",r.colaborador_id).gte("momento",ini.toISOString()).order("momento",{ascending:true});
+      hoje=data||[]; }
+    else hoje=demoBatidas.filter(b=>b.colaborador_id===r.colaborador_id);
+    const op=opcoesDoDia(hoje);
+    setPessoa({ colaborador_id:r.colaborador_id, nome:r.nome, metodo }); setOpcoes(op); setSugestao((op.botoes.find(b=>b.sug)||op.botoes[0]).tipo); setFase("confirmar");
   }
 
-  async function registrar(tipo){
+  async function registrar(tipo, rotulo){
     setFase("salvando");
     if(sb){ const { error }=await sb.from("registros_ponto").insert({ colaborador_id:pessoa.colaborador_id, tipo, metodo:pessoa.metodo });
       if(error){ setErro(error.message); setFase("erro"); return; } }
-    setFeito({ nome:pessoa.nome, tipo }); setFase("feito");
+    else demoBatidas.push({ colaborador_id:pessoa.colaborador_id, tipo, momento:new Date().toISOString() });
+    setFeito({ nome:pessoa.nome, tipo, rotulo: rotulo || (tipo==="entrada"?"Entrada":"Saída") }); setFase("feito");
     setTimeout(()=>{ setPessoa(null); setPin(""); setFeito(null); atividade(); setFase("scan"); loopScan(); }, 3000);
   }
 
   async function enviarPin(){
     if(pin.length<4) return;
     if(!sb){ // demo
-      if(pin==="1234"){ setPessoa({colaborador_id:"demo",nome:"Paula (demo)",metodo:"pin"}); setSugestao("entrada"); setFase("confirmar"); }
+      if(pin==="1234"){ await reconhecer({colaborador_id:"demo",nome:"Paula (demo)"},"pin"); }
       else { setErro("PIN não encontrado (no demo use 1234)."); setPin(""); }
       return;
     }
@@ -282,10 +301,12 @@ function Kiosk(){
 
           {fase==="confirmar" && pessoa && <>
             <div className="msg">Olá, <span className="big-name">{pessoa.nome}</span></div>
+            {opcoes.msg && <div className="sub">{opcoes.msg}</div>}
             <div className="btns">
-              <button className={"b b-entrada"+(sugestao==="entrada"?" suggest":"")} onClick={()=>registrar("entrada")}>Registrar ENTRADA</button>
-              <button className={"b b-saida"+(sugestao==="saida"?" suggest":"")} onClick={()=>registrar("saida")}>Registrar SAÍDA</button>
+              {opcoes.botoes.map((b,i)=>
+                <button key={i} className={"b "+(b.tipo==="entrada"?"b-entrada":"b-saida")+(b.sug?" suggest":"")+(i>0&&b.tipo===opcoes.botoes[0].tipo?" b-alt":"")} onClick={()=>registrar(b.tipo,b.feito)}>{b.rot}</button>)}
             </div>
+            {opcoes.alt && <button className="link" onClick={()=>registrar(opcoes.alt.tipo)}>{opcoes.alt.rot}</button>}
             <button className="link" onClick={()=>{setPessoa(null);setFase("scan");loopScan();}}>não sou eu</button>
           </>}
 
@@ -293,7 +314,7 @@ function Kiosk(){
 
           {fase==="feito" && feito && <>
             <div className="done">✓</div>
-            <div className="msg">{feito.tipo==="entrada"?"Entrada":"Saída"} registrada</div>
+            <div className="msg">{feito.rotulo} registrada</div>
             <div className="sub">{feito.nome} · {hora()}</div>
           </>}
 
