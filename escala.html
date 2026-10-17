@@ -9,6 +9,9 @@
      - Pessoas vêm do RH (colaboradores) com carga horária e regime.
      - Gera a grade de dias por regime; a gestora edita à vontade.
      - "Liberado" (AB) = dia abonado: não conta como hora devida.
+     - Turnos editáveis (sigla, nome, horário, intervalo, horas, cor) e carga
+       horária/regime de cada pessoa editáveis aqui (gravam no RH). Turnos e o
+       padrão semanal do regime "Personalizado" ficam em escala_estado.dados.
      - Integra com o Ponto: gráfico de meta do mês + saldo (batido − escalado).
      Stack: HTML único + React 18 + Supabase + SheetJS. Sem build. GitHub Pages.
      ========================================================================== -->
@@ -91,6 +94,21 @@
   .pos{position:absolute;top:0;bottom:0;left:50%;background:var(--ok);border-radius:0 5px 5px 0}
   .neg{position:absolute;top:0;bottom:0;background:var(--bad);border-radius:5px 0 0 5px}
   .empty{padding:40px;text-align:center;color:var(--muted)}
+  .ptitle{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;user-select:none}
+  .ptitle h2{margin:0} .ptitle .tg{font-size:12px;color:var(--muted);font-weight:600}
+  table.tt{border-collapse:collapse;width:100%;margin-top:12px;font-size:13px}
+  .tt th{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);text-align:left;padding:6px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .tt td{padding:6px;border-bottom:1px solid var(--line);vertical-align:middle}
+  .tt input,.tt select{border:1px solid var(--line);border-radius:8px;padding:7px 8px;background:#fff;font:inherit;min-width:0}
+  .tt input.sig{width:58px;text-transform:uppercase;font-family:"JetBrains Mono";font-weight:700;text-align:center}
+  .tt input.nome{width:100%;min-width:130px} .tt input.hr{width:118px} .tt input.n{width:70px}
+  .sw{display:flex;gap:4px;flex-wrap:wrap} .sw button{width:20px;height:20px;border-radius:5px;border:2px solid transparent;cursor:pointer;padding:0}
+  .sw button.on{border-color:var(--ink)}
+  .x{border:none;background:none;color:var(--bad);font-size:18px;cursor:pointer;padding:0 6px;border-radius:6px} .x:hover{background:var(--bad-bg)}
+  .ok-txt{font-size:12px;color:var(--ok);font-weight:600} .err-txt{font-size:12px;color:var(--bad);font-weight:600}
+  .wk7{display:flex;gap:3px} .wk7 label{display:flex;flex-direction:column;align-items:center;font-size:10px;font-weight:700;color:var(--muted);gap:2px}
+  .wk7 select{padding:4px 2px;font-family:"JetBrains Mono";font-size:11px;font-weight:700;width:44px}
+  .lock{font-size:10px;color:var(--muted);display:block;text-align:center;margin-top:2px}
   @media(max-width:720px){ .barrow{grid-template-columns:130px 1fr 120px} }
 </style>
 </head>
@@ -103,7 +121,27 @@ const sb=(SUPABASE_URL&&SUPABASE_ANON_KEY&&!DEMO_URL)?supabase.createClient(SUPA
 const MESES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const WD=["D","S","T","Q","Q","S","S"];
 const REGIMES={int5:"Integral seg–sex",int6:"Integral + sábado",manha:"Só manhã",tarde:"Só tarde",custom:"Personalizado"};
-const OPTS=[["","·"],["I","I"],["M","M"],["T","T"],["S","S"],["F","F"],["AB","AB"],["FE","FE"],["LC","LC"]];
+// códigos que não são turno de trabalho (não contam horas)
+const SISTEMA=[["F","Folga"],["AB","Liberado"],["FE","Férias"],["LC","Licença"]];
+const COD_SISTEMA=SISTEMA.map(x=>x[0]);
+// turnos usados pela geração automática por regime: a sigla deles não muda
+const BASE=["I","M","T","S"];
+const CORES=[["#E0F2FE","#0369A1"],["#FEF3C7","#B45309"],["#FFE4E8","#BE123C"],["#E0E7FF","#3730A3"],["#ECFCCB","#4D7C0F"],
+  ["#FCE7F3","#BE185D"],["#FFEDD5","#C2410C"],["#CFFAFE","#0E7490"],["#F3E8FF","#7E22CE"],["#E2E8F0","#334155"]];
+const turnosPadrao=(h)=>[
+  {sigla:"I",nome:"Integral",ini:"",fim:"",intervalo:"",horas:(h&&h.I)??8,cor:0},
+  {sigla:"M",nome:"Manhã",ini:"",fim:"",intervalo:"",horas:(h&&h.M)??4,cor:1},
+  {sigla:"T",nome:"Tarde",ini:"",fim:"",intervalo:"",horas:(h&&h.T)??4,cor:2},
+  {sigla:"S",nome:"Sábado",ini:"",fim:"",intervalo:"",horas:(h&&h.S)??5,cor:3},
+];
+// horas de um turno pelo horário (atravessa a meia-noite se o fim for antes do início)
+function horasDoHorario(ini,fim,intervalo){
+  if(!/^\d\d:\d\d$/.test(ini||"")||!/^\d\d:\d\d$/.test(fim||"")) return null;
+  const m=(t)=>{ const [h,mi]=t.split(":").map(Number); return h*60+mi; };
+  let d=m(fim)-m(ini); if(d<=0) d+=24*60; d-=(+intervalo||0);
+  return Math.max(0,Math.round(d/6)/10);
+}
+const fmtH=(n)=> (Math.round((+n||0)*10)/10).toString().replace(".",",");
 const dim=(y,m)=>new Date(y,m+1,0).getDate();
 const wd=(y,m,d)=>new Date(y,m,d).getDay();
 
@@ -128,7 +166,10 @@ function App(){
   const [loading,setLoading]=useState(true);
   const [mes,setMes]=useState(now.getMonth()); const [ano,setAno]=useState(now.getFullYear());
   const [feriados,setFeriados]=useState([]); const [holIn,setHolIn]=useState("");
-  const [horas,setHoras]=useState({I:8,M:4,T:4,S:5});
+  const [turnos,setTurnos]=useState(turnosPadrao());
+  const [padroes,setPadroes]=useState({}); // regime "Personalizado": {colabId:{0..6: sigla}}
+  const [abre,setAbre]=useState({turnos:false,carga:false});
+  const [salvo,setSalvo]=useState({}); // feedback por colaborador
   const [sched,setSched]=useState({});
   const [lvId,setLvId]=useState(""); const [lvTipo,setLvTipo]=useState("FE"); const [lvA,setLvA]=useState(1); const [lvB,setLvB]=useState(1);
 
@@ -146,7 +187,8 @@ function App(){
       setColabs(c.data||[]);
       const s=e.data&&e.data.dados;
       if(s&&Object.keys(s).length){ if(s.mes!=null)setMes(s.mes); if(s.ano!=null)setAno(s.ano);
-        setFeriados(s.feriados||[]); setHoras(s.horas||{I:8,M:4,T:4,S:5}); setSched(s.sched||{}); }
+        setFeriados(s.feriados||[]); setTurnos(Array.isArray(s.turnos)&&s.turnos.length ? s.turnos : turnosPadrao(s.horas));
+        setPadroes(s.padroes||{}); setSched(s.sched||{}); }
     } else { setColabs(demoColabs()); setSched({}); }
     setLoading(false);
   }
@@ -161,9 +203,14 @@ function App(){
     } else setPonto(demoPonto(ano,mes));
   })(); },[ano,mes,loading]);
 
-  useEffect(()=>{ if(!loading) persist({mes,ano,feriados,horas,sched}); },[mes,ano,feriados,horas,sched,loading]);
+  // "horas" continua sendo gravado para compatibilidade com versões antigas
+  const horasCompat=useMemo(()=>Object.fromEntries(BASE.map(k=>[k,(turnos.find(t=>t.sigla===k)||{}).horas||0])),[turnos]);
+  useEffect(()=>{ if(!loading) persist({mes,ano,feriados,horas:horasCompat,turnos,padroes,sched}); },[mes,ano,feriados,turnos,padroes,sched,loading]);
 
-  const H=(code)=> code==="I"?horas.I: code==="M"?horas.M: code==="T"?horas.T: code==="S"?horas.S: 0;
+  const turnoDe=(code)=> turnos.find(t=>t.sigla===code);
+  const H=(code)=>{ const t=turnoDe(code); return t ? (+t.horas||0) : 0; };
+  const OPTS=[["","·"],...turnos.map(t=>[t.sigla,t.sigla]),...SISTEMA.map(([k])=>[k,k])];
+  const estiloCod=(code)=>{ const t=turnoDe(code); if(!t) return null; const c=CORES[t.cor%CORES.length]; return {background:c[0],color:c[1]}; };
   const metaMes=(c)=> Math.round((Number(c.carga_horaria)||0)*(D/7));
   const escalado=(c)=>{ const r=sched[c.id]||{}; let h=0; for(const d in r) h+=H(r[d]); return h; };
 
@@ -188,7 +235,9 @@ function App(){
         if(pre==="FE"||pre==="LC"||pre==="F"||pre==="AB"){ row[d]=pre; continue; }
         if(hol.includes(d)){ row[d]="F"; continue; }
         const w=wd(ano,mes,d);
-        if(r==="custom"){ if(pre)row[d]=pre; continue; }
+        if(r==="custom"){ const pd=padroes[c.id]; const cod=pd&&pd[w];
+          if(pd && Object.keys(pd).length){ row[d]= cod && (turnoDe(cod)||COD_SISTEMA.includes(cod)) ? cod : "F"; } else if(pre) row[d]=pre;
+          continue; }
         let code="F";
         if(r==="int5") code=(w>=1&&w<=5)?"I":"F";
         else if(r==="int6") code=(w>=1&&w<=5)?"I":(w===6?"S":"F");
@@ -202,6 +251,39 @@ function App(){
   }
   function limpar(){ setSched(p=>{ const n={}; for(const id in p){ n[id]={}; for(const d in p[id]){ const v=p[id][d]; if(v==="FE"||v==="LC"||v==="AB")n[id][d]=v; } } return n; }); }
 
+  // ---------- turnos
+  function mudaTurno(i,patch){ setTurnos(l=>l.map((t,j)=>{ if(j!==i) return t; const n={...t,...patch};
+    if(("ini" in patch)||("fim" in patch)||("intervalo" in patch)){ const h=horasDoHorario(n.ini,n.fim,n.intervalo); if(h!=null) n.horas=h; }
+    return n; })); }
+  function renomearSigla(i,nova){
+    const velha=turnos[i].sigla; nova=(nova||"").toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,3);
+    if(!nova || nova===velha) return mudaTurno(i,{sigla:velha});
+    if(COD_SISTEMA.includes(nova)||turnos.some((t,j)=>j!==i&&t.sigla===nova)){ alert(`A sigla "${nova}" já está em uso.`); return mudaTurno(i,{sigla:velha}); }
+    mudaTurno(i,{sigla:nova});
+    const troca=(r)=>{ const n={}; for(const k in r) n[k]= r[k]===velha ? nova : r[k]; return n; };
+    setSched(p=>Object.fromEntries(Object.entries(p).map(([id,r])=>[id,troca(r)])));
+    setPadroes(p=>Object.fromEntries(Object.entries(p).map(([id,r])=>[id,troca(r)])));
+  }
+  function novoTurno(){ let n=1; while(turnos.some(t=>t.sigla==="P"+n)) n++;
+    setTurnos(l=>[...l,{sigla:"P"+n,nome:"Novo turno",ini:"07:00",fim:"19:00",intervalo:60,horas:horasDoHorario("07:00","19:00",60),cor:(l.length)%CORES.length}]);
+    setAbre(a=>({...a,turnos:true})); }
+  function excluirTurno(i){ const t=turnos[i]; let usos=0; Object.values(sched).forEach(r=>Object.values(r).forEach(v=>{ if(v===t.sigla) usos++; }));
+    if(!confirm(`Excluir o turno ${t.sigla} (${t.nome})?`+(usos?` Ele está em ${usos} dia(s) da grade — esses dias ficam em branco.`:""))) return;
+    setTurnos(l=>l.filter((_,j)=>j!==i));
+    const limpa=(r)=>{ const n={}; for(const k in r) if(r[k]!==t.sigla) n[k]=r[k]; return n; };
+    setSched(p=>Object.fromEntries(Object.entries(p).map(([id,r])=>[id,limpa(r)])));
+    setPadroes(p=>Object.fromEntries(Object.entries(p).map(([id,r])=>[id,limpa(r)])));
+  }
+  // ---------- carga horária / regime (gravam no cadastro do RH)
+  async function salvarColab(c,patch){
+    setColabs(l=>l.map(x=>x.id===c.id?{...x,...patch}:x));
+    if(!sb){ setSalvo(s=>({...s,[c.id]:"ok"})); return; }
+    const {error}=await sb.from("colaboradores").update(patch).eq("id",c.id);
+    setSalvo(s=>({...s,[c.id]: error ? ("Erro: "+error.message) : "ok"}));
+    if(error) setColabs(l=>l.map(x=>x.id===c.id?{...x,...Object.fromEntries(Object.keys(patch).map(k=>[k,c[k]]))}:x));
+  }
+  function mudaPadrao(id,w,cod){ setPadroes(p=>{ const r={...(p[id]||{})}; if(cod) r[w]=cod; else delete r[w]; return {...p,[id]:r}; }); }
+
   const maxMeta=Math.max(1,...colabs.map(c=>Math.max(metaMes(c),escalado(c))));
   const maxSaldo=Math.max(1,...colabs.map(c=>Math.abs(batido(c.id)-escalado(c))));
 
@@ -214,6 +296,7 @@ function App(){
     const aoa=[["Escala — "+MESES[mes]+"/"+ano],[],head];
     colabs.forEach(c=>{ const r=sched[c.id]||{}; const row=[c.nome,c.funcao||"",REGIMES[c.regime]||"",c.carga_horaria||""];
       for(let d=1;d<=D;d++)row.push(r[d]||""); const e=escalado(c),b=batido(c.id); row.push(e,metaMes(c),b.toFixed(1),(b-e).toFixed(1)); aoa.push(row); });
+    aoa.push([],["Legenda"]); turnos.forEach(t=>aoa.push([t.sigla,t.nome,(t.ini&&t.fim)?t.ini+"–"+t.fim:"",fmtH(t.horas)+"h"])); SISTEMA.forEach(([k,n])=>aoa.push([k,n]));
     const ws=XLSX.utils.aoa_to_sheet(aoa); XLSX.utils.book_append_sheet(wb,ws,"Escala");
     XLSX.writeFile(wb,"escala-"+MESES[mes].toLowerCase()+"-"+ano+".xlsx");
   }
@@ -228,15 +311,11 @@ function App(){
       </div>
 
       <div className="panel">
-        <h2>Mês · horas dos turnos · feriados</h2>
+        <h2>Mês · feriados</h2>
         <div className="row">
           <button className="navbtn" onClick={()=>mudarMes(-1)}>‹</button>
           <div className="mlabel">{MESES[mes]} {ano}</div>
           <button className="navbtn" onClick={()=>mudarMes(1)}>›</button>
-          <div className="field"><label>Integral (h)</label><input type="number" value={horas.I} onChange={e=>setHoras({...horas,I:+e.target.value||0})}/></div>
-          <div className="field"><label>Manhã (h)</label><input type="number" value={horas.M} onChange={e=>setHoras({...horas,M:+e.target.value||0})}/></div>
-          <div className="field"><label>Tarde (h)</label><input type="number" value={horas.T} onChange={e=>setHoras({...horas,T:+e.target.value||0})}/></div>
-          <div className="field"><label>Sábado (h)</label><input type="number" value={horas.S} onChange={e=>setHoras({...horas,S:+e.target.value||0})}/></div>
           <div className="field"><label>Feriado (dia)</label>
             <div style={{display:"flex",gap:6}}><input type="number" value={holIn} onChange={e=>setHolIn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addHol()} style={{width:70}}/><button className="btn sm" onClick={addHol}>+</button></div></div>
           <div style={{flex:1}}></div>
@@ -245,7 +324,57 @@ function App(){
           <button className="btn primary" onClick={gerar}>⚡ Gerar grade</button>
         </div>
         {hol.length>0 && <div className="chips">{hol.map(d=><span className="chipx" key={d}>{d}/{mes+1}<button onClick={()=>rmHol(d)}>×</button></span>)}</div>}
-        <div className="hint">Clínica: seg–sex 07–18, sábado 07–12. A grade é gerada pelo regime de cada um (definido no RH) e você edita à vontade. <b>AB (Liberado)</b> = dia abonado, não conta como hora devida.</div>
+        <div className="hint">Clínica: seg–sex 07–18, sábado 07–12. A grade é gerada pelo regime de cada um e você edita à vontade. <b>AB (Liberado)</b> = dia abonado, não conta como hora devida.</div>
+      </div>
+
+      <div className="panel">
+        <div className="ptitle" onClick={()=>setAbre(a=>({...a,turnos:!a.turnos}))}>
+          <h2>Turnos · {turnos.map(t=>`${t.sigla} ${fmtH(t.horas)}h`).join(" · ")}</h2>
+          <span className="tg">{abre.turnos?"Fechar ▲":"Editar / criar ▼"}</span>
+        </div>
+        {abre.turnos && <>
+          <div style={{overflowX:"auto"}}><table className="tt">
+            <thead><tr><th>Sigla</th><th>Nome</th><th>Início</th><th>Fim</th><th>Intervalo (min)</th><th>Horas</th><th>Cor</th><th></th></tr></thead>
+            <tbody>{turnos.map((t,i)=>{ const base=BASE.includes(t.sigla); return <tr key={i}>
+              <td><input className="sig" defaultValue={t.sigla} key={t.sigla} disabled={base} title={base?"Usado na geração automática por regime":""} onBlur={e=>renomearSigla(i,e.target.value)} onKeyDown={e=>e.key==="Enter"&&e.target.blur()} />{base && <span className="lock">fixa</span>}</td>
+              <td><input className="nome" value={t.nome} onChange={e=>mudaTurno(i,{nome:e.target.value})} /></td>
+              <td><input className="hr" type="time" value={t.ini||""} onChange={e=>mudaTurno(i,{ini:e.target.value})} /></td>
+              <td><input className="hr" type="time" value={t.fim||""} onChange={e=>mudaTurno(i,{fim:e.target.value})} /></td>
+              <td><input className="n" type="number" min="0" step="5" value={t.intervalo??""} onChange={e=>mudaTurno(i,{intervalo:e.target.value===""?"":+e.target.value})} /></td>
+              <td><input className="n" type="number" min="0" step="0.5" value={t.horas} onChange={e=>mudaTurno(i,{horas:+e.target.value||0})} /></td>
+              <td><div className="sw">{CORES.map((c,k)=><button key={k} className={t.cor%CORES.length===k?"on":""} style={{background:c[0],outline:`1px solid ${c[1]}33`}} onClick={()=>mudaTurno(i,{cor:k})} aria-label={"cor "+(k+1)} />)}</div></td>
+              <td>{!base && <button className="x" onClick={()=>excluirTurno(i)} title="Excluir turno">×</button>}</td>
+            </tr>; })}</tbody>
+          </table></div>
+          <div className="row" style={{marginTop:10}}><button className="btn sm primary" onClick={novoTurno}>+ Novo turno</button></div>
+          <div className="hint">Preenchendo início, fim e intervalo, as horas são calculadas sozinhas (turno que passa da meia-noite também). Ou digite as horas direto. As siglas I, M, T e S são usadas pela geração automática dos regimes; turnos novos você usa na grade ou no regime <b>Personalizado</b>.</div>
+        </>}
+      </div>
+
+      <div className="panel">
+        <div className="ptitle" onClick={()=>setAbre(a=>({...a,carga:!a.carga}))}>
+          <h2>Carga horária e regime da equipe</h2>
+          <span className="tg">{abre.carga?"Fechar ▲":"Editar ▼"}</span>
+        </div>
+        {abre.carga && <>
+          {colabs.length===0 ? <div className="hint">Nenhum colaborador ativo. Cadastre no RH.</div> :
+          <div style={{overflowX:"auto"}}><table className="tt">
+            <thead><tr><th>Pessoa</th><th>Carga (h/semana)</th><th>Meta no mês</th><th>Regime</th><th>Turno por dia da semana</th><th></th></tr></thead>
+            <tbody>{colabs.map(c=>{ const pd=padroes[c.id]||{}; return <tr key={c.id}>
+              <td><b>{c.nome}</b><div className="nmsub">{c.funcao||"—"}</div></td>
+              <td><input className="n" type="number" min="0" max="80" step="1" defaultValue={c.carga_horaria??""} key={"ch"+c.id+(c.carga_horaria??"")}
+                onBlur={e=>{ const v=e.target.value===""?null:Number(e.target.value); if(v!==(c.carga_horaria??null)) salvarColab(c,{carga_horaria:v}); }} onKeyDown={e=>e.key==="Enter"&&e.target.blur()} /></td>
+              <td className="mono">{metaMes(c)}h</td>
+              <td><select value={c.regime||"int5"} onChange={e=>salvarColab(c,{regime:e.target.value})}>{Object.entries(REGIMES).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></td>
+              <td>{c.regime==="custom" ? <div className="wk7">{[1,2,3,4,5,6,0].map(w=><label key={w}>{WD[w]}
+                  <select value={pd[w]||""} onChange={e=>mudaPadrao(c.id,w,e.target.value)} style={estiloCod(pd[w])||null}>
+                    <option value="">F</option>{turnos.map(t=><option key={t.sigla} value={t.sigla}>{t.sigla}</option>)}</select></label>)}</div>
+                : <span className="nmsub">automático pelo regime</span>}</td>
+              <td>{salvo[c.id]==="ok" ? <span className="ok-txt">✓ salvo</span> : salvo[c.id] ? <span className="err-txt">{salvo[c.id]}</span> : null}</td>
+            </tr>; })}</tbody>
+          </table></div>}
+          <div className="hint">Carga e regime são os mesmos do cadastro do RH (mudar aqui muda lá). No regime <b>Personalizado</b>, escolha o turno de cada dia da semana e clique em <b>⚡ Gerar grade</b>; os dias sem turno viram folga.</div>
+        </>}
       </div>
 
       <div className="panel">
@@ -279,17 +408,17 @@ function App(){
                   <td className="namecol"><div className="nm">{c.nome}</div><div className="nmsub">{c.funcao||"—"} · {c.carga_horaria||"?"}h/sem · {REGIMES[c.regime]||"—"}</div></td>
                   {days.map(d=>{ const code=r[d]||""; const h=hol.includes(d), w=wd(ano,mes,d), we=w===0||w===6;
                     return <td key={d} className={h?"hol":we?"wk":""}>
-                      <select className={"cell "+(code?"c-"+code:"")} value={code} onChange={ev=>setCell(c.id,d,ev.target.value)}>
-                        {OPTS.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></td>; })}
+                      <select className={"cell "+(code&&COD_SISTEMA.includes(code)?"c-"+code:"")} style={estiloCod(code)||undefined} value={code} onChange={ev=>setCell(c.id,d,ev.target.value)}>
+                        {OPTS.map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                        {code && !OPTS.some(o=>o[0]===code) && <option value={code}>{code}</option>}</select></td>; })}
                   <td className="totcol"><div style={{padding:"0 8px"}}>{e}h <span style={{color:"var(--muted)",fontWeight:400}}>/ {mt}h</span></div></td>
                 </tr>; })}
             </tbody>
           </table>
         </div>
         <div className="legend">
-          <span><i className="lg c-I">I</i>Integral</span><span><i className="lg c-M">M</i>Manhã</span><span><i className="lg c-T">T</i>Tarde</span>
-          <span><i className="lg c-S">S</i>Sábado</span><span><i className="lg c-F">F</i>Folga</span><span><i className="lg c-AB">AB</i>Liberado</span>
-          <span><i className="lg c-FE">FE</i>Férias</span><span><i className="lg c-LC">LC</i>Licença</span>
+          {turnos.map(t=><span key={t.sigla}><i className="lg" style={estiloCod(t.sigla)}>{t.sigla}</i>{t.nome} · {fmtH(t.horas)}h{t.ini&&t.fim?` (${t.ini}–${t.fim})`:""}</span>)}
+          {SISTEMA.map(([k,n])=><span key={k}><i className={"lg c-"+k}>{k}</i>{n}</span>)}
         </div>
 
         <div className="panel" style={{marginTop:16}}>
