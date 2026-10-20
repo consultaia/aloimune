@@ -170,12 +170,18 @@ function App(){
   const [padroes,setPadroes]=useState({}); // regime "Personalizado": {colabId:{0..6: sigla}}
   const [abre,setAbre]=useState({turnos:false,carga:false});
   const [salvo,setSalvo]=useState({}); // feedback por colaborador
-  const [sched,setSched]=useState({});
+  const [escalas,setEscalas]=useState({}); // grade por mês: {"2026-10":{colabId:{dia:sigla}}}
   const [lvId,setLvId]=useState(""); const [lvTipo,setLvTipo]=useState("FE"); const [lvA,setLvA]=useState(1); const [lvB,setLvB]=useState(1);
 
   const D=dim(ano,mes);
   const holKey=ano+"-"+mes;
   const hol=feriados.filter(f=>f.k===holKey).map(f=>f.d);
+  const mesKey=ano+"-"+String(mes+1).padStart(2,"0");
+  const sched=escalas[mesKey]||{};
+  // altera só a grade do mês aberto
+  const setSched=(f)=>setEscalas(e=>({...e,[mesKey]: typeof f==="function" ? f(e[mesKey]||{}) : f}));
+  // altera a grade de todos os meses (renomear/excluir turno)
+  const setTodasGrades=(f)=>setEscalas(e=>Object.fromEntries(Object.entries(e).map(([k,g])=>[k,f(g)])));
 
   async function load(){
     setLoading(true);
@@ -188,8 +194,13 @@ function App(){
       const s=e.data&&e.data.dados;
       if(s&&Object.keys(s).length){ if(s.mes!=null)setMes(s.mes); if(s.ano!=null)setAno(s.ano);
         setFeriados(s.feriados||[]); setTurnos(Array.isArray(s.turnos)&&s.turnos.length ? s.turnos : turnosPadrao(s.horas));
-        setPadroes(s.padroes||{}); setSched(s.sched||{}); }
-    } else { setColabs(demoColabs()); setSched({}); }
+        setPadroes(s.padroes||{});
+        // versões antigas guardavam uma grade só (sem mês), que se repetia em todos os meses:
+        // ela fica no mês que estava aberto quando foi salva
+        if(s.escalas) setEscalas(s.escalas);
+        else if(s.sched&&Object.keys(s.sched).length){ const m=s.mes!=null?s.mes:now.getMonth(), y=s.ano!=null?s.ano:now.getFullYear();
+          setEscalas({[y+"-"+String(m+1).padStart(2,"0")]:s.sched}); } }
+    } else { setColabs(demoColabs()); setEscalas({}); }
     setLoading(false);
   }
   useEffect(()=>{ load(); },[]);
@@ -205,7 +216,7 @@ function App(){
 
   // "horas" continua sendo gravado para compatibilidade com versões antigas
   const horasCompat=useMemo(()=>Object.fromEntries(BASE.map(k=>[k,(turnos.find(t=>t.sigla===k)||{}).horas||0])),[turnos]);
-  useEffect(()=>{ if(!loading) persist({mes,ano,feriados,horas:horasCompat,turnos,padroes,sched}); },[mes,ano,feriados,turnos,padroes,sched,loading]);
+  useEffect(()=>{ if(!loading) persist({mes,ano,feriados,horas:horasCompat,turnos,padroes,escalas}); },[mes,ano,feriados,turnos,padroes,escalas,loading]);
 
   const turnoDe=(code)=> turnos.find(t=>t.sigla===code);
   const H=(code)=>{ const t=turnoDe(code); return t ? (+t.horas||0) : 0; };
@@ -261,17 +272,17 @@ function App(){
     if(COD_SISTEMA.includes(nova)||turnos.some((t,j)=>j!==i&&t.sigla===nova)){ alert(`A sigla "${nova}" já está em uso.`); return mudaTurno(i,{sigla:velha}); }
     mudaTurno(i,{sigla:nova});
     const troca=(r)=>{ const n={}; for(const k in r) n[k]= r[k]===velha ? nova : r[k]; return n; };
-    setSched(p=>Object.fromEntries(Object.entries(p).map(([id,r])=>[id,troca(r)])));
+    setTodasGrades(g=>Object.fromEntries(Object.entries(g).map(([id,r])=>[id,troca(r)])));
     setPadroes(p=>Object.fromEntries(Object.entries(p).map(([id,r])=>[id,troca(r)])));
   }
   function novoTurno(){ let n=1; while(turnos.some(t=>t.sigla==="P"+n)) n++;
     setTurnos(l=>[...l,{sigla:"P"+n,nome:"Novo turno",ini:"07:00",fim:"19:00",intervalo:60,horas:horasDoHorario("07:00","19:00",60),cor:(l.length)%CORES.length}]);
     setAbre(a=>({...a,turnos:true})); }
-  function excluirTurno(i){ const t=turnos[i]; let usos=0; Object.values(sched).forEach(r=>Object.values(r).forEach(v=>{ if(v===t.sigla) usos++; }));
+  function excluirTurno(i){ const t=turnos[i]; let usos=0; Object.values(escalas).forEach(g=>Object.values(g).forEach(r=>Object.values(r).forEach(v=>{ if(v===t.sigla) usos++; })));
     if(!confirm(`Excluir o turno ${t.sigla} (${t.nome})?`+(usos?` Ele está em ${usos} dia(s) da grade — esses dias ficam em branco.`:""))) return;
     setTurnos(l=>l.filter((_,j)=>j!==i));
     const limpa=(r)=>{ const n={}; for(const k in r) if(r[k]!==t.sigla) n[k]=r[k]; return n; };
-    setSched(p=>Object.fromEntries(Object.entries(p).map(([id,r])=>[id,limpa(r)])));
+    setTodasGrades(g=>Object.fromEntries(Object.entries(g).map(([id,r])=>[id,limpa(r)])));
     setPadroes(p=>Object.fromEntries(Object.entries(p).map(([id,r])=>[id,limpa(r)])));
   }
   // ---------- carga horária / regime (gravam no cadastro do RH)
