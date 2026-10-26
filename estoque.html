@@ -66,7 +66,7 @@
   .btn{font:inherit; font-weight:600; padding:9px 15px; border-radius:9px; border:1px solid transparent; cursor:pointer}
   .btn-primary{background:var(--primary); color:#fff} .btn-primary:hover{background:var(--primary-ink)}
   .btn-ghost{background:var(--card); border-color:var(--line); color:var(--ink)} .btn-ghost:hover{border-color:var(--muted)}
-  .btn-sm{padding:5px 10px; font-size:13px; font-weight:500}
+  .btn-sm{padding:5px 10px; font-size:13px; font-weight:500; white-space:nowrap}
   .btn:disabled{opacity:.5; cursor:default}
 
   .panel{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden}
@@ -119,10 +119,10 @@
   .modal h2{font-family:"Space Grotesk",sans-serif; margin:0 0 4px; font-size:19px}
   .modal .mt{color:var(--muted); font-size:13px; margin:0 0 16px}
   .grid{display:grid; grid-template-columns:1fr 1fr; gap:12px}
-  .field{display:flex; flex-direction:column; gap:5px}
+  .field{display:flex; flex-direction:column; gap:5px; min-width:0}
   .field.full{grid-column:1/-1}
   .field label{font-size:12.5px; font-weight:600; color:var(--muted)}
-  .field input,.field select{font:inherit; padding:9px 11px; border:1px solid var(--line); border-radius:9px; background:#fff; color:var(--ink)}
+  .field input,.field select{font:inherit; padding:9px 11px; border:1px solid var(--line); border-radius:9px; background:#fff; color:var(--ink); min-width:0; width:100%; box-sizing:border-box}
   .check{display:flex; align-items:center; gap:8px} .check input{width:auto}
   .modal-actions{display:flex; justify-content:space-between; margin-top:18px; gap:10px}
   .err{background:var(--bad-bg); color:var(--bad); padding:9px 12px; border-radius:9px; font-size:13px; margin-bottom:12px}
@@ -223,6 +223,7 @@ function App(){
   const [expand, setExpand] = useState(null);
   const [editInsumo, setEditInsumo] = useState(null);
   const [editLote, setEditLote] = useState(null);
+  const [saida, setSaida] = useState(null);
 
   async function load(){
     setLoading(true);
@@ -281,6 +282,14 @@ function App(){
       if(r.error) return r.error.message; await load(); }
     else setLotes(prev=> f.id? prev.map(l=>l.id===f.id?{...l,...p}:l):[...prev,{...p,id:uid()}]);
     setEditLote(null); return null;
+  }
+  // baixa no lote escolhido
+  async function salvarSaida(baixas){
+    if(sb){
+      for(const b of baixas){ const r=await sb.from("lotes").update({ quantidade:b.nova }).eq("id",b.id); if(r.error){ await load(); return r.error.message; } }
+      await load();
+    } else setLotes(prev=>prev.map(l=>{ const b=baixas.find(x=>x.id===l.id); return b?{...l,quantidade:b.nova}:l; }));
+    setSaida(null); return null;
   }
   async function removerLote(id){
     if(!confirm("Remover este lote?")) return;
@@ -391,6 +400,7 @@ function App(){
                           <td>
                             <div className="row-actions">
                               <button className="btn btn-ghost btn-sm" onClick={()=>setEditLote({ insumo_id:x.insumo.id, quantidade:0 })}>+ Entrada</button>
+                              <button className="btn btn-ghost btn-sm" disabled={x.total<=0} title={x.total<=0?"Sem quantidade em estoque":""} onClick={()=>setSaida({ linha:x })}>− Saída</button>
                               <button className="btn btn-ghost btn-sm" onClick={()=>setExpand(aberto?null:x.insumo.id)}>{aberto?"Fechar":`Lotes (${x.lotes.length})`}</button>
                               <button className="btn btn-ghost btn-sm" onClick={()=>setEditInsumo(x.insumo)}>Editar</button>
                             </div>
@@ -408,6 +418,7 @@ function App(){
                                       <span className="ln">{l.lote||"—"}</span>
                                       <span className={"pill p-"+st}>{fmtDate(l.validade)}</span>
                                       <span className="lq qty">{l.quantidade} {x.insumo.unidade}</span>
+                                      <button className="btn btn-ghost btn-sm" disabled={Number(l.quantidade)<=0} onClick={()=>setSaida({ linha:x, loteId:l.id })}>− Saída</button>
                                       <button className="btn btn-ghost btn-sm" onClick={()=>setEditLote({ ...l })}>Ajustar</button>
                                       <button className="btn btn-ghost btn-sm" onClick={()=>removerLote(l.id)}>Remover</button>
                                     </div>
@@ -428,6 +439,7 @@ function App(){
       )}
 
       {editInsumo && <InsumoModal insumo={editInsumo} onClose={()=>setEditInsumo(null)} onSave={salvarInsumo} />}
+      {saida && <SaidaModal linha={saida.linha} loteId={saida.loteId} onClose={()=>setSaida(null)} onSave={salvarSaida} />}
       {editLote && <LoteModal lote={editLote} onClose={()=>setEditLote(null)} onSave={salvarLote} />}
     </div>
   );
@@ -564,6 +576,41 @@ function InsumoModal({ insumo, onClose, onSave }){
   );
 }
 
+function SaidaModal({ linha, loteId:loteIni, onClose, onSave }){
+  const { insumo } = linha;
+  const disp = linha.lotes.filter(l=>Number(l.quantidade)>0)
+    .map(l=>({ ...l, venc: computeStatus({ validade:l.validade, aviso_dias:insumo.aviso_dias }).status==="vencido" }))
+    .sort((a,b)=>(a.validade||"9999").localeCompare(b.validade||"9999"));
+  // com um lote só, já vem escolhido
+  const [loteId,setLoteId]=useState(loteIni || (disp.length===1 ? disp[0].id : ""));
+  const [qtd,setQtd]=useState(""); const [err,setErr]=useState(""); const [s,setS]=useState(false);
+  const lote = disp.find(l=>l.id===loteId);
+  const n = Number(String(qtd).replace(",","."));
+  async function submit(){
+    if(!lote) return setErr("Escolha o lote do material que saiu.");
+    if(!(n>0)) return setErr("Informe a quantidade que saiu.");
+    if(n>Number(lote.quantidade)+1e-9) return setErr(`O lote ${lote.lote||"sem nº"} só tem ${lote.quantidade} ${insumo.unidade}.`);
+    setS(true); const e=await onSave([{ id:lote.id, nova:+(Number(lote.quantidade)-n).toFixed(4) }]); setS(false); if(e) setErr(e);
+  }
+  return (
+    <div className="overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:440}}>
+      <h2>Saída — {insumo.nome}</h2>
+      <p className="mt">Escolha o lote que está na embalagem e quanto saiu.</p>
+      {err && <div className="err">{err}</div>}
+      <div className="grid">
+        <div className="field full"><label>Lote</label><select value={loteId} onChange={e=>{setLoteId(e.target.value);setErr("");}} autoFocus={!loteId}>
+          {!loteId && <option value="">— escolha o lote —</option>}
+          {disp.map(l=><option key={l.id} value={l.id}>{(l.lote||"sem nº")+" · val. "+fmtDate(l.validade)+" · "+l.quantidade+" "+insumo.unidade+(l.venc?" · VENCIDO":"")}</option>)}
+        </select></div>
+        <div className="field full"><label>Quantidade ({insumo.unidade})</label><input type="number" step="any" min="0" value={qtd} onChange={e=>{setQtd(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&submit()} autoFocus={!!loteId} /></div>
+      </div>
+      {lote && lote.venc && <div className="err" style={{margin:"12px 0 0"}}>Atenção: este lote está vencido.</div>}
+      {lote && n>0 && n<=Number(lote.quantidade) && <p className="mt" style={{margin:"12px 0 0"}}>O lote {lote.lote||"sem nº"} fica com {+(Number(lote.quantidade)-n).toFixed(4)} {insumo.unidade}.</p>}
+      <div className="modal-actions"><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={submit} disabled={s}>{s?"Salvando…":"Lançar saída"}</button></div>
+    </div></div>
+  );
+}
+
 function LoteModal({ lote, onClose, onSave }){
   const [f,setF]=useState({ id:lote.id, insumo_id:lote.insumo_id, lote:lote.lote||"", validade:lote.validade||"", quantidade:lote.quantidade??0 });
   const [err,setErr]=useState(""); const [s,setS]=useState(false);
@@ -572,7 +619,7 @@ function LoteModal({ lote, onClose, onSave }){
   return (
     <div className="overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:420}}>
       <h2>{lote.id?"Ajustar lote":"Nova entrada"}</h2>
-      <p className="mt">Consumo é ajustar a quantidade; zerou, pode remover o lote.</p>
+      <p className="mt">{lote.id?"Corrige a quantidade do lote (contagem). Para o consumo do dia a dia, use “− Saída”.":"Entrada de um lote novo no estoque."}</p>
       {err && <div className="err">{err}</div>}
       <div className="grid">
         <div className="field"><label>Lote</label><input value={f.lote} onChange={e=>set("lote",e.target.value)} /></div>
