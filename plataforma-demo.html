@@ -99,6 +99,7 @@ const MODULOS = [
   { key:"pacientes",    nome:"Pacientes",  src:"pacientes.html",      ic:"user" },
   { key:"acompanhamento", nome:"Acompanhamento", src:"acompanhamento.html", ic:"form" },
   { key:"agenda",       nome:"Agenda",     src:"agenda.html",         ic:"calendar" },
+  { key:"datas",        nome:"Datas e eventos", src:"datas.html",    ic:"star" },
   { key:"dri",          nome:"Dri · WhatsApp", src:"whatsapp.html",   ic:"chat" },
   { key:"apresentacao", nome:"Apresentação", src:"apresentacao.html", ic:"slides" },
 ];
@@ -116,6 +117,7 @@ function Icon({ name }){
     money:"M12 1v22 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
     people:"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75",
     calendar:"M3 5h18v16H3z M3 9h18 M8 3v4 M16 3v4",
+    star:"M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z",
     slides:"M3 4h18v12H3z M8 20h8 M12 16v4",
     steth:"M6 3v5a4 4 0 0 0 8 0V3 M10 12v3a5 5 0 0 0 10 0v-1 M19 11a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",
     grid:"M3 4h18v16H3z M3 10h18 M3 15h18 M9 4v16",
@@ -162,6 +164,7 @@ function Home({ onAbrir, papel }){
     if(key==="pacientes") return {cls:"warn", t:"3 retorno(s) a chamar"};
     if(key==="acompanhamento") return {cls:"warn", t:"3 atrasado(s) · 2 para hoje"};
     if(key==="dri") return {cls:"bad", t:"1 esperando atendente"};
+    if(key==="datas") return {cls:"blue", t:"2 para preparar"};
     if(key==="apresentacao") return {cls:"muted", t:"Indicadores e PDF"};
     if(key==="profissionais") return {cls:"muted", t:"Cadastro e disponibilidade"};
     if(key==="escala") return {cls:"muted", t:"Escala da enfermagem"};
