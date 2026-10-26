@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Datas e eventos</title>
+
+<!-- ==========================================================================
+     DATAS E EVENTOS — calendário de datas importantes para o planejamento
+     anual e o marketing da clínica.
+     • Datas padrão ligadas ao perfil da Aloimune (datas-comemorativas.js):
+       profissões, gestação/perda gestacional/fertilidade, saúde, campanhas do
+       mês e datas comerciais. Dá para ocultar as que não interessam.
+     • Datas e eventos cadastrados pela clínica (únicos ou todo ano).
+     • Cada data tem um plano por ano: situação (a planejar → publicado) e
+       ideias. A home da plataforma avisa quando chega a hora de preparar.
+     Rode datas-schema.sql no Supabase antes. ?demo=1 => dados fictícios.
+     ========================================================================== -->
+<script>
+  const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="datas-comemorativas.js"></script>
+
+<style>
+  :root{
+    --bg:#F5F7F8; --card:#FFFFFF; --ink:#12212B; --muted:#5C6B75; --line:#E3E8EB;
+    --primary:#0E7C7B; --primary-ink:#0A5E5D; --ok:#2E7D5B; --ok-bg:#E7F4EE;
+    --warn:#B26B00; --warn-bg:#FAEED4; --bad:#C0392B; --bad-bg:#FBE5E2; --blue:#2F6DB5; --blue-bg:#E6EFF9;
+    --shadow:0 1px 2px rgba(18,33,43,.06), 0 8px 24px rgba(18,33,43,.06);
+  }
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1280px;margin:0 auto;padding:22px 18px 60px}
+  .top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  h1{font-family:"Space Grotesk";font-size:26px;margin:0} .top p{margin:4px 0 0;color:var(--muted);font-size:14px}
+  .mode{font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px} .mode.live{background:var(--ok-bg);color:var(--ok)} .mode.demo{background:var(--warn-bg);color:var(--warn)}
+  .btn{font:inherit;font-weight:600;border-radius:9px;cursor:pointer;padding:9px 13px;border:1px solid transparent;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+  .btn-primary{background:var(--primary);color:#fff} .btn-ghost{background:#fff;border-color:var(--line);color:var(--ink)} .btn-sm{padding:6px 10px;font-size:12.5px} .btn:disabled{opacity:.5;cursor:default}
+  .btn-bad{background:transparent;border-color:#F0C9C3;color:var(--bad)}
+  .tabs{display:inline-flex;background:#EEF1F3;border-radius:10px;padding:3px;flex-wrap:wrap}
+  .tabs button{font:inherit;font-weight:600;font-size:13.5px;border:none;background:none;color:var(--muted);padding:8px 14px;border-radius:8px;cursor:pointer}
+  .tabs button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+  .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  input,select,textarea{font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);min-width:0} textarea{min-height:90px;resize:vertical;width:100%}
+  input:focus,select:focus,textarea:focus{outline:2px solid #BFE3E2;border-color:var(--primary)}
+  .cats{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+  .cat{font:inherit;font-size:12.5px;font-weight:600;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  .cat i{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .cat.on{color:var(--ink);border-color:#B9C6CC;background:#fff;box-shadow:var(--shadow)} .cat.off{opacity:.55}
+  .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+  .kpi .v{font-family:"Space Grotesk";font-size:26px;font-weight:700} .kpi .l{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .kpi.warn .v{color:var(--warn)} .kpi.blue .v{color:var(--blue)} .kpi.ok .v{color:var(--ok)}
+  .mes-t{font-family:"Space Grotesk";font-size:15px;font-weight:700;margin:18px 2px 8px;color:var(--primary-ink)}
+  .lista{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .ev{display:flex;align-items:center;gap:12px;padding:11px 14px;border-bottom:1px solid var(--line);cursor:pointer}
+  .ev:last-child{border-bottom:none} .ev:hover{background:#F7FAFB}
+  .ev.oculta{opacity:.45}
+  .when{font-family:"Space Grotesk";font-weight:700;font-size:15px;min-width:64px;text-align:center;padding:6px;border-radius:10px;background:#EEF1F3;color:#3B4A55;line-height:1.1}
+  .when small{display:block;font-family:Inter;font-weight:600;font-size:10.5px;margin-top:2px}
+  .when.hoje{background:var(--primary);color:#fff} .when.preparar{background:var(--warn-bg);color:var(--warn)}
+  .ev .d{flex:1;min-width:0} .ev .n{font-weight:600;font-size:14.5px} .ev .s{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+  .chip{font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;background:#EEF1F3;color:#3B4A55;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
+  .chip i{width:7px;height:7px;border-radius:50%;display:inline-block}
+  .chip.warn{background:var(--warn-bg);color:var(--warn)}
+  .st{font-size:11.5px;font-weight:700;padding:4px 9px;border-radius:999px;white-space:nowrap}
+  .st.planejar{background:#EEF1F3;color:#3B4A55} .st.producao{background:var(--blue-bg);color:var(--blue)} .st.pronto{background:var(--ok-bg);color:var(--ok)}
+  .st.publicado{background:var(--primary);color:#fff} .st.nao_vamos{background:#F3F4F5;color:#9AA7AF}
+  .ano{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  .mcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+  .mcard h3{font-family:"Space Grotesk";margin:0 0 8px;font-size:16px;display:flex;justify-content:space-between;align-items:baseline}
+  .mcard h3 small{font-family:Inter;font-size:11.5px;color:var(--muted);font-weight:600}
+  .mcard.atual{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
+  .li{display:flex;gap:8px;align-items:baseline;padding:5px 0;font-size:13px;cursor:pointer;border-bottom:1px dashed #EEF1F3}
+  .li:last-child{border-bottom:none} .li:hover .t{color:var(--primary)}
+  .li .dd{font-weight:700;min-width:24px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .li .t{flex:1;min-width:0} .li i{width:7px;height:7px;border-radius:50%;display:inline-block;flex:none;transform:translateY(-1px)}
+  .li.oculta{opacity:.4} .li.passou .t{color:var(--muted)}
+  .empty{color:var(--muted);font-size:14px;padding:22px;text-align:center}
+  .lock{background:var(--warn-bg);color:var(--warn);border-radius:12px;padding:12px 14px;font-size:13.5px;margin-bottom:12px;line-height:1.5}
+  .overlay{position:fixed;inset:0;background:rgba(18,33,43,.45);display:flex;align-items:flex-start;justify-content:center;z-index:50;padding:40px 14px;overflow:auto}
+  .modal{width:min(600px,100%);background:var(--card);border-radius:16px;box-shadow:0 20px 60px rgba(18,33,43,.25);padding:20px 22px}
+  .modal h2{font-family:"Space Grotesk";margin:0;font-size:20px} .modal .sub{color:var(--muted);font-size:13px;margin:4px 0 14px}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px} .grid .full{grid-column:1/-1}
+  .field{display:flex;flex-direction:column;gap:4px} .field>label{font-size:12.5px;color:var(--muted);font-weight:600}
+  .check{display:flex;gap:8px;align-items:center;font-size:13.5px}
+  .opts{display:flex;flex-wrap:wrap;gap:6px}
+  .opt{font:inherit;font-size:13px;font-weight:600;padding:7px 11px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--muted);cursor:pointer}
+  .opt.on{border-color:transparent}
+  .sep{border:none;border-top:1px solid var(--line);margin:16px 0}
+  .acts{display:flex;gap:8px;justify-content:flex-end;align-items:center;margin-top:16px;flex-wrap:wrap}
+  .err{background:var(--bad-bg);color:var(--bad);padding:9px 12px;border-radius:9px;font-size:13px;margin-bottom:12px}
+  @media (max-width:1000px){ .ano{grid-template-columns:repeat(2,minmax(0,1fr))} }
+  @media (max-width:640px){ .ano,.grid{grid-template-columns:minmax(0,1fr)} .kpis{grid-template-columns:repeat(2,minmax(0,1fr))} .wrap{padding:16px 12px 60px} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const _dl=(d)=>{const x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);};
+const { useState, useEffect, useMemo } = React;
+const DEMO_URL = /[?&]demo=1/.test(location.search);
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY && !DEMO_URL) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const DC = window.DATAS_CLINICA;
+
+const CAT = Object.fromEntries(DC.CATEGORIAS);
+const COR = { gestacao:"#C0779A", profissao:"#0E7C7B", saude:"#2F6DB5", campanha:"#B26B00", comercial:"#7A5AA6", clinica:"#C0392B" };
+const STATUS = [["planejar","A planejar"],["producao","Em produção"],["pronto","Pronto"],["publicado","Publicado"],["nao_vamos","Não vamos fazer"]];
+const ST = Object.fromEntries(STATUS);
+const ST_COR = { planejar:["#EEF1F3","#3B4A55"], producao:["#E6EFF9","#2F6DB5"], pronto:["#E7F4EE","#2E7D5B"], publicado:["#0E7C7B","#fff"], nao_vamos:["#F3F4F5","#9AA7AF"] };
+const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+const SEM = ["dom","seg","ter","qua","qui","sex","sáb"];
+const hojeIso = () => _dl(new Date());
+const fmtD = (s) => s.slice(8,10)+"/"+s.slice(5,7);
+const semana = (s) => SEM[new Date(s+"T12:00:00").getDay()];
+const pendente = (st) => st==="planejar" || st==="producao";
+const lsGet=(k,d)=>{ try{ const v=localStorage.getItem(k); return v==null?d:JSON.parse(v); }catch(e){ return d; } };
+const lsSet=(k,v)=>{ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} };
+
+function demo(){
+  const y = Number(hojeIso().slice(0,4));
+  return {
+    cad:[
+      { id:"d1", titulo:"Aniversário da Aloimune — 20 anos", data:(y-20)+"-11-10", anual:true, categoria:"clinica", antecedencia:45, descricao:"Campanha de 20 anos: vídeo da equipe, depoimentos de pacientes" },
+      { id:"d2", titulo:"Congresso Brasileiro de Reprodução Assistida", data:y+"-12-03", anual:false, categoria:"clinica", antecedencia:30, descricao:"Equipe médica presente — divulgar participação" },
+      { id:"d3", titulo:"Encontro de pacientes (bebês arco-íris)", data:(y+1)+"-03-14", anual:false, categoria:"clinica", antecedencia:30, descricao:"" },
+    ],
+    aj:{ "p:black-friday":{ oculta:true } },
+    pl:{ ["p:medico|"+y]:{ status:"publicado", notas:"Card com o médico de jaleco + logo; texto no WhatsApp." },
+         ["p:gineco-obstetra|"+y]:{ status:"producao", notas:"Reaproveitar a linha do Dia do Médico." } },
+  };
+}
+
+function App(){
+  const [papel,setPapel]=useState(undefined);
+  const [cad,setCad]=useState([]); const [aj,setAj]=useState({}); const [pl,setPl]=useState({});
+  const [erro,setErro]=useState(""); const [loading,setLoading]=useState(true);
+  const [aba,setAba]=useState("proximas");
+  const [cats,setCats]=useState(()=>lsGet("datas_cats", DC.CATEGORIAS.map(c=>c[0])));
+  const [horiz,setHoriz]=useState(()=>lsGet("datas_horiz", 90));
+  const [ano,setAno]=useState(Number(hojeIso().slice(0,4)));
+  const [verOcultas,setVerOcultas]=useState(false);
+  const [busca,setBusca]=useState("");
+  const [sel,setSel]=useState(null); // { ev, ano } ou { novo:true }
+
+  async function load(){
+    setErro("");
+    if(sb){
+      const { data:{ session } } = await sb.auth.getSession();
+      if(!session){ setPapel(null); setLoading(false); return; }
+      const pf=await sb.from("perfis").select("papel").eq("id",session.user.id).maybeSingle();
+      setPapel(pf.data?.papel||"sem_acesso");
+      const [c,a,p]=await Promise.all([
+        sb.from("clinica_datas").select("*").order("data"),
+        sb.from("clinica_datas_ajustes").select("*"),
+        sb.from("clinica_datas_plano").select("*"),
+      ]);
+      const e=c.error||a.error||p.error;
+      if(e) setErro(/does not exist|schema cache/.test(e.message) ? "Falta criar as tabelas: rode o arquivo datas-schema.sql no Supabase." : e.message);
+      setCad(c.data||[]);
+      setAj(Object.fromEntries((a.data||[]).map(x=>[x.chave,x])));
+      setPl(Object.fromEntries((p.data||[]).map(x=>[x.chave+"|"+x.ano,x])));
+    } else { const d=demo(); setPapel("gestor"); setCad(d.cad); setAj(d.aj); setPl(d.pl); }
+    setLoading(false);
+  }
+  useEffect(()=>{ load(); },[]);
+  useEffect(()=>lsSet("datas_cats",cats),[cats]);
+  useEffect(()=>lsSet("datas_horiz",horiz),[horiz]);
+
+  const podeEditar = ["gestor","recepcionista","medico","funcionario"].includes(papel) || !sb;
+  const hoje = hojeIso();
+  const plano = (ev, y) => pl[ev.chave+"|"+(y ?? Number(ev.data.slice(0,4)))] || null;
+  const statusDe = (ev, y) => (plano(ev,y)||{}).status || "planejar";
+  const filtra = (l) => { const t=busca.trim().toLowerCase();
+    return l.filter(e=>cats.includes(e.categoria) && (!t || (e.titulo+" "+e.obs).toLowerCase().includes(t))); };
+
+  const proximas = useMemo(()=> filtra(DC.proximas(hoje, horiz, cad, aj)), [hoje,horiz,cad,aj,cats,busca]);
+  const doAno = useMemo(()=> filtra(DC.doAno(ano, cad, aj)).filter(e=>verOcultas || !e.oculta), [ano,cad,aj,cats,busca,verOcultas]);
+  const preparar = (e) => e.dias<=e.antecedencia && pendente(statusDe(e));
+  const kp = {
+    preparar: proximas.filter(preparar).length,
+    d30: proximas.filter(e=>e.dias<=30).length,
+    prontas: proximas.filter(e=>["pronto","publicado"].includes(statusDe(e))).length,
+    total: proximas.length,
+  };
+
+  // ---------------- gravações
+  async function salvarPlano(ev, y, patch){
+    const k=ev.chave+"|"+y; const atual=pl[k]||{ chave:ev.chave, ano:y, status:"planejar", notas:"" };
+    const novo={ ...atual, ...patch, chave:ev.chave, ano:y };
+    if(sb){ const r=await sb.from("clinica_datas_plano").upsert({ chave:novo.chave, ano:novo.ano, status:novo.status, notas:novo.notas||null, atualizado_em:new Date().toISOString() }); if(r.error) return r.error.message; }
+    setPl(p=>({ ...p, [k]:novo })); return null;
+  }
+  async function salvarAjuste(chave, patch){
+    const novo={ ...(aj[chave]||{ chave, oculta:false, antecedencia:null }), ...patch, chave };
+    if(sb){ const r=await sb.from("clinica_datas_ajustes").upsert({ chave, oculta:!!novo.oculta, antecedencia:novo.antecedencia, atualizado_em:new Date().toISOString() }); if(r.error) return r.error.message; }
+    setAj(a=>({ ...a, [chave]:novo })); return null;
+  }
+  async function salvarCadastro(f){
+    const p={ titulo:f.titulo.trim(), data:f.data, anual:!!f.anual, categoria:f.categoria||"clinica",
+      antecedencia: f.antecedencia===""||f.antecedencia==null ? null : Number(f.antecedencia), descricao:(f.descricao||"").trim()||null };
+    if(!p.titulo) return { erro:"Dê um nome para a data." };
+    if(!p.data) return { erro:"Escolha a data." };
+    if(sb){
+      const r = f.id ? await sb.from("clinica_datas").update(p).eq("id",f.id).select().single() : await sb.from("clinica_datas").insert(p).select().single();
+      if(r.error) return { erro:r.error.message };
+      setCad(l=> f.id ? l.map(x=>x.id===f.id?r.data:x) : [...l,r.data]); return { item:r.data };
+    }
+    const item={ ...p, id:f.id||("n"+Date.now()) };
+    setCad(l=> f.id ? l.map(x=>x.id===f.id?item:x) : [...l,item]); return { item };
+  }
+  async function excluirCadastro(id){
+    if(sb){
+      const r=await sb.from("clinica_datas").delete().eq("id",id); if(r.error) return r.error.message;
+      await sb.from("clinica_datas_plano").delete().eq("chave","c:"+id);
+    }
+    setCad(l=>l.filter(x=>x.id!==id));
+    setPl(p=>Object.fromEntries(Object.entries(p).filter(([k])=>!k.startsWith("c:"+id+"|")))); return null;
+  }
+
+  function exportarCSV(){
+    const lin=[["Data","Dia","Data importante","Categoria","Situação","Ideias / plano","Observação"]];
+    DC.doAno(ano, cad, aj).filter(e=>!e.oculta).forEach(e=>{ const p=plano(e,ano)||{};
+      lin.push([ e.fim ? `${MESES[Number(e.data.slice(5,7))-1]} (mês todo)` : fmtD(e.data)+"/"+ano, e.fim?"":semana(e.data), e.titulo, CAT[e.categoria]||e.categoria, ST[p.status||"planejar"], p.notas||"", e.obs||"" ]); });
+    const csv="﻿"+lin.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(";")).join("\r\n");
+    const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})); a.download=`datas-importantes-${ano}.csv`; a.click();
+  }
+
+  if(papel===undefined || loading) return <div className="wrap"><div className="empty">Carregando…</div></div>;
+  if(papel===null) return <div className="wrap"><div className="lock">Entre na plataforma para ver as datas.</div></div>;
+
+  const toggleCat=(k)=>setCats(l=> l.includes(k) ? (l.length>1 ? l.filter(x=>x!==k) : l) : [...l,k]);
+  const Cats = <div className="cats">
+    {DC.CATEGORIAS.map(([k,n])=><button key={k} className={"cat "+(cats.includes(k)?"on":"off")} onClick={()=>toggleCat(k)}><i style={{background:COR[k]}}></i>{n}</button>)}
+    {cats.length<DC.CATEGORIAS.length && <button className="cat" onClick={()=>setCats(DC.CATEGORIAS.map(c=>c[0]))}>Ver todas</button>}
+  </div>;
+
+  // agrupa as próximas por mês
+  const grupos=[]; proximas.forEach(e=>{ const m=e.fim && e.dias===0 ? hoje.slice(0,7) : e.data.slice(0,7); let g=grupos.find(x=>x.m===m); if(!g){ g={m,l:[]}; grupos.push(g); } g.l.push(e); });
+
+  return (
+    <div className="wrap">
+      <div className="top">
+        <div><h1>Datas e eventos</h1><p>Datas importantes para o planejamento do ano e as ações de marketing</p></div>
+        <span className={"mode "+(sb?"live":"demo")}>{sb?"● Conectado ao Supabase":"○ Modo demo — nada é salvo"}</span>
+      </div>
+      {erro && <div className="lock">{erro}</div>}
+
+      <div className="bar">
+        <div className="tabs">
+          <button className={aba==="proximas"?"on":""} onClick={()=>setAba("proximas")}>Próximas</button>
+          <button className={aba==="ano"?"on":""} onClick={()=>setAba("ano")}>Calendário do ano</button>
+        </div>
+        <input placeholder="Buscar data…" value={busca} onChange={e=>setBusca(e.target.value)} style={{flex:"1 1 180px",maxWidth:320}} />
+        <div style={{flex:1}}></div>
+        {podeEditar && <button className="btn btn-primary" onClick={()=>setSel({ novo:true })}>+ Nova data ou evento</button>}
+      </div>
+      {Cats}
+
+      {aba==="proximas" ? <>
+        <div className="kpis">
+          <div className="kpi warn"><div className="v">{kp.preparar}</div><div className="l">Hora de preparar</div></div>
+          <div className="kpi blue"><div className="v">{kp.d30}</div><div className="l">Nos próximos 30 dias</div></div>
+          <div className="kpi ok"><div className="v">{kp.prontas}</div><div className="l">Prontas ou publicadas</div></div>
+          <div className="kpi"><div className="v">{kp.total}</div><div className="l">Nos próximos {horiz} dias</div></div>
+        </div>
+        <div className="bar">
+          <span style={{fontSize:13,color:"var(--muted)"}}>Mostrar os próximos</span>
+          <select value={horiz} onChange={e=>setHoriz(Number(e.target.value))}>{[30,60,90,180,365].map(n=><option key={n} value={n}>{n} dias</option>)}</select>
+        </div>
+        {grupos.length===0 ? <div className="lista"><div className="empty">Nenhuma data nesse período.</div></div>
+        : grupos.map(g=>(
+          <div key={g.m}>
+            <div className="mes-t">{MESES[Number(g.m.slice(5,7))-1]} {g.m.slice(0,4)}</div>
+            <div className="lista">
+              {g.l.map(e=>{ const st=statusDe(e); const prep=preparar(e); const y=Number(e.data.slice(0,4));
+                return (
+                  <div key={e.chave+e.data} className="ev" onClick={()=>setSel({ ev:e, ano:y })}>
+                    <div className={"when"+(e.dias===0?" hoje":prep?" preparar":"")}>
+                      {e.fim ? MESES[Number(e.data.slice(5,7))-1].slice(0,3) : fmtD(e.data)}
+                      <small>{e.fim ? (e.dias===0?"mês atual":`em ${e.dias} dias`) : e.dias===0 ? "hoje" : e.dias===1 ? "amanhã" : `em ${e.dias} dias`}</small>
+                    </div>
+                    <div className="d">
+                      <div className="n">{e.titulo}</div>
+                      {e.obs && <div className="s">{e.obs}</div>}
+                      <div className="chips">
+                        <span className="chip"><i style={{background:COR[e.categoria]}}></i>{CAT[e.categoria]||e.categoria}</span>
+                        {!e.fim && <span className="chip">{semana(e.data)}</span>}
+                        {prep && <span className="chip warn">⏰ hora de preparar</span>}
+                        {plano(e,y)?.notas && <span className="chip">📝 {plano(e,y).notas.length>60 ? plano(e,y).notas.slice(0,60)+"…" : plano(e,y).notas}</span>}
+                      </div>
+                    </div>
+                    <span className={"st "+st}>{ST[st]}</span>
+                  </div>
+                ); })}
+            </div>
+          </div>
+        ))}
+      </> : <>
+        <div className="bar">
+          <button className="btn btn-ghost btn-sm" onClick={()=>setAno(a=>a-1)}>‹</button>
+          <b style={{fontFamily:"Space Grotesk",fontSize:18}}>{ano}</b>
+          <button className="btn btn-ghost btn-sm" onClick={()=>setAno(a=>a+1)}>›</button>
+          <label className="check" style={{marginLeft:8}}><input type="checkbox" checked={verOcultas} onChange={e=>setVerOcultas(e.target.checked)} />Mostrar datas ocultas</label>
+          <div style={{flex:1}}></div>
+          <button className="btn btn-ghost btn-sm" onClick={exportarCSV}>Baixar planilha (CSV)</button>
+        </div>
+        <div className="ano">
+          {MESES.map((nm,i)=>{ const mm=String(i+1).padStart(2,"0"); const l=doAno.filter(e=>e.data.slice(5,7)===mm);
+            const atual=hoje.slice(0,7)===ano+"-"+mm;
+            return (
+              <div key={nm} className={"mcard"+(atual?" atual":"")}>
+                <h3>{nm}<small>{l.length} data{l.length===1?"":"s"}</small></h3>
+                {l.length===0 ? <div style={{fontSize:13,color:"var(--muted)"}}>—</div>
+                : l.map(e=>{ const st=statusDe(e,ano); return (
+                  <div key={e.chave} className={"li"+(e.oculta?" oculta":"")+((e.fim||e.data)<hoje?" passou":"")} onClick={()=>setSel({ ev:e, ano })} title={ST[st]}>
+                    <span className="dd">{e.fim ? "mês" : e.data.slice(8,10)}</span>
+                    <i style={{background:COR[e.categoria]}}></i>
+                    <span className="t">{e.titulo}</span>
+                    {st!=="planejar" && <span className={"st "+st} style={{fontSize:10.5,padding:"2px 7px"}}>{ST[st]}</span>}
+                  </div>); })}
+              </div>); })}
+        </div>
+      </>}
+
+      {sel && <DataModal sel={sel} podeEditar={podeEditar} cad={cad} aj={aj} plano={plano}
+        onClose={()=>setSel(null)} salvarPlano={salvarPlano} salvarAjuste={salvarAjuste}
+        salvarCadastro={salvarCadastro} excluirCadastro={excluirCadastro} />}
+    </div>
+  );
+}
+
+function DataModal({ sel, podeEditar, cad, aj, plano, onClose, salvarPlano, salvarAjuste, salvarCadastro, excluirCadastro }){
+  const ev = sel.ev; const y = sel.ano ?? Number(hojeIso().slice(0,4));
+  const custom = sel.novo ? null : (!ev.padrao ? cad.find(c=>c.id===ev.id) : null);
+  const editavel = sel.novo || !!custom;
+  const [f,setF]=useState(()=> custom ? { ...custom, antecedencia:custom.antecedencia??"", descricao:custom.descricao||"" }
+    : { titulo:"", data:"", anual:true, categoria:"clinica", antecedencia:"", descricao:"" });
+  const p0 = ev ? (plano(ev,y)||{}) : {};
+  const [st,setSt]=useState(p0.status||"planejar"); const [notas,setNotas]=useState(p0.notas||"");
+  const a0 = ev ? (aj[ev.chave]||{}) : {};
+  const [oculta,setOculta]=useState(!!(ev&&ev.oculta)); const [ant,setAnt]=useState(ev && ev.padrao ? (a0.antecedencia ?? "") : "");
+  const [err,setErr]=useState(""); const [s,setS]=useState(false);
+  const set=(k,v)=>setF(x=>({...x,[k]:v}));
+
+  async function salvar(){
+    setS(true); setErr("");
+    let alvo = ev;
+    if(editavel){
+      const r = await salvarCadastro(f); if(r.erro){ setErr(r.erro); setS(false); return; }
+      alvo = { chave:"c:"+r.item.id };
+    }
+    if(ev && ev.padrao){
+      const antN = ant===""||ant==null ? null : Number(ant);
+      if(oculta!==!!ev.oculta || antN!==(a0.antecedencia ?? null)){ const e=await salvarAjuste(ev.chave,{ oculta, antecedencia:antN }); if(e){ setErr(e); setS(false); return; } }
+    }
+    // plano do ano: só grava se mudou (ou se já existia)
+    let anoPlano = y;
+    if(sel.novo){ const h=hojeIso(), y0=Number(h.slice(0,4));
+      anoPlano = !f.anual ? Number(f.data.slice(0,4)) : (y0+f.data.slice(4) >= h ? y0 : y0+1); } // anual: próxima vez que acontece
+    if(st!==(p0.status||"planejar") || notas!==(p0.notas||"")){
+      const e=await salvarPlano(alvo, anoPlano, { status:st, notas }); if(e){ setErr(e); setS(false); return; }
+    }
+    setS(false); onClose();
+  }
+  async function excluir(){
+    if(!confirm(`Excluir "${custom.titulo}"${custom.anual?" (de todos os anos)":""}?`)) return;
+    const e=await excluirCadastro(custom.id); if(e) return setErr(e); onClose();
+  }
+  const quando = ev ? (ev.fim ? `${MESES[Number(ev.data.slice(5,7))-1]} de ${y} (mês todo)` : `${semana(ev.data)}, ${fmtD(ev.data)}/${ev.data.slice(0,4)}`) : "";
+
+  return (
+    <div className="overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}>
+      <h2>{sel.novo ? "Nova data ou evento" : ev.titulo}</h2>
+      <div className="sub">{sel.novo ? "Aniversário da clínica, congresso, campanha própria, evento com pacientes…" : <>{quando} · {CAT[ev.categoria]||ev.categoria}{ev.obs?<> · {ev.obs}</>:null}</>}</div>
+      {err && <div className="err">{err}</div>}
+
+      {editavel && <>
+        <div className="grid">
+          <div className="field full"><label>Nome</label><input value={f.titulo} onChange={e=>set("titulo",e.target.value)} autoFocus={sel.novo} disabled={!podeEditar} placeholder="Ex.: Aniversário da Aloimune" /></div>
+          <div className="field"><label>Data</label><input type="date" value={f.data} onChange={e=>set("data",e.target.value)} disabled={!podeEditar} /></div>
+          <div className="field"><label>Categoria</label><select value={f.categoria} onChange={e=>set("categoria",e.target.value)} disabled={!podeEditar}>{DC.CATEGORIAS.map(([k,n])=><option key={k} value={k}>{n}</option>)}</select></div>
+          <div className="field full"><label className="check" style={{color:"var(--ink)",fontWeight:500}}><input type="checkbox" checked={f.anual} onChange={e=>set("anual",e.target.checked)} disabled={!podeEditar} />Repete todo ano neste dia</label></div>
+          <div className="field"><label>Avisar com quantos dias de antecedência</label><input type="number" min="0" value={f.antecedencia} placeholder={String(DC.ANTECEDENCIA[f.categoria]||30)} onChange={e=>set("antecedencia",e.target.value)} disabled={!podeEditar} /></div>
+          <div className="field full"><label>Descrição</label><input value={f.descricao} onChange={e=>set("descricao",e.target.value)} disabled={!podeEditar} placeholder="Opcional" /></div>
+        </div>
+        <hr className="sep" />
+      </>}
+
+      <div className="field" style={{marginBottom:12}}>
+        <label>Situação da ação{ev ? ` em ${y}` : ""}</label>
+        <div className="opts">{STATUS.map(([k,n])=><button key={k} className={"opt"+(st===k?" on":"")} disabled={!podeEditar} style={st===k?{background:ST_COR[k][0],color:ST_COR[k][1]}:null} onClick={()=>setSt(k)}>{n}</button>)}</div>
+      </div>
+      <div className="field">
+        <label>Ideias e plano (post, card, vídeo, brinde, quem faz…)</label>
+        <textarea value={notas} onChange={e=>setNotas(e.target.value)} disabled={!podeEditar} placeholder="Ex.: card para o Instagram + mensagem no WhatsApp para a equipe médica" />
+      </div>
+
+      {ev && ev.padrao && <>
+        <hr className="sep" />
+        <div className="grid">
+          <div className="field"><label>Avisar com quantos dias de antecedência</label><input type="number" min="0" value={ant} placeholder={String(DC.ANTECEDENCIA[ev.categoria]||15)} onChange={e=>setAnt(e.target.value)} disabled={!podeEditar} /></div>
+          <div className="field" style={{justifyContent:"flex-end"}}><label className="check" style={{color:"var(--ink)",fontWeight:500,paddingBottom:10}}><input type="checkbox" checked={oculta} onChange={e=>setOculta(e.target.checked)} disabled={!podeEditar} />Ocultar esta data (não interessa à clínica)</label></div>
+        </div>
+      </>}
+
+      <div className="acts">
+        {custom && podeEditar && <button className="btn btn-bad" onClick={excluir} style={{marginRight:"auto"}}>Excluir</button>}
+        <button className="btn btn-ghost" onClick={onClose}>{podeEditar?"Cancelar":"Fechar"}</button>
+        {podeEditar && <button className="btn btn-primary" onClick={salvar} disabled={s}>{s?"Salvando…":"Salvar"}</button>}
+      </div>
+    </div></div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

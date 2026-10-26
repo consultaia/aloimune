@@ -38,6 +38,7 @@
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="datas-comemorativas.js"></script>
 
 <style>
   :root{
@@ -206,6 +207,7 @@ const MODULOS = [
   { key:"pacientes",    nome:"Pacientes",  src:"pacientes.html",      ic:"user" },
   { key:"acompanhamento", nome:"Acompanhamento", src:"acompanhamento.html", ic:"form" },
   { key:"agenda",       nome:"Agenda",     src:"agenda.html",          ic:"calendar" },
+  { key:"datas",        nome:"Datas e eventos", src:"datas.html",     ic:"star" },
   { key:"dri",          nome:"Dri · WhatsApp", src:"whatsapp.html",    ic:"chat" },
   { key:"apresentacao", nome:"Apresentação", src:"apresentacao.html",  ic:"slides" },
 ];
@@ -228,6 +230,7 @@ function Icon({ name }){
     clock:"M12 8v4l3 2 M12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20z",
     key:"M15 7a4 4 0 1 1-4 4 M11 11l-8 8v3h3l1-1v-2h2v-2h2l1-1",
     form:"M9 3h6v3H9z M7 4H5v17h14V4h-2 M8 11l2 2 4-4 M8 17h8",
+    star:"M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z",
   }[name];
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={p}/></svg>;
 }
@@ -300,7 +303,7 @@ function Home({ onAbrir, papel }){
   const [aba,setAba]=useState("inicio"); // 'inicio' | 'atencao' — hook antes de qualquer return
   useEffect(()=>{ (async()=>{
     try{
-      const [docs, ins, lot, pts, le6, at, col, ag, eqm, pen, dri] = await Promise.all([
+      const [docs, ins, lot, pts, le6, at, col, ag, eqm, pen, dri, dCad, dAj, dPl] = await Promise.all([
         sb.from("documentos").select("validade,aviso_dias,obrigatorio,arquivo_url"),
         sb.from("insumos").select("*"),
         sb.from("lotes").select("*"),
@@ -312,6 +315,9 @@ function Home({ onAbrir, papel }){
         sb.from("clinica_equipamentos").select("proxima_manutencao,calibracao_validade,ativo").eq("ativo",true),
         sb.from("clinica_pendencias").select("vencimento,status").eq("status","aberta"),
         sb.from("conversas").select("telefone",{count:"exact",head:true}).eq("atendente",true),
+        sb.from("clinica_datas").select("*"),
+        sb.from("clinica_datas_ajustes").select("*"),
+        sb.from("clinica_datas_plano").select("chave,ano,status"),
       ]);
       // documentos
       let docVenc=0, docVence=0;
@@ -346,7 +352,16 @@ function Home({ onAbrir, papel }){
       const agHoje=(ag.data||[]).filter(r=>r.data===hojeD && r.status!=="cancelado");
       const agConf=agHoje.filter(r=>r.status==="agendado").length;
 
+      // datas importantes: as que já estão na janela de preparo e ainda não estão prontas
+      const datas=(()=>{ if(!window.DATAS_CLINICA) return null;
+        const ajM=Object.fromEntries(((dAj&&dAj.data)||[]).map(x=>[x.chave,x]));
+        const stM=Object.fromEntries(((dPl&&dPl.data)||[]).map(x=>[x.chave+"|"+x.ano,x.status]));
+        const prox=window.DATAS_CLINICA.proximas(hojeD, 400, (dCad&&dCad.data)||[], ajM);
+        const preparar=prox.filter(e=> e.dias<=e.antecedencia && ["planejar","producao",undefined].includes(stM[e.chave+"|"+e.data.slice(0,4)]) );
+        return { preparar, proxima: prox.find(e=>!e.fim) || null }; })();
+
       setRes({
+        datas,
         documentos:{ bad:docVenc, warn:docVence },
         estoque:{ bad:estCrit, warn:estBaixo+estVenc },
         geladeiras:{ bad:gExc, warn:gAtr },
@@ -382,7 +397,12 @@ function Home({ onAbrir, papel }){
     if(res.pacientes && res.pacientes.venc) att.push({ sev:"bad", txt:`${res.pacientes.venc} pendência(s) de paciente vencida(s) (exame, resultado, retorno)`, mod:"pacientes" });
     else if(res.pacientes && res.pacientes.total) att.push({ sev:"warn", txt:`${res.pacientes.total} pendência(s) de paciente em aberto`, mod:"pacientes" });
   }
+  if(pronto && res.datas) res.datas.preparar.filter(e=>!e.fim).slice(0,4).forEach(e=> att.push({ sev:"blue", txt:`${e.titulo} — ${e.dias===0?"hoje":e.dias===1?"amanhã":`em ${e.dias} dias`} (${e.data.slice(8,10)}/${e.data.slice(5,7)}): preparar a ação`, mod:"datas" }));
+  if(pronto && res.datas){ const n=res.datas.preparar.filter(e=>!e.fim).length; if(n>4) att.push({ sev:"blue", txt:`e mais ${n-4} data(s) importante(s) chegando`, mod:"datas" }); }
   const statusModulo=(key)=>{
+    if(key==="datas"){ const d=pronto?res.datas:null; if(!d) return {cls:"muted", t:"Datas comemorativas e eventos"};
+      const pr=d.preparar.filter(e=>!e.fim).length; if(pr) return {cls:"blue", t:`${pr} para preparar`};
+      return d.proxima ? {cls:"muted", t:`Próxima: ${d.proxima.titulo.length>28?d.proxima.titulo.slice(0,28)+"…":d.proxima.titulo} · ${d.proxima.dias===0?"hoje":`em ${d.proxima.dias} dias`}`} : {cls:"muted", t:"Datas comemorativas e eventos"}; }
     if(key==="apresentacao") return {cls:"muted", t:"Indicadores e PDF"};
     if(key==="profissionais") return {cls:"muted", t:"Cadastro e disponibilidade"};
     if(key==="escala") return {cls:"muted", t:"Escala da enfermagem"};
