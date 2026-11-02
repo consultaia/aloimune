@@ -159,7 +159,7 @@ function App(){
              {users.map(u=>(
                <tr key={u.id}>
                  <td className="nome">{u.nome||"—"}</td>
-                 <td style={{fontSize:12.5,color:"var(--muted)"}}>{(u.email||"").endsWith("@clinica.local") ? "código "+(u.email||"").slice(1,7) : (u.email||"—")}</td>
+                 <td style={{fontSize:12.5,color:"var(--muted)"}}>{/^f\d{6}@clinica\.local$/.test(u.email||"") ? "código "+(u.email||"").slice(1,7) : (u.email||"—")}</td>
                  <td>
                    <select value={u.papel} onChange={e=>mudarPapel(u.id,e.target.value)} style={{font:"inherit",padding:"5px 8px",border:"1px solid var(--line)",borderRadius:8}}>
                      {PAPEIS.map(([v,l])=><option key={v} value={v}>{l}</option>)}
