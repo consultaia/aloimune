@@ -82,9 +82,13 @@
   .login button{width:100%;font:inherit;font-weight:700;padding:13px;border:none;border-radius:11px;background:var(--teal);color:#04231f;cursor:pointer}
   .err{background:rgba(224,96,59,.15);color:var(--bad);padding:10px;border-radius:10px;font-size:13px;margin-bottom:12px}
   .link{background:none;border:none;color:var(--teal);font:inherit;cursor:pointer;margin-top:18px;font-size:15px}
-  .repouso{position:fixed;inset:0;background:#04120f;display:flex;align-items:center;justify-content:center;z-index:60;cursor:pointer;animation:fade .4s ease}
+  .repouso{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center;z-index:60;cursor:pointer;animation:fade .4s ease}
   @keyframes fade{from{opacity:0}to{opacity:1}}
-  .repouso .rin{text-align:center;color:#3a6b62}
+  /* repouso: fundo preto (na tela OLED do iPhone os pixels ficam apagados) e o texto passeia
+     devagar pela tela, para nada ficar parado no mesmo lugar por horas e marcar a tela */
+  .repouso .rin{text-align:center;color:#3a6b62;animation:passeio 420s linear infinite}
+  @keyframes passeio{0%{transform:translate(0,0)}12%{transform:translate(18vw,-26vh)}25%{transform:translate(-20vw,-14vh)}37%{transform:translate(-14vw,24vh)}
+    50%{transform:translate(16vw,20vh)}62%{transform:translate(22vw,-6vh)}75%{transform:translate(-22vw,6vh)}87%{transform:translate(4vw,-30vh)}100%{transform:translate(0,0)}}
   .repouso .zz{font-size:16px;color:#1f5a50;animation:pulse 2.2s ease-in-out infinite}
   @keyframes pulse{0%,100%{opacity:.3}50%{opacity:.9}}
   .repouso .rt{margin-top:16px;font-family:"Space Grotesk";font-weight:700;font-size:22px;color:#6aa89d}
@@ -156,9 +160,37 @@ function Kiosk(){
   const atividade=()=>{ ultimaAtiv.current=Date.now(); };
 
   const [camOn,setCamOn]=useState(false); const [precisaToque,setPrecisaToque]=useState(false);
+  // o iPhone desliga a câmera quando a tela bloqueia, o app vai para segundo plano ou chega uma ligação,
+  // e a imagem fica preta. Aqui a câmera é religada sozinha quando isso acontece.
+  const cameraViva=()=>{ const st=streamRef.current, v=videoRef.current; const tr=st && st.getVideoTracks()[0];
+    return !!(tr && tr.readyState==="live" && !tr.muted && v && v.videoWidth>0 && !v.paused); };
+  async function garantirCamera(){
+    // se já pediu toque em "Ligar câmera", espera a pessoa tocar (não fica pedindo permissão em loop)
+    if(religando.current || precisaToqueRef.current || document.visibilityState!=="visible" || cameraViva()) return;
+    const v=videoRef.current; if(v && streamRef.current && v.paused){ try{ await v.play(); }catch(_){} if(cameraViva()) return; }
+    religando.current=true; try{ await ligarCamera(); } finally { religando.current=false; }
+  }
+  useEffect(()=>{
+    if(fase==="carregando") return;
+    const id=setInterval(garantirCamera,4000);
+    const vis=()=>{ if(document.visibilityState==="visible") setTimeout(garantirCamera,500); };
+    document.addEventListener("visibilitychange",vis); window.addEventListener("pageshow",vis);
+    return ()=>{ clearInterval(id); document.removeEventListener("visibilitychange",vis); window.removeEventListener("pageshow",vis); };
+  },[fase]);
+  // mantém a tela acesa enquanto o ponto está aberto: o aparelho não bloqueia sozinho (e não pede a senha de desbloqueio)
+  useEffect(()=>{
+    let lock=null;
+    const pedir=async()=>{ try{ if(navigator.wakeLock && !lock && document.visibilityState==="visible"){ lock=await navigator.wakeLock.request("screen"); lock.addEventListener("release",()=>{ lock=null; }); } }catch(_){} };
+    const vis=()=>{ if(document.visibilityState==="visible") pedir(); };
+    pedir(); document.addEventListener("visibilitychange",vis); document.addEventListener("pointerdown",pedir);
+    return ()=>{ document.removeEventListener("visibilitychange",vis); document.removeEventListener("pointerdown",pedir); if(lock) lock.release().catch(()=>{}); };
+  },[]);
+  const streamRef=useRef(null); const religando=useRef(false); const precisaToqueRef=useRef(false); precisaToqueRef.current=precisaToque;
   async function ligarCamera(){
     try{
+      if(streamRef.current){ streamRef.current.getTracks().forEach(t=>t.stop()); streamRef.current=null; }
       const stream=await navigator.mediaDevices.getUserMedia({ video:{ facingMode:"user" }, audio:false });
+      streamRef.current=stream;
       const v=videoRef.current;
       if(v){ v.srcObject=stream; v.muted=true; v.playsInline=true; v.setAttribute("playsinline","");
         try{ await v.play(); }catch(_){ }
@@ -190,7 +222,7 @@ function Kiosk(){
     setDormindo(true); iniciarMovimento();
   }
   function acordar(){
-    clearInterval(motionTimer.current); prevFrame.current=null; atividade();
+    clearInterval(motionTimer.current); prevFrame.current=null; atividade(); garantirCamera();
     setDormindo(false); setFase("scan"); loopScan();
   }
   function iniciarMovimento(){
