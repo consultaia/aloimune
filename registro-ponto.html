@@ -156,6 +156,14 @@ function Kiosk(){
   const atividade=()=>{ ultimaAtiv.current=Date.now(); };
 
   const [camOn,setCamOn]=useState(false); const [precisaToque,setPrecisaToque]=useState(false);
+  // mantém a tela acesa enquanto o ponto está aberto: o aparelho não bloqueia sozinho (e não pede a senha de desbloqueio)
+  useEffect(()=>{
+    let lock=null;
+    const pedir=async()=>{ try{ if(navigator.wakeLock && !lock && document.visibilityState==="visible"){ lock=await navigator.wakeLock.request("screen"); lock.addEventListener("release",()=>{ lock=null; }); } }catch(_){} };
+    const vis=()=>{ if(document.visibilityState==="visible") pedir(); };
+    pedir(); document.addEventListener("visibilitychange",vis); document.addEventListener("pointerdown",pedir);
+    return ()=>{ document.removeEventListener("visibilitychange",vis); document.removeEventListener("pointerdown",pedir); if(lock) lock.release().catch(()=>{}); };
+  },[]);
   async function ligarCamera(){
     try{
       const stream=await navigator.mediaDevices.getUserMedia({ video:{ facingMode:"user" }, audio:false });
