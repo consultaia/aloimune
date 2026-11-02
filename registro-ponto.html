@@ -209,20 +209,28 @@ function Kiosk(){
     // câmera (com confirmação de imagem; se o navegador exigir toque, mostra o botão)
     await ligarCamera();
     // rostos cadastrados
-    if(sb){
-      const { data }=await sb.from("ponto_biometria").select("colaborador_id,nome,descritor");
-      enrolled.current=(data||[]).filter(r=>Array.isArray(r.descritor)&&r.descritor.length);
-    }
+    await carregarRostos();
     setFase("scan"); loopScan();
   }
 
+  // rostos cadastrados — recarrega de tempos em tempos para pegar quem foi apagado/cadastrado sem reabrir o app
+  const rostosEm=useRef(0);
+  async function carregarRostos(){
+    if(!sb) return; rostosEm.current=Date.now();
+    const [{ data, error }, ativos]=await Promise.all([ sb.from("ponto_biometria").select("colaborador_id,nome,descritor"), sb.from("colaboradores").select("id").eq("ativo",true) ]);
+    if(error) return;
+    // só reconhece quem continua ativo no RH (se a lista de ativos não vier, não filtra para não travar o ponto)
+    const idsAtivos=new Set(((ativos&&ativos.data)||[]).map(c=>String(c.id)));
+    enrolled.current=(data||[]).filter(r=>Array.isArray(r.descritor)&&r.descritor.length && (!idsAtivos.size || idsAtivos.has(String(r.colaborador_id))));
+  }
+  useEffect(()=>{ const id=setInterval(carregarRostos,5*60000); return ()=>clearInterval(id); },[]);
   function dormir(){
     clearInterval(timer.current); scanning.current=false;
     setPessoa(null); setPin(""); setErro(""); setFeito(null); setFase("scan");
     setDormindo(true); iniciarMovimento();
   }
   function acordar(){
-    clearInterval(motionTimer.current); prevFrame.current=null; atividade(); garantirCamera();
+    clearInterval(motionTimer.current); prevFrame.current=null; atividade(); garantirCamera(); if(Date.now()-rostosEm.current>60000) carregarRostos();
     setDormindo(false); setFase("scan"); loopScan();
   }
   function iniciarMovimento(){
@@ -288,7 +296,8 @@ function Kiosk(){
       return;
     }
     const { data }=await sb.from("ponto_biometria").select("colaborador_id,nome").eq("pin",pin).maybeSingle();
-    if(data){ await reconhecer(data,"pin"); }
+    const inativo = data ? (await sb.from("colaboradores").select("ativo").eq("id",data.colaborador_id).maybeSingle()).data?.ativo===false : false;
+    if(data && !inativo){ await reconhecer(data,"pin"); }
     else { setPin(""); setErro("PIN não encontrado."); setTimeout(()=>setErro(""),2500); }
   }
 

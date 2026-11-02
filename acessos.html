@@ -137,7 +137,7 @@ function App(){
   }
   async function mudarPapel(id, papel){ const res=await chamar("papel",{id,papel}); if(res.ok) carregar(); else setMsg({geral:res.error}); }
   async function resetar(id, nome){ const s=prompt("Nova senha/código para "+nome+" (mín. 6):"); if(!s) return; if(s.length<6){alert("Mínimo 6 caracteres.");return;} const res=await chamar("senha",{id,senha:s}); alert(res.ok?"Senha atualizada.":(res.error||"Erro.")); }
-  async function remover(id, nome){ if(!confirm("Revogar o acesso de "+nome+"? A conta será removida.")) return; const res=await chamar("remover",{id}); if(res.ok) carregar(); else alert(res.error||"Erro."); }
+  async function remover(id, nome){ if(!confirm("Revogar o acesso de "+nome+"? A conta de login será removida.\n\nO cadastro no RH e o rosto no Ponto não são apagados aqui: se a pessoa saiu, inative no RH e apague o rosto em Ponto → Cadastro.")) return; const res=await chamar("remover",{id}); if(res.ok) carregar(); else alert(res.error||"Erro."); }
 
   return (
     <div className="wrap">

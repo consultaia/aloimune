@@ -155,8 +155,8 @@ function Enroll(){
 
   async function load(){
     if(sb){
-      const [c,b]=await Promise.all([ sb.from("colaboradores").select("id,nome,funcao").eq("ativo",true).order("nome"), sb.from("ponto_biometria").select("colaborador_id,pin,consentimento_em,descritor") ]);
-      setColabs(c.data||[]); const m={}; (b.data||[]).forEach(r=>m[r.colaborador_id]={pin:r.pin,tem_desc:Array.isArray(r.descritor)&&r.descritor.length>0,consent:r.consentimento_em}); setBio(m);
+      const [c,b]=await Promise.all([ sb.from("colaboradores").select("id,nome,funcao").eq("ativo",true).order("nome"), sb.from("ponto_biometria").select("colaborador_id,nome,pin,consentimento_em,descritor") ]);
+      setColabs(c.data||[]); const m={}; (b.data||[]).forEach(r=>m[r.colaborador_id]={nome:r.nome,pin:r.pin,tem_desc:Array.isArray(r.descritor)&&r.descritor.length>0,consent:r.consentimento_em}); setBio(m);
     } else {
       setColabs([{id:"1",nome:"Paula Ribeiro",funcao:"Enfermeira"},{id:"2",nome:"Bianca Souza",funcao:"Recepcionista"}]); setBio({});
     }
@@ -229,6 +229,16 @@ function Enroll(){
     setMsg("Cadastro salvo para "+sel.nome+"."); setDesc(null); setConsent(false); setPin("");
   }
 
+  // apaga rosto e PIN: a pessoa deixa de ser reconhecida no quiosque
+  async function removerCadastro(id, nome){
+    if(!confirm(`Apagar o rosto e o PIN de ${nome}? Ela deixa de ser reconhecida no ponto. Os registros de ponto já feitos continuam.`)) return;
+    if(sb){ const { error }=await sb.from("ponto_biometria").delete().eq("colaborador_id",id); if(error){ alert("Erro: "+error.message); return; } await load(); }
+    else setBio(p=>{ const n={...p}; delete n[id]; return n; });
+    setMsg("Cadastro facial de "+nome+" apagado.");
+  }
+  // rostos que sobraram de quem saiu do RH (inativado ou excluído) — continuam sendo reconhecidos até apagar
+  const orfaos = Object.entries(bio).filter(([id])=>!colabs.some(c=>String(c.id)===String(id)));
+
   const erroMsg = (t)=> t && (t.startsWith("Erro")||t.startsWith("Não")||t.startsWith("Ligue")||t.startsWith("A câmera")||t.startsWith("Marque")||t.startsWith("Selecione")||t.startsWith("Reconhecimento"));
 
   return (
@@ -242,6 +252,13 @@ function Enroll(){
           </button>
         ))}
         {colabs.length===0 && <div className="empty">Cadastre funcionários no RH primeiro.</div>}
+        {orfaos.length>0 && <div style={{marginTop:14,background:"var(--warn-bg)",borderRadius:10,padding:"10px 12px"}}>
+          <div style={{fontSize:13,fontWeight:600,color:"var(--warn)",marginBottom:6}}>Rostos de quem não está mais no RH</div>
+          <div style={{fontSize:12.5,color:"var(--muted)",marginBottom:8,lineHeight:1.45}}>Essas pessoas ainda são reconhecidas no ponto. Apague o cadastro de quem saiu.</div>
+          {orfaos.map(([id,b])=><div key={id} style={{display:"flex",alignItems:"center",gap:8,justifyContent:"space-between",padding:"5px 0"}}>
+            <span style={{fontWeight:600,fontSize:13.5}}>{b.nome||"Sem nome"}</span>
+            <button className="btn btn-ghost btn-sm" onClick={()=>removerCadastro(id,b.nome||"esta pessoa")}>Apagar rosto</button></div>)}
+        </div>}
       </div>
 
       <div className="card"><div className="enroll">
@@ -267,6 +284,7 @@ function Enroll(){
             ✓ Já cadastrado · biometria: {bio[sel.id].tem_desc?"sim":"não (só PIN)"} · PIN: {bio[sel.id].pin?"definido":"não"}<br/>
             {bio[sel.id].consent ? "Autorização (LGPD) registrada em "+new Date(bio[sel.id].consent).toLocaleDateString("pt-BR")+" às "+new Date(bio[sel.id].consent).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "Sem data de autorização registrada."}<br/>
             <span style={{color:"var(--muted)"}}>Para trocar o rosto ou o PIN, capture de novo abaixo e salve — isto substitui o cadastro atual.</span>
+            <div style={{marginTop:8}}><button className="btn btn-ghost btn-sm" onClick={()=>removerCadastro(sel.id,sel.nome)}>Apagar rosto e PIN</button></div>
           </div>}
           <div className="row" style={{marginBottom:14}}>
             <button className="btn btn-ghost" onClick={capturar} disabled={capturing||cam!=="on"}>{capturing?"Capturando…":(bio[sel.id]&&bio[sel.id].tem_desc?"Recadastrar rosto":"Capturar rosto")}</button>
