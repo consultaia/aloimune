@@ -569,10 +569,22 @@ function Quiosque(){
     setBusy(true); setMsg("");
     try{
       const { data:{ session } } = await sb.auth.getSession();
-      const r=await fetch(WORKER_ACESSOS,{ method:"POST", headers:{ "Content-Type":"application/json", authorization:"Bearer "+(session?.access_token||"") },
-        body: JSON.stringify({ action:"criar", nome:"Quiosque do ponto", email:"quiosque@clinica.local", senha, papel:"quiosque", criarColaborador:false }) });
-      const j=await r.json().catch(()=>({error:"resposta inesperada"}));
-      setMsg(j.ok ? "Login do quiosque criado: e-mail quiosque@clinica.local e a senha que você definiu." : ("Não criou: "+(j.error||"erro")+" (se já existe, use 'Resetar senha' em Acessos)."));
+      const chamar=async(body)=>{ const r=await fetch(WORKER_ACESSOS,{ method:"POST", headers:{ "Content-Type":"application/json", authorization:"Bearer "+(session?.access_token||"") }, body:JSON.stringify(body) });
+        return r.json().catch(()=>({error:"resposta inesperada"})); };
+      const j=await chamar({ action:"criar", nome:"Quiosque do ponto", email:"quiosque@clinica.local", senha, papel:"quiosque", criarColaborador:false });
+      if(j.ok) setMsg("Login do quiosque criado: e-mail quiosque@clinica.local e a senha que você definiu.");
+      else if(/already|registered|existe/i.test(j.error||"")){
+        // o login já existe: troca a senha dele (e garante o perfil quiosque)
+        const l=await chamar({ action:"listar" });
+        const u=(l.usuarios||[]).find(x=>(x.email||"").toLowerCase()==="quiosque@clinica.local");
+        if(!u) setMsg("Não consegui trocar a senha: "+(l.error||"login do quiosque não encontrado")+". Use 'Resetar senha' em Acessos.");
+        else {
+          const t=await chamar({ action:"senha", id:u.id, senha });
+          if(t.ok && u.papel!=="quiosque") await chamar({ action:"papel", id:u.id, papel:"quiosque" });
+          setMsg(t.ok ? "O login do quiosque já existia: a senha foi trocada. No tablet, entre com quiosque@clinica.local e a senha nova." : ("Não trocou a senha: "+(t.error||"erro")));
+        }
+      }
+      else setMsg("Não criou: "+(j.error||"erro"));
     }catch(e){ setMsg("Falha ao falar com o Worker: "+(e.message||e)); }
     setBusy(false);
   }
@@ -592,9 +604,9 @@ function Quiosque(){
       </div>
       <div className="card">
         <h3>Login do quiosque</h3>
-        <div className="note">Conta técnica só para o tablet: entra com <b>quiosque@clinica.local</b> e a senha que você definir. Ela só enxerga o ponto — nenhuma outra tela.</div>
+        <div className="note">Conta técnica só para o tablet: entra com <b>quiosque@clinica.local</b> e a senha que você definir. Ela só enxerga o ponto — nenhuma outra tela. Se o login já existir, o botão troca a senha.</div>
         <div className="field"><label>Senha do quiosque (mín. 6)</label><input value={senha} onChange={e=>setSenha(e.target.value)} placeholder="ex.: 246810" /></div>
-        <button className="btn btn-primary" onClick={criarLogin} disabled={busy}>{busy?"Criando…":"Criar login do quiosque"}</button>
+        <button className="btn btn-primary" onClick={criarLogin} disabled={busy}>{busy?"Salvando…":"Criar login ou trocar a senha"}</button>
         {msg && <div style={{marginTop:10,fontSize:13.5,color:msg.startsWith("Não")||msg.startsWith("Falha")||msg.startsWith("A senha")?"var(--bad)":"var(--ok)"}}>{msg}</div>}
       </div>
     </div>
