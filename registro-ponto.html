@@ -82,9 +82,13 @@
   .login button{width:100%;font:inherit;font-weight:700;padding:13px;border:none;border-radius:11px;background:var(--teal);color:#04231f;cursor:pointer}
   .err{background:rgba(224,96,59,.15);color:var(--bad);padding:10px;border-radius:10px;font-size:13px;margin-bottom:12px}
   .link{background:none;border:none;color:var(--teal);font:inherit;cursor:pointer;margin-top:18px;font-size:15px}
-  .repouso{position:fixed;inset:0;background:#04120f;display:flex;align-items:center;justify-content:center;z-index:60;cursor:pointer;animation:fade .4s ease}
+  .repouso{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center;z-index:60;cursor:pointer;animation:fade .4s ease}
   @keyframes fade{from{opacity:0}to{opacity:1}}
-  .repouso .rin{text-align:center;color:#3a6b62}
+  /* repouso: fundo preto (na tela OLED do iPhone os pixels ficam apagados) e o texto passeia
+     devagar pela tela, para nada ficar parado no mesmo lugar por horas e marcar a tela */
+  .repouso .rin{text-align:center;color:#3a6b62;animation:passeio 420s linear infinite}
+  @keyframes passeio{0%{transform:translate(0,0)}12%{transform:translate(18vw,-26vh)}25%{transform:translate(-20vw,-14vh)}37%{transform:translate(-14vw,24vh)}
+    50%{transform:translate(16vw,20vh)}62%{transform:translate(22vw,-6vh)}75%{transform:translate(-22vw,6vh)}87%{transform:translate(4vw,-30vh)}100%{transform:translate(0,0)}}
   .repouso .zz{font-size:16px;color:#1f5a50;animation:pulse 2.2s ease-in-out infinite}
   @keyframes pulse{0%,100%{opacity:.3}50%{opacity:.9}}
   .repouso .rt{margin-top:16px;font-family:"Space Grotesk";font-weight:700;font-size:22px;color:#6aa89d}
