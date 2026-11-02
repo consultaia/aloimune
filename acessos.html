@@ -52,14 +52,23 @@
   .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
   .form{padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .form h3{grid-column:1/-1;margin:0;font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
-  .field{display:flex;flex-direction:column;gap:5px} .full{grid-column:1/-1}
+  .field{display:flex;flex-direction:column;gap:5px;min-width:0} .full{grid-column:1/-1}
   .field label{font-size:12.5px;font-weight:600;color:var(--muted)}
-  .field input,.field select{font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:#fff}
+  .field input,.field select{font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:#fff;width:100%;min-width:0;box-sizing:border-box}
   .msg{font-size:13.5px;margin-top:4px}
   .msg.ok{color:var(--ok)} .msg.bad{color:var(--bad)}
   .empty{padding:36px;text-align:center;color:var(--muted)}
   .hintline{font-size:12.5px;color:var(--muted);grid-column:1/-1}
   @media(max-width:640px){ .form{grid-template-columns:1fr} }
+  /* celular: cada acesso vira um cartão (antes os botões ficavam cortados fora da tela) */
+  @media(max-width:700px){
+    .lista-acessos thead{display:none}
+    .lista-acessos,.lista-acessos tbody,.lista-acessos tr,.lista-acessos td{display:block;width:100%}
+    .lista-acessos tr{padding:12px 14px;border-bottom:1px solid var(--line)} .lista-acessos tr:last-child{border-bottom:none}
+    .lista-acessos td{padding:3px 0;border:none}
+    .lista-acessos select{width:100%;max-width:100%;margin:6px 0 4px}
+    .lista-acessos .acts{justify-content:flex-start}
+  }
 </style>
 </head>
 <body>
@@ -153,7 +162,7 @@ function App(){
       <div className="panel">
         {loading ? <div className="empty">Carregando…</div> :
          users.length===0 ? <div className="empty">Nenhum acesso cadastrado ainda.</div> :
-         <table>
+         <table className="lista-acessos">
            <thead><tr><th>Nome</th><th>Login</th><th>Perfil</th><th></th></tr></thead>
            <tbody>
              {users.map(u=>(
