@@ -25,7 +25,12 @@
   const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
   const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model";
-  const LIMIAR = 0.55; // distância máxima para considerar "reconhecido" (menor = mais rígido)
+  // Reconhecimento rígido para não confundir pessoas parecidas:
+  const LIMIAR = 0.45;      // distância máxima até o rosto cadastrado (menor = mais rígido)
+  const MARGEM = 0.08;      // a 1ª pessoa tem que estar bem mais perto que a 2ª; se empatar, não decide
+  const SEGUIDAS = 3;       // a mesma pessoa em 3 leituras seguidas antes de mostrar o nome
+  const QUALIDADE = 0.6;    // confiança mínima de que é um rosto bem visível
+  const TAM_MIN = 0.2;      // rosto ocupando pelo menos 20% da largura da imagem (perto da câmera)
 </script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -247,6 +252,8 @@ function Kiosk(){
       prevFrame.current=cur;
     }, 700);
   }
+  const seq=useRef({ id:null, n:0 });      // leituras seguidas da mesma pessoa
+  const ignorar=useRef(null);               // depois de "não sou eu", ignora essa pessoa por 15 s
   function loopScan(){
     clearInterval(timer.current);
     timer.current=setInterval(async ()=>{
@@ -255,15 +262,28 @@ function Kiosk(){
       try{
         const det=await faceapi.detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize:320, scoreThreshold:0.4 }))
           .withFaceLandmarks().withFaceDescriptor();
+        let cand=null;
         if(det){ atividade();
-          const live=Array.from(det.descriptor);
-          let best=null, bestD=99;
-          enrolled.current.forEach(r=>{ const d=dist(live,r.descritor); if(d<bestD){bestD=d;best=r;} });
-          if(best && bestD<LIMIAR){ await reconhecer(best,"facial"); }
+          const v=videoRef.current;
+          const bom = det.detection.score>=QUALIDADE && det.detection.box.width >= TAM_MIN*(v.videoWidth||640);
+          if(bom){
+            const live=Array.from(det.descriptor);
+            // menor distância de cada pessoa (1º e 2º colocados são pessoas diferentes)
+            const porPessoa={};
+            enrolled.current.forEach(r=>{ const d=dist(live,r.descritor); const k=String(r.colaborador_id); if(!porPessoa[k]||d<porPessoa[k].d) porPessoa[k]={r,d}; });
+            const ord=Object.values(porPessoa).sort((a,b)=>a.d-b.d);
+            const b1=ord[0], b2=ord[1];
+            const ignorada = ignorar.current && ignorar.current.id===String(b1&&b1.r.colaborador_id) && Date.now()<ignorar.current.ate;
+            if(b1 && b1.d<LIMIAR && (!b2 || b2.d-b1.d>=MARGEM) && !ignorada) cand=b1.r;
+          }
         }
+        // só confirma quando a mesma pessoa aparece em leituras seguidas
+        const id=cand ? String(cand.colaborador_id) : null;
+        seq.current = id && seq.current.id===id ? { id, n:seq.current.n+1 } : { id, n:id?1:0 };
+        if(cand && seq.current.n>=SEGUIDAS){ seq.current={id:null,n:0}; await reconhecer(cand,"facial"); }
       }catch(e){}
       scanning.current=false;
-    }, 1200);
+    }, 600);
   }
 
   async function reconhecer(r, metodo){
@@ -348,7 +368,7 @@ function Kiosk(){
                 <button key={i} className={"b "+(b.tipo==="entrada"?"b-entrada":"b-saida")+(b.sug?" suggest":"")+(i>0&&b.tipo===opcoes.botoes[0].tipo?" b-alt":"")} onClick={()=>registrar(b.tipo,b.feito)}>{b.rot}</button>)}
             </div>
             {opcoes.alt && <button className="link" onClick={()=>registrar(opcoes.alt.tipo)}>{opcoes.alt.rot}</button>}
-            <button className="link" onClick={()=>{setPessoa(null);setFase("scan");loopScan();}}>não sou eu</button>
+            <button className="link" onClick={()=>{ if(pessoa.metodo==="facial") ignorar.current={ id:String(pessoa.colaborador_id), ate:Date.now()+15000 }; seq.current={id:null,n:0}; setPessoa(null);setFase("scan");loopScan();}}>não sou eu</button>
           </>}
 
           {fase==="salvando" && <div className="msg" style={{marginTop:26}}>Registrando…</div>}

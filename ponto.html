@@ -156,7 +156,7 @@ function Enroll(){
   async function load(){
     if(sb){
       const [c,b]=await Promise.all([ sb.from("colaboradores").select("id,nome,funcao").eq("ativo",true).order("nome"), sb.from("ponto_biometria").select("colaborador_id,nome,pin,consentimento_em,descritor") ]);
-      setColabs(c.data||[]); const m={}; (b.data||[]).forEach(r=>m[r.colaborador_id]={nome:r.nome,pin:r.pin,tem_desc:Array.isArray(r.descritor)&&r.descritor.length>0,consent:r.consentimento_em}); setBio(m);
+      setColabs(c.data||[]); const m={}; (b.data||[]).forEach(r=>m[r.colaborador_id]={nome:r.nome,pin:r.pin,tem_desc:Array.isArray(r.descritor)&&r.descritor.length>0,descritor:Array.isArray(r.descritor)?r.descritor:null,consent:r.consentimento_em}); setBio(m);
     } else {
       setColabs([{id:"1",nome:"Paula Ribeiro",funcao:"Enfermeira"},{id:"2",nome:"Bianca Souza",funcao:"Recepcionista"}]); setBio({});
     }
@@ -207,16 +207,22 @@ function Enroll(){
     const opts=new faceapi.TinyFaceDetectorOptions({ inputSize:320, scoreThreshold:0.4 });
     const amostras=[];
     try{
-      for(let i=0;i<12 && amostras.length<3;i++){
+      // 5 leituras boas (rosto nítido, de frente e perto), com intervalo para variar um pouco
+      for(let i=0;i<30 && amostras.length<5;i++){
         const det=await faceapi.detectSingleFace(v,opts).withFaceLandmarks().withFaceDescriptor();
-        if(det){ amostras.push(Array.from(det.descriptor)); setMsg("Capturando… "+amostras.length+"/3"); }
-        if(amostras.length<3) await new Promise(r=>setTimeout(r,120));
+        if(det && det.detection.score>=0.7 && det.detection.box.width>=0.22*v.videoWidth){ amostras.push(Array.from(det.descriptor)); setMsg("Capturando… "+amostras.length+"/5"); }
+        if(amostras.length<5) await new Promise(r=>setTimeout(r,250));
       }
     }catch(e){ setCapturing(false); setMsg("Erro ao ler o rosto: "+(e.message||String(e))); return; }
     setCapturing(false);
-    if(amostras.length<2){ setMsg("Não consegui ver o rosto. Aproxime o rosto, melhore a luz e tente de novo."); return; }
+    if(amostras.length<4){ setMsg("Não consegui ver bem o rosto. Fique de frente, perto da câmera, com boa luz, e tente de novo."); return; }
     const media=amostras[0].map((_,k)=> amostras.reduce((s,a)=>s+a[k],0)/amostras.length);
-    setDesc(media); setMsg("Rosto capturado ✓");
+    // confere se não ficou parecido demais com outra pessoa já cadastrada (o quiosque poderia confundir)
+    const dd=(a,b)=>{let t=0;for(let k=0;k<a.length;k++){const x=a[k]-b[k];t+=x*x;}return Math.sqrt(t);};
+    const parecida=Object.entries(bio).filter(([id,b])=>String(id)!==String(sel.id) && b.descritor && b.descritor.length===media.length)
+      .map(([id,b])=>({nome:b.nome||"outra pessoa", d:dd(media,b.descritor)})).sort((a,b)=>a.d-b.d)[0];
+    setDesc(media);
+    setMsg(parecida && parecida.d<0.5 ? `Atenção: este rosto ficou parecido com o de ${parecida.nome}. Recapture com boa luz, de frente e sem óculos; se continuar, recadastre ${parecida.nome} também.` : "Rosto capturado ✓");
   }
 
   async function salvar(){
@@ -239,7 +245,7 @@ function Enroll(){
   // rostos que sobraram de quem saiu do RH (inativado ou excluído) — continuam sendo reconhecidos até apagar
   const orfaos = Object.entries(bio).filter(([id])=>!colabs.some(c=>String(c.id)===String(id)));
 
-  const erroMsg = (t)=> t && (t.startsWith("Erro")||t.startsWith("Não")||t.startsWith("Ligue")||t.startsWith("A câmera")||t.startsWith("Marque")||t.startsWith("Selecione")||t.startsWith("Reconhecimento"));
+  const erroMsg = (t)=> t && (t.startsWith("Erro")||t.startsWith("Atenção")||t.startsWith("Não")||t.startsWith("Ligue")||t.startsWith("A câmera")||t.startsWith("Marque")||t.startsWith("Selecione")||t.startsWith("Reconhecimento"));
 
   return (
     <div className="cols">
