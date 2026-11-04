@@ -149,7 +149,7 @@ let _t=null;
 function persist(s){ if(sb){ clearTimeout(_t); _t=setTimeout(()=>sb.from("escala_estado").upsert({id:1,dados:s,atualizado_em:new Date().toISOString()}).then(()=>{}),800); } }
 
 function demoColabs(){ return [
-  {id:"1",nome:"Paula Ribeiro",funcao:"Enfermeira",carga_horaria:44,regime:"int6"},
+  {id:"1",nome:"Paula Ribeiro",funcao:"Enfermeira",carga_horaria:44,carga_mensal:null,regime:"int6"},
   {id:"2",nome:"Bianca Souza",funcao:"Recepcionista",carga_horaria:44,regime:"int5"},
   {id:"3",nome:"Carla Nunes",funcao:"Téc. laboratório",carga_horaria:40,regime:"int5"},
   {id:"4",nome:"Rui Alves",funcao:"Administrativo",carga_horaria:30,regime:"manha"},
@@ -188,7 +188,7 @@ function App(){
     setLoading(true);
     if(sb){
       const [c,e]=await Promise.all([
-        sb.from("colaboradores").select("id,nome,funcao,carga_horaria,regime").eq("ativo",true).order("nome"),
+        sb.from("colaboradores").select("*").eq("ativo",true).order("nome"),
         sb.from("escala_estado").select("dados").eq("id",1).maybeSingle(),
       ]);
       setColabs(c.data||[]);
@@ -223,15 +223,20 @@ function App(){
   const H=(code)=>{ const t=turnoDe(code); return t ? (+t.horas||0) : 0; };
   const OPTS=[["","·"],...turnos.map(t=>[t.sigla,t.sigla]),...SISTEMA.map(([k])=>[k,k])];
   const estiloCod=(code)=>{ const t=turnoDe(code); if(!t) return null; const c=CORES[t.cor%CORES.length]; return {background:c[0],color:c[1]}; };
-  const ehMensal=(c)=> cargaMensal[c.id]!=null;
+  // carga mensal fica no cadastro do RH (colaboradores.carga_mensal); sem essa coluna, cai no que a Escala guardava
+  const temColunaMensal = !sb || colabs.some(c=>"carga_mensal" in c);
+  const mensalDe=(c)=> c.carga_mensal!=null ? c.carga_mensal : (temColunaMensal ? null : cargaMensal[c.id]);
+  const ehMensal=(c)=> mensalDe(c)!=null;
   // meta do mês: carga mensal direto, ou carga semanal proporcional aos dias do mês
-  const metaMes=(c)=> ehMensal(c) ? Math.round(Number(cargaMensal[c.id])||0) : Math.round((Number(c.carga_horaria)||0)*(D/7));
-  const cargaTxt=(c)=> ehMensal(c) ? `${cargaMensal[c.id]}h/mês` : `${c.carga_horaria||"?"}h/sem`;
+  const metaMes=(c)=> ehMensal(c) ? Math.round(Number(mensalDe(c))||0) : Math.round((Number(c.carga_horaria)||0)*(D/7));
+  const cargaTxt=(c)=> ehMensal(c) ? `${mensalDe(c)}h/mês` : `${c.carga_horaria||"?"}h/sem`;
+  function setMensal(c,v){
+    if(temColunaMensal) return salvarColab(c,{carga_mensal:v});
+    setCargaMensal(m=>{ const n={...m}; if(v==null) delete n[c.id]; else n[c.id]=v; return n; });
+  }
   function mudaTipoCarga(c,tipo){
-    setCargaMensal(m=>{ const n={...m};
-      if(tipo==="mes") n[c.id]= n[c.id]!=null ? n[c.id] : Math.round((Number(c.carga_horaria)||0)*30/7); // ponto de partida: semanal × 30/7
-      else delete n[c.id];
-      return n; });
+    if(tipo==="mes") setMensal(c, ehMensal(c) ? mensalDe(c) : Math.round((Number(c.carga_horaria)||0)*30/7)); // ponto de partida: semanal × 30/7
+    else setMensal(c, null);
   }
   const escalado=(c)=>{ const r=sched[c.id]||{}; let h=0; for(const d in r) h+=H(r[d]); return h; };
 
@@ -385,8 +390,8 @@ function App(){
               <td><b>{c.nome}</b><div className="nmsub">{c.funcao||"—"}</div></td>
               <td><div style={{display:"flex",gap:6,alignItems:"center"}}>
                 {ehMensal(c)
-                  ? <input className="n" type="number" min="0" max="400" step="1" defaultValue={cargaMensal[c.id]} key={"cm"+c.id+cargaMensal[c.id]}
-                      onBlur={e=>{ const v=Number(e.target.value)||0; if(v!==cargaMensal[c.id]) setCargaMensal(m=>({...m,[c.id]:v})); }} onKeyDown={e=>e.key==="Enter"&&e.target.blur()} />
+                  ? <input className="n" type="number" min="0" max="400" step="1" defaultValue={mensalDe(c)} key={"cm"+c.id+mensalDe(c)}
+                      onBlur={e=>{ const v=Number(e.target.value)||0; if(v!==Number(mensalDe(c))) setMensal(c,v); }} onKeyDown={e=>e.key==="Enter"&&e.target.blur()} />
                   : <input className="n" type="number" min="0" max="80" step="1" defaultValue={c.carga_horaria??""} key={"ch"+c.id+(c.carga_horaria??"")}
                       onBlur={e=>{ const v=e.target.value===""?null:Number(e.target.value); if(v!==(c.carga_horaria??null)) salvarColab(c,{carga_horaria:v}); }} onKeyDown={e=>e.key==="Enter"&&e.target.blur()} />}
                 <select value={ehMensal(c)?"mes":"sem"} onChange={e=>mudaTipoCarga(c,e.target.value)}><option value="sem">h/semana</option><option value="mes">h/mês</option></select>

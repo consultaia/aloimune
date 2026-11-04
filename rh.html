@@ -82,9 +82,9 @@
   .modal h2{font-family:"Space Grotesk",sans-serif; margin:0 0 4px; font-size:19px}
   .modal .mt{color:var(--muted); font-size:13px; margin:0 0 16px}
   .grid{display:grid; grid-template-columns:1fr 1fr; gap:12px}
-  .field{display:flex; flex-direction:column; gap:5px} .field.full{grid-column:1/-1}
+  .field{display:flex; flex-direction:column; gap:5px; min-width:0} .field.full{grid-column:1/-1}
   .field label{font-size:12.5px; font-weight:600; color:var(--muted)}
-  .field input{font:inherit; padding:9px 11px; border:1px solid var(--line); border-radius:9px; background:#fff; color:var(--ink)}
+  .field input,.field select{font:inherit; padding:9px 11px; border:1px solid var(--line); border-radius:9px; background:#fff; color:var(--ink); min-width:0; width:100%; box-sizing:border-box}
   .modal-actions{display:flex; justify-content:space-between; margin-top:18px; gap:10px}
   .err{background:var(--bad-bg); color:var(--bad); padding:9px 12px; border-radius:9px; font-size:13px; margin-bottom:12px}
 
@@ -185,6 +185,12 @@ function App(){
       nr32_validade:f.nr32_validade||null, aviso_dias:Number(f.aviso_dias)||30,
       carga_horaria:f.carga_horaria===""?null:Number(f.carga_horaria), regime:f.regime||null };
     if(!p.nome.trim()) return "Informe o nome.";
+    // carga mensal só é gravada se a coluna existir (carga-mensal.sql); senão as outras edições continuam funcionando
+    const temColuna = !sb || rows.some(r=>"carga_mensal" in r);
+    if(f.tipo_carga==="mes"){
+      if(!temColuna) return "Para usar carga por mês, rode antes o arquivo carga-mensal.sql no Supabase.";
+      p.carga_mensal = f.carga_mensal===""?null:Number(f.carga_mensal);
+    } else if(temColuna) p.carga_mensal = null;
     if(sb){ const r=f.id? await sb.from("colaboradores").update(p).eq("id",f.id) : await sb.from("colaboradores").insert(p);
       if(r.error) return r.error.message; await load(); }
     else setRows(prev=> f.id? prev.map(c=>c.id===f.id?{...c,...p}:c):[...prev,{...p,id:"n"+Date.now()}]);
@@ -254,7 +260,8 @@ function ColabModal({ c, onClose, onSave }){
   const [f,setF]=useState({ id:c.id, nome:c.nome||"", funcao:c.funcao||"", admissao:c.admissao||"",
     ferias_vencimento:c.ferias_vencimento||"", ferias_agendada:c.ferias_agendada||"", exame_periodico:c.exame_periodico||"",
     conselho:c.conselho||"", conselho_validade:c.conselho_validade||"", nr32_validade:c.nr32_validade||"", aviso_dias:c.aviso_dias??30,
-    carga_horaria:c.carga_horaria??"", regime:c.regime||"int5" });
+    carga_horaria:c.carga_horaria??"", regime:c.regime||"int5",
+    tipo_carga: c.carga_mensal!=null ? "mes" : "sem", carga_mensal:c.carga_mensal??"" });
   const [err,setErr]=useState(""); const [s,setS]=useState(false);
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
   async function submit(){ setS(true); const e=await onSave(f); setS(false); if(e) setErr(e); }
@@ -274,7 +281,15 @@ function ColabModal({ c, onClose, onSave }){
         <div className="field"><label>Registro no conselho</label><input value={f.conselho} onChange={e=>set("conselho",e.target.value)} placeholder="CRM 12345" /></div>
         <div className="field"><label>Registro — validade</label><input type="date" value={f.conselho_validade} onChange={e=>set("conselho_validade",e.target.value)} /></div>
         <div className="field"><label>NR-32 — validade</label><input type="date" value={f.nr32_validade} onChange={e=>set("nr32_validade",e.target.value)} /></div>
-        <div className="field"><label>Carga horária (horas/semana)</label><input type="number" value={f.carga_horaria} onChange={e=>set("carga_horaria",e.target.value)} placeholder="ex.: 44" /></div>
+        <div className="field"><label>Carga horária</label>
+          <div style={{display:"flex",gap:6}}>
+            {f.tipo_carga==="mes"
+              ? <input type="number" value={f.carga_mensal} onChange={e=>set("carga_mensal",e.target.value)} placeholder="ex.: 180" style={{flex:1,minWidth:0}} />
+              : <input type="number" value={f.carga_horaria} onChange={e=>set("carga_horaria",e.target.value)} placeholder="ex.: 44" style={{flex:1,minWidth:0}} />}
+            <select value={f.tipo_carga} style={{width:"auto"}} onChange={e=>{ const t=e.target.value; setF(x=>({...x,tipo_carga:t,
+                carga_mensal: t==="mes" && x.carga_mensal==="" && x.carga_horaria!=="" ? Math.round(Number(x.carga_horaria)*30/7) : x.carga_mensal })); }}>
+              <option value="sem">h/semana</option><option value="mes">h/mês</option></select>
+          </div></div>
         <div className="field"><label>Regime de trabalho</label>
           <select value={f.regime} onChange={e=>set("regime",e.target.value)}>
             <option value="int5">Integral (seg–sex)</option>
