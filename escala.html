@@ -169,6 +169,7 @@ function App(){
   const [turnos,setTurnos]=useState(turnosPadrao());
   const [padroes,setPadroes]=useState({}); // regime "Personalizado": {colabId:{0..6: sigla}}
   const [abre,setAbre]=useState({turnos:false,carga:false});
+  const [cargaMensal,setCargaMensal]=useState({}); // quem tem carga contratada por mês: {colabId: horas no mês}
   const [salvo,setSalvo]=useState({}); // feedback por colaborador
   const [escalas,setEscalas]=useState({}); // grade por mês: {"2026-10":{colabId:{dia:sigla}}}
   const [lvId,setLvId]=useState(""); const [lvTipo,setLvTipo]=useState("FE"); const [lvA,setLvA]=useState(1); const [lvB,setLvB]=useState(1);
@@ -194,7 +195,7 @@ function App(){
       const s=e.data&&e.data.dados;
       if(s&&Object.keys(s).length){ if(s.mes!=null)setMes(s.mes); if(s.ano!=null)setAno(s.ano);
         setFeriados(s.feriados||[]); setTurnos(Array.isArray(s.turnos)&&s.turnos.length ? s.turnos : turnosPadrao(s.horas));
-        setPadroes(s.padroes||{});
+        setPadroes(s.padroes||{}); setCargaMensal(s.cargaMensal||{});
         // versões antigas guardavam uma grade só (sem mês), que se repetia em todos os meses:
         // ela fica no mês que estava aberto quando foi salva
         if(s.escalas) setEscalas(s.escalas);
@@ -216,13 +217,22 @@ function App(){
 
   // "horas" continua sendo gravado para compatibilidade com versões antigas
   const horasCompat=useMemo(()=>Object.fromEntries(BASE.map(k=>[k,(turnos.find(t=>t.sigla===k)||{}).horas||0])),[turnos]);
-  useEffect(()=>{ if(!loading) persist({mes,ano,feriados,horas:horasCompat,turnos,padroes,escalas}); },[mes,ano,feriados,turnos,padroes,escalas,loading]);
+  useEffect(()=>{ if(!loading) persist({mes,ano,feriados,horas:horasCompat,turnos,padroes,escalas,cargaMensal}); },[mes,ano,feriados,turnos,padroes,escalas,cargaMensal,loading]);
 
   const turnoDe=(code)=> turnos.find(t=>t.sigla===code);
   const H=(code)=>{ const t=turnoDe(code); return t ? (+t.horas||0) : 0; };
   const OPTS=[["","·"],...turnos.map(t=>[t.sigla,t.sigla]),...SISTEMA.map(([k])=>[k,k])];
   const estiloCod=(code)=>{ const t=turnoDe(code); if(!t) return null; const c=CORES[t.cor%CORES.length]; return {background:c[0],color:c[1]}; };
-  const metaMes=(c)=> Math.round((Number(c.carga_horaria)||0)*(D/7));
+  const ehMensal=(c)=> cargaMensal[c.id]!=null;
+  // meta do mês: carga mensal direto, ou carga semanal proporcional aos dias do mês
+  const metaMes=(c)=> ehMensal(c) ? Math.round(Number(cargaMensal[c.id])||0) : Math.round((Number(c.carga_horaria)||0)*(D/7));
+  const cargaTxt=(c)=> ehMensal(c) ? `${cargaMensal[c.id]}h/mês` : `${c.carga_horaria||"?"}h/sem`;
+  function mudaTipoCarga(c,tipo){
+    setCargaMensal(m=>{ const n={...m};
+      if(tipo==="mes") n[c.id]= n[c.id]!=null ? n[c.id] : Math.round((Number(c.carga_horaria)||0)*30/7); // ponto de partida: semanal × 30/7
+      else delete n[c.id];
+      return n; });
+  }
   const escalado=(c)=>{ const r=sched[c.id]||{}; let h=0; for(const d in r) h+=H(r[d]); return h; };
 
   const pontoBy=useMemo(()=>{ const m={}; ponto.forEach(r=>{ (m[r.colaborador_id]=m[r.colaborador_id]||[]).push(r); }); return m; },[ponto]);
@@ -301,11 +311,11 @@ function App(){
   function pill(v){ const a=Math.abs(v); const cls=a<8?"p-ok":a<16?"p-warn":"p-bad"; return <span className={"pill "+cls}>{v>0?"+":""}{v.toFixed(0)}h</span>; }
 
   function exportar(){
-    const wb=XLSX.utils.book_new(); const head=["Funcionário","Função","Regime","Carga/sem"];
+    const wb=XLSX.utils.book_new(); const head=["Funcionário","Função","Regime","Carga"];
     for(let d=1;d<=D;d++) head.push(d+WD[wd(ano,mes,d)]);
     head.push("Escalado","Meta","Batido","Saldo");
     const aoa=[["Escala — "+MESES[mes]+"/"+ano],[],head];
-    colabs.forEach(c=>{ const r=sched[c.id]||{}; const row=[c.nome,c.funcao||"",REGIMES[c.regime]||"",c.carga_horaria||""];
+    colabs.forEach(c=>{ const r=sched[c.id]||{}; const row=[c.nome,c.funcao||"",REGIMES[c.regime]||"",cargaTxt(c)];
       for(let d=1;d<=D;d++)row.push(r[d]||""); const e=escalado(c),b=batido(c.id); row.push(e,metaMes(c),b.toFixed(1),(b-e).toFixed(1)); aoa.push(row); });
     aoa.push([],["Legenda"]); turnos.forEach(t=>aoa.push([t.sigla,t.nome,(t.ini&&t.fim)?t.ini+"–"+t.fim:"",fmtH(t.horas)+"h"])); SISTEMA.forEach(([k,n])=>aoa.push([k,n]));
     const ws=XLSX.utils.aoa_to_sheet(aoa); XLSX.utils.book_append_sheet(wb,ws,"Escala");
@@ -370,11 +380,17 @@ function App(){
         {abre.carga && <>
           {colabs.length===0 ? <div className="hint">Nenhum colaborador ativo. Cadastre no RH.</div> :
           <div style={{overflowX:"auto"}}><table className="tt">
-            <thead><tr><th>Pessoa</th><th>Carga (h/semana)</th><th>Meta no mês</th><th>Regime</th><th>Turno por dia da semana</th><th></th></tr></thead>
+            <thead><tr><th>Pessoa</th><th>Carga horária</th><th>Meta no mês</th><th>Regime</th><th>Turno por dia da semana</th><th></th></tr></thead>
             <tbody>{colabs.map(c=>{ const pd=padroes[c.id]||{}; return <tr key={c.id}>
               <td><b>{c.nome}</b><div className="nmsub">{c.funcao||"—"}</div></td>
-              <td><input className="n" type="number" min="0" max="80" step="1" defaultValue={c.carga_horaria??""} key={"ch"+c.id+(c.carga_horaria??"")}
-                onBlur={e=>{ const v=e.target.value===""?null:Number(e.target.value); if(v!==(c.carga_horaria??null)) salvarColab(c,{carga_horaria:v}); }} onKeyDown={e=>e.key==="Enter"&&e.target.blur()} /></td>
+              <td><div style={{display:"flex",gap:6,alignItems:"center"}}>
+                {ehMensal(c)
+                  ? <input className="n" type="number" min="0" max="400" step="1" defaultValue={cargaMensal[c.id]} key={"cm"+c.id+cargaMensal[c.id]}
+                      onBlur={e=>{ const v=Number(e.target.value)||0; if(v!==cargaMensal[c.id]) setCargaMensal(m=>({...m,[c.id]:v})); }} onKeyDown={e=>e.key==="Enter"&&e.target.blur()} />
+                  : <input className="n" type="number" min="0" max="80" step="1" defaultValue={c.carga_horaria??""} key={"ch"+c.id+(c.carga_horaria??"")}
+                      onBlur={e=>{ const v=e.target.value===""?null:Number(e.target.value); if(v!==(c.carga_horaria??null)) salvarColab(c,{carga_horaria:v}); }} onKeyDown={e=>e.key==="Enter"&&e.target.blur()} />}
+                <select value={ehMensal(c)?"mes":"sem"} onChange={e=>mudaTipoCarga(c,e.target.value)}><option value="sem">h/semana</option><option value="mes">h/mês</option></select>
+              </div></td>
               <td className="mono">{metaMes(c)}h</td>
               <td><select value={c.regime||"int5"} onChange={e=>salvarColab(c,{regime:e.target.value})}>{Object.entries(REGIMES).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></td>
               <td>{c.regime==="custom" ? <div className="wk7">{[1,2,3,4,5,6,0].map(w=><label key={w}>{WD[w]}
@@ -384,7 +400,7 @@ function App(){
               <td>{salvo[c.id]==="ok" ? <span className="ok-txt">✓ salvo</span> : salvo[c.id] ? <span className="err-txt">{salvo[c.id]}</span> : null}</td>
             </tr>; })}</tbody>
           </table></div>}
-          <div className="hint">Carga e regime são os mesmos do cadastro do RH (mudar aqui muda lá). No regime <b>Personalizado</b>, escolha o turno de cada dia da semana e clique em <b>⚡ Gerar grade</b>; os dias sem turno viram folga.</div>
+          <div className="hint">Carga e regime são os mesmos do cadastro do RH (mudar aqui muda lá). Em <b>h/semana</b>, a meta do mês é proporcional aos dias do mês; em <b>h/mês</b>, a meta é o número informado (vale para todos os meses). No regime <b>Personalizado</b>, escolha o turno de cada dia da semana e clique em <b>⚡ Gerar grade</b>; os dias sem turno viram folga.</div>
         </>}
       </div>
 
@@ -416,7 +432,7 @@ function App(){
             <tbody>
               {colabs.map(c=>{ const r=sched[c.id]||{}; const e=escalado(c),mt=metaMes(c);
                 return <tr key={c.id}>
-                  <td className="namecol"><div className="nm">{c.nome}</div><div className="nmsub">{c.funcao||"—"} · {c.carga_horaria||"?"}h/sem · {REGIMES[c.regime]||"—"}</div></td>
+                  <td className="namecol"><div className="nm">{c.nome}</div><div className="nmsub">{c.funcao||"—"} · {cargaTxt(c)} · {REGIMES[c.regime]||"—"}</div></td>
                   {days.map(d=>{ const code=r[d]||""; const h=hol.includes(d), w=wd(ano,mes,d), we=w===0||w===6;
                     return <td key={d} className={h?"hol":we?"wk":""}>
                       <select className={"cell "+(code&&COD_SISTEMA.includes(code)?"c-"+code:"")} style={estiloCod(code)||undefined} value={code} onChange={ev=>setCell(c.id,d,ev.target.value)}>
