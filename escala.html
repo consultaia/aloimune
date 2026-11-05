@@ -110,6 +110,31 @@
   .wk7 select{padding:4px 2px;font-family:"JetBrains Mono";font-size:11px;font-weight:700;width:44px}
   .lock{font-size:10px;color:var(--muted);display:block;text-align:center;margin-top:2px}
   @media(max-width:720px){ .barrow{grid-template-columns:130px 1fr 120px} }
+  /* folha de impressão: só a grade do mês, em A4 deitado */
+  .print-folha{display:none}
+  @media print{
+    @page{size:A4 landscape;margin:8mm}
+    html,body{background:#fff}
+    .wrap{max-width:none;padding:0;margin:0}
+    .wrap>*:not(.print-folha){display:none!important}
+    .print-folha{display:block;font-family:Inter,Arial,sans-serif;color:#111}
+    .print-folha *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  }
+  .pf-top{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6px}
+  .pf-top h1{font-size:16px;margin:0} .pf-top .s{font-size:10px;color:#555}
+  .pf-t{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8.5px}
+  .pf-t th,.pf-t td{border:0.5px solid #999;text-align:center;padding:2px 0;height:17px}
+  .pf-t thead th{background:#EEF2F2;font-weight:700}
+  .pf-t th.nm,.pf-t td.nm{width:34mm;text-align:left;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pf-t td.nm small{display:block;font-size:7px;color:#666}
+  .pf-t .wk{background:#F3F5F6} .pf-t .hol{background:#FBE5E2}
+  .pf-t th.tot,.pf-t td.tot{width:15mm;font-weight:700}
+  .pf-t td.cod{font-weight:700}
+  .pf-t tr{page-break-inside:avoid}
+  .pf-leg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:8.5px;margin-top:6px}
+  .pf-leg i{display:inline-block;min-width:16px;padding:1px 3px;border-radius:3px;font-style:normal;font-weight:700;text-align:center;margin-right:3px}
+  .pf-pe{display:flex;justify-content:space-between;align-items:flex-end;margin-top:14px;font-size:9px;color:#555}
+  .pf-pe .ass{border-top:0.5px solid #333;width:70mm;text-align:center;padding-top:3px;color:#111}
 </style>
 </head>
 <body>
@@ -346,7 +371,7 @@ function App(){
             <div style={{display:"flex",gap:6}}><input type="number" value={holIn} onChange={e=>setHolIn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addHol()} style={{width:70}}/><button className="btn sm" onClick={addHol}>+</button></div></div>
           <div style={{flex:1}}></div>
           <button className="btn" onClick={exportar}>Excel</button>
-          <button className="btn" onClick={()=>window.print()}>Imprimir</button>
+          <button className="btn" onClick={()=>window.print()} title="Folha A4 deitada só com a grade do mês">🖨 Imprimir</button>
           <button className="btn primary" onClick={gerar}>⚡ Gerar grade</button>
         </div>
         {hol.length>0 && <div className="chips">{hol.map(d=><span className="chipx" key={d}>{d}/{mes+1}<button onClick={()=>rmHol(d)}>×</button></span>)}</div>}
@@ -482,6 +507,36 @@ function App(){
           <div className="hint">Positivo (verde) = trabalhou mais que o escalado (crédito). Negativo (vermelho) = está devendo. Dias liberados (AB) não entram como dívida.</div>
         </div>
       </>}
+
+      {/* folha que sai na impressão (na tela fica escondida) */}
+      <div className="print-folha">
+        <div className="pf-top">
+          <div><h1>Escala — {MESES[mes]} de {ano}</h1><div className="s">Aloimune{hol.length?` · Feriados: ${hol.slice().sort((a,b)=>a-b).map(d=>d+"/"+(mes+1)).join(", ")}`:""}</div></div>
+          <div className="s">Impresso em {new Date().toLocaleDateString("pt-BR")} às {new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</div>
+        </div>
+        <table className="pf-t">
+          <thead><tr>
+            <th className="nm">Funcionário</th>
+            {days.map(d=>{ const w=wd(ano,mes,d); const cls=hol.includes(d)?"hol":(w===0||w===6)?"wk":"";
+              return <th key={d} className={cls}>{WD[w]}<br/>{d}</th>; })}
+            <th className="tot">Horas</th><th className="tot">Meta</th>
+          </tr></thead>
+          <tbody>
+            {colabs.map(c=>{ const r=sched[c.id]||{};
+              return <tr key={c.id}>
+                <td className="nm">{c.nome}<small>{c.funcao||""}</small></td>
+                {days.map(d=>{ const code=r[d]||""; const w=wd(ano,mes,d); const cls=hol.includes(d)?"hol":(w===0||w===6)?"wk":"";
+                  const st=estiloCod(code); return <td key={d} className={"cod "+(code?(COD_SISTEMA.includes(code)?"c-"+code:""):cls)} style={st||undefined}>{code}</td>; })}
+                <td className="tot">{fmtH(escalado(c))}h</td><td className="tot">{metaMes(c)}h</td>
+              </tr>; })}
+          </tbody>
+        </table>
+        <div className="pf-leg">
+          {turnos.map(t=><span key={t.sigla}><i style={estiloCod(t.sigla)}>{t.sigla}</i>{t.nome} · {fmtH(t.horas)}h{t.ini&&t.fim?` (${t.ini}–${t.fim})`:""}</span>)}
+          {SISTEMA.map(([k,n])=><span key={k}><i className={"c-"+k}>{k}</i>{n}</span>)}
+        </div>
+        <div className="pf-pe"><span>Sujeita a alterações. Dúvidas, falar com a coordenação.</span><span className="ass">Responsável</span></div>
+      </div>
     </div>
   );
 }
