@@ -24,8 +24,11 @@
 <script>
   const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
-  const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model";
-  // Reconhecimento rígido para não confundir pessoas parecidas:
+  // versões FIXAS: sem número, o navegador pega sozinho a versão mais nova de cada biblioteca,
+  // e uma atualização de terceiros pode parar o ponto de um dia para o outro
+  const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model";
+  // Reconhecimento rígido para não confundir pessoas parecidas.
+  // Para conferir no aparelho, abra o ponto com ?diag=1 no fim do endereço: mostra as distâncias na tela.
   const LIMIAR = 0.45;      // distância máxima até o rosto cadastrado (menor = mais rígido)
   const MARGEM = 0.08;      // a 1ª pessoa tem que estar bem mais perto que a 2ª; se empatar, não decide
   const SEGUIDAS = 3;       // a mesma pessoa em 3 leituras seguidas antes de mostrar o nome
@@ -36,11 +39,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet" />
 
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@8.1.1/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.js"></script>
 
 <style>
   :root{ --bg:#0d1b22; --card:#12242d; --line:#22404c; --ink:#eef5f7; --muted:#8fa6b0;
@@ -105,6 +108,7 @@
 
 <script type="text/babel">
 const { useState, useEffect, useRef } = React;
+const DIAG = /[?&]diag=1/.test(location.search);   // ?diag=1 => mostra as distâncias do reconhecimento na tela
 const DEMO_URL = /[?&]demo=1/.test(location.search); // demonstração: sem banco, sem logo da clínica, nada é salvo
 const sb = (SUPABASE_URL && SUPABASE_ANON_KEY && !DEMO_URL) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 const dist=(a,b)=>{let s=0;for(let i=0;i<a.length;i++){const d=a[i]-b[i];s+=d*d;}return Math.sqrt(s);};
@@ -167,12 +171,21 @@ function Kiosk(){
   const [camOn,setCamOn]=useState(false); const [precisaToque,setPrecisaToque]=useState(false);
   // o iPhone desliga a câmera quando a tela bloqueia, o app vai para segundo plano ou chega uma ligação,
   // e a imagem fica preta. Aqui a câmera é religada sozinha quando isso acontece.
+  // parada = trilha encerrada, sem imagem, ou imagem congelada (o tempo do vídeo não anda)
+  const ultTempo=useRef({ t:-1, falhas:0 });
   const cameraViva=()=>{ const st=streamRef.current, v=videoRef.current; const tr=st && st.getVideoTracks()[0];
-    return !!(tr && tr.readyState==="live" && !tr.muted && v && v.videoWidth>0 && !v.paused); };
+    if(!tr || tr.readyState!=="live" || !v || v.videoWidth===0) return false;
+    const andou = v.currentTime!==ultTempo.current.t; ultTempo.current.t=v.currentTime;
+    return andou || v.paused; };  // pausado é tratado com play(), sem religar
   async function garantirCamera(){
     // se já pediu toque em "Ligar câmera", espera a pessoa tocar (não fica pedindo permissão em loop)
-    if(religando.current || precisaToqueRef.current || document.visibilityState!=="visible" || cameraViva()) return;
-    const v=videoRef.current; if(v && streamRef.current && v.paused){ try{ await v.play(); }catch(_){} if(cameraViva()) return; }
+    if(religando.current || precisaToqueRef.current || document.visibilityState!=="visible") return;
+    const v=videoRef.current;
+    if(v && v.paused && streamRef.current){ try{ await v.play(); }catch(_){} }
+    if(cameraViva()){ ultTempo.current.falhas=0; return; }
+    // só religa depois de 2 conferências seguidas com a câmera parada (evita religar à toa no iPhone)
+    if(++ultTempo.current.falhas<2) return;
+    ultTempo.current.falhas=0;
     religando.current=true; try{ await ligarCamera(); } finally { religando.current=false; }
   }
   useEffect(()=>{
@@ -205,12 +218,31 @@ function Kiosk(){
       }
     }catch(e){ setErro("Não consegui a câmera ("+(e.name||"")+"). Toque em 'Ligar câmera' ou use o PIN."); setPrecisaToque(true); }
   }
-  async function iniciar(){
+  // Carrega o reconhecimento facial. Antes tentava uma vez só: se a internet falhasse naquele instante
+  // (ex.: Wi-Fi acordando), o ponto ficava o dia todo sem reconhecer. Agora tenta de novo sozinho.
+  const tentativasModelo=useRef(0);
+  async function carregarModelo(){
+    if(faceapi.nets.faceRecognitionNet.isLoaded) return true;
+    tentativasModelo.current++;
     try{
+      if(faceapi.tf && faceapi.tf.ready) await faceapi.tf.ready();
       await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
       await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
       await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-    }catch(e){ setErro("Não consegui carregar o reconhecimento facial. Verifique a internet. Você ainda pode usar o PIN."); }
+      setFalha(f=> f.startsWith("Reconhecimento facial indisponível") ? "" : f);
+      return true;
+    }catch(e){
+      // na 2ª falha, tenta o processamento alternativo (sem placa de vídeo)
+      if(tentativasModelo.current===2 && faceapi.tf && faceapi.tf.setBackend){ try{ await faceapi.tf.setBackend("cpu"); }catch(_){} }
+      setFalha("Reconhecimento facial indisponível agora ("+(e && e.message || e)+"). Tentando de novo… Use o PIN.");
+      return false;
+    }
+  }
+  useEffect(()=>{ const id=setInterval(()=>{ if(window.faceapi && !faceapi.nets.faceRecognitionNet.isLoaded) carregarModelo(); },30000); return ()=>clearInterval(id); },[]);
+  async function iniciar(){
+    if(!window.faceapi) setFalha("Não consegui baixar o reconhecimento facial. Verifique a internet e feche e abra o app. Use o PIN.");
+    // não segura a tela esperando: se falhar, tenta de novo em 5 s, 10 s, 20 s (e depois a cada 30 s)
+    else if(!(await carregarModelo())) [5000,15000,35000].forEach(t=>setTimeout(()=>{ if(!faceapi.nets.faceRecognitionNet.isLoaded) carregarModelo(); },t));
     // câmera (com confirmação de imagem; se o navegador exigir toque, mostra o botão)
     await ligarCamera();
     // rostos cadastrados
@@ -223,7 +255,9 @@ function Kiosk(){
   async function carregarRostos(){
     if(!sb) return; rostosEm.current=Date.now();
     const [{ data, error }, ativos]=await Promise.all([ sb.from("ponto_biometria").select("colaborador_id,nome,descritor"), sb.from("colaboradores").select("id").eq("ativo",true) ]);
-    if(error) return;
+    if(error){ setFalha("Não consegui carregar os rostos cadastrados ("+error.message+"). Use o PIN."); return; }
+    if(!(data||[]).length) setFalha("Nenhum rosto cadastrado encontrado — confira se o tablet está logado com o login do quiosque.");
+    else setFalha("");
     // só reconhece quem continua ativo no RH (se a lista de ativos não vier, não filtra para não travar o ponto)
     const idsAtivos=new Set(((ativos&&ativos.data)||[]).map(c=>String(c.id)));
     enrolled.current=(data||[]).filter(r=>Array.isArray(r.descritor)&&r.descritor.length && (!idsAtivos.size || idsAtivos.has(String(r.colaborador_id))));
@@ -253,19 +287,29 @@ function Kiosk(){
     }, 700);
   }
   const seq=useRef({ id:null, n:0 });      // leituras seguidas da mesma pessoa
+  const rostoDesde=useRef(0);              // desde quando tem um rosto na frente da câmera
+  const [dica,setDica]=useState("");
+  const [falha,setFalha]=useState("");     // problema que impede o reconhecimento (mostrado na tela)
+  const errosSeg=useRef(0);       // orientação na tela (chegue mais perto, use o PIN…)
+  const [diag,setDiag]=useState("");
   const ignorar=useRef(null);               // depois de "não sou eu", ignora essa pessoa por 15 s
   function loopScan(){
     clearInterval(timer.current);
     timer.current=setInterval(async ()=>{
-      if(scanning.current || !videoRef.current || !faceapi.nets.faceRecognitionNet.isLoaded) return;
+      if(scanning.current || !videoRef.current || !window.faceapi || !faceapi.nets.faceRecognitionNet.isLoaded) return;
       scanning.current=true;
       try{
         const det=await faceapi.detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize:320, scoreThreshold:0.4 }))
           .withFaceLandmarks().withFaceDescriptor();
         let cand=null;
+        if(!det){ if(Date.now()-rostoDesde.current>2500){ rostoDesde.current=0; setDica(""); } if(DIAG) setDiag("sem rosto"); }
         if(det){ atividade();
           const v=videoRef.current;
-          const bom = det.detection.score>=QUALIDADE && det.detection.box.width >= TAM_MIN*(v.videoWidth||640);
+          if(!rostoDesde.current) rostoDesde.current=Date.now();
+          const tam = det.detection.box.width/(v.videoWidth||640), sc=det.detection.score;
+          const bom = sc>=QUALIDADE && tam>=TAM_MIN;
+          if(!bom) setDica(tam<TAM_MIN ? "Chegue mais perto da câmera" : "Fique de frente, com o rosto iluminado");
+          if(DIAG && !bom) setDiag(`rosto ${Math.round(tam*100)}% · nitidez ${sc.toFixed(2)}`);
           if(bom){
             const live=Array.from(det.descriptor);
             // menor distância de cada pessoa (1º e 2º colocados são pessoas diferentes)
@@ -275,19 +319,28 @@ function Kiosk(){
             const b1=ord[0], b2=ord[1];
             const ignorada = ignorar.current && ignorar.current.id===String(b1&&b1.r.colaborador_id) && Date.now()<ignorar.current.ate;
             if(b1 && b1.d<LIMIAR && (!b2 || b2.d-b1.d>=MARGEM) && !ignorada) cand=b1.r;
+            if(DIAG) setDiag(`${b1?b1.r.nome+" "+b1.d.toFixed(2):"—"} · 2º ${b2?b2.r.nome+" "+b2.d.toFixed(2):"—"} · rosto ${Math.round(tam*100)}% · nitidez ${sc.toFixed(2)} → ${cand?"OK":"não"}`);
+            if(cand) setDica("Reconhecendo…");
+            else setDica(Date.now()-rostoDesde.current>6000 ? "Não reconheci você. Toque em Usar PIN." : "Procurando…");
           }
         }
         // só confirma quando a mesma pessoa aparece em leituras seguidas
         const id=cand ? String(cand.colaborador_id) : null;
         seq.current = id && seq.current.id===id ? { id, n:seq.current.n+1 } : { id, n:id?1:0 };
         if(cand && seq.current.n>=SEGUIDAS){ seq.current={id:null,n:0}; await reconhecer(cand,"facial"); }
-      }catch(e){}
+        errosSeg.current=0;
+      }catch(e){
+        // antes o erro era engolido em silêncio; agora aparece na tela e tenta o modo de processamento alternativo
+        errosSeg.current++;
+        if(errosSeg.current===5 && faceapi.tf && faceapi.tf.getBackend && faceapi.tf.getBackend()!=="cpu"){ try{ await faceapi.tf.setBackend("cpu"); await faceapi.tf.ready(); }catch(_){} }
+        if(errosSeg.current>=5) setFalha("O reconhecimento facial falhou neste aparelho ("+(e && e.message || e)+"). Use o PIN e avise a coordenação.");
+      }
       scanning.current=false;
     }, 600);
   }
 
   async function reconhecer(r, metodo){
-    atividade();
+    atividade(); setDica(""); rostoDesde.current=0;
     clearInterval(timer.current);
     // batidas de hoje (desde a meia-noite local) decidem o botão sugerido
     const ini=new Date(); ini.setHours(0,0,0,0);
@@ -357,7 +410,8 @@ function Kiosk(){
 
           {fase==="scan" && <>
             <div className="msg">Olhe para a câmera</div>
-            <div className="sub">{erro || (enrolled.current.length===0 ? "Nenhum rosto cadastrado ainda — use o PIN por enquanto." : "O reconhecimento é automático. Se não funcionar, use o PIN.")}</div>
+            <div className="sub" style={falha || (dica && dica.startsWith("Não")) ? {color:"#FFD27A",fontWeight:600} : null}>{erro || falha || (enrolled.current.length===0 ? "Nenhum rosto cadastrado ainda — use o PIN por enquanto." : dica || "O reconhecimento é automático. Se não funcionar, use o PIN.")}</div>
+            {DIAG && <div className="sub" style={{fontFamily:"monospace",fontSize:12,opacity:.85}}>diag: {diag} · {enrolled.current.length} rostos</div>}
           </>}
 
           {fase==="confirmar" && pessoa && <>
