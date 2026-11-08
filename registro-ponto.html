@@ -25,12 +25,13 @@
   const SUPABASE_URL = "https://lnzvkfbcpnfmfvbdafab.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuenZrZmJjcG5mbWZ2YmRhZmFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0ODg2OTgsImV4cCI6MjA5NTA2NDY5OH0.EE1PF8moQPawVpsrM87iKa8IrD2yJ6tYKb0zAl17tbg";
   const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model";
-  // Reconhecimento rígido para não confundir pessoas parecidas:
-  const LIMIAR = 0.45;      // distância máxima até o rosto cadastrado (menor = mais rígido)
-  const MARGEM = 0.08;      // a 1ª pessoa tem que estar bem mais perto que a 2ª; se empatar, não decide
-  const SEGUIDAS = 3;       // a mesma pessoa em 3 leituras seguidas antes de mostrar o nome
-  const QUALIDADE = 0.6;    // confiança mínima de que é um rosto bem visível
-  const TAM_MIN = 0.2;      // rosto ocupando pelo menos 20% da largura da imagem (perto da câmera)
+  // Calibragem do reconhecimento (equilíbrio entre não confundir pessoas e reconhecer de primeira).
+  // Para conferir no aparelho, abra o ponto com ?diag=1 no fim do endereço: mostra as distâncias na tela.
+  const LIMIAR = 0.5;       // distância máxima até o rosto cadastrado (menor = mais rígido)
+  const MARGEM = 0.05;      // a 1ª pessoa tem que estar mais perto que a 2ª; se empatar, não decide
+  const SEGUIDAS = 2;       // a mesma pessoa em 2 leituras seguidas antes de mostrar o nome
+  const QUALIDADE = 0.5;    // confiança mínima de que é um rosto visível
+  const TAM_MIN = 0.12;     // rosto ocupando pelo menos 12% da largura da imagem
 </script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -105,6 +106,7 @@
 
 <script type="text/babel">
 const { useState, useEffect, useRef } = React;
+const DIAG = /[?&]diag=1/.test(location.search);   // ?diag=1 => mostra as distâncias do reconhecimento na tela
 const DEMO_URL = /[?&]demo=1/.test(location.search); // demonstração: sem banco, sem logo da clínica, nada é salvo
 const sb = (SUPABASE_URL && SUPABASE_ANON_KEY && !DEMO_URL) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 const dist=(a,b)=>{let s=0;for(let i=0;i<a.length;i++){const d=a[i]-b[i];s+=d*d;}return Math.sqrt(s);};
@@ -167,12 +169,21 @@ function Kiosk(){
   const [camOn,setCamOn]=useState(false); const [precisaToque,setPrecisaToque]=useState(false);
   // o iPhone desliga a câmera quando a tela bloqueia, o app vai para segundo plano ou chega uma ligação,
   // e a imagem fica preta. Aqui a câmera é religada sozinha quando isso acontece.
+  // parada = trilha encerrada, sem imagem, ou imagem congelada (o tempo do vídeo não anda)
+  const ultTempo=useRef({ t:-1, falhas:0 });
   const cameraViva=()=>{ const st=streamRef.current, v=videoRef.current; const tr=st && st.getVideoTracks()[0];
-    return !!(tr && tr.readyState==="live" && !tr.muted && v && v.videoWidth>0 && !v.paused); };
+    if(!tr || tr.readyState!=="live" || !v || v.videoWidth===0) return false;
+    const andou = v.currentTime!==ultTempo.current.t; ultTempo.current.t=v.currentTime;
+    return andou || v.paused; };  // pausado é tratado com play(), sem religar
   async function garantirCamera(){
     // se já pediu toque em "Ligar câmera", espera a pessoa tocar (não fica pedindo permissão em loop)
-    if(religando.current || precisaToqueRef.current || document.visibilityState!=="visible" || cameraViva()) return;
-    const v=videoRef.current; if(v && streamRef.current && v.paused){ try{ await v.play(); }catch(_){} if(cameraViva()) return; }
+    if(religando.current || precisaToqueRef.current || document.visibilityState!=="visible") return;
+    const v=videoRef.current;
+    if(v && v.paused && streamRef.current){ try{ await v.play(); }catch(_){} }
+    if(cameraViva()){ ultTempo.current.falhas=0; return; }
+    // só religa depois de 2 conferências seguidas com a câmera parada (evita religar à toa no iPhone)
+    if(++ultTempo.current.falhas<2) return;
+    ultTempo.current.falhas=0;
     religando.current=true; try{ await ligarCamera(); } finally { religando.current=false; }
   }
   useEffect(()=>{
@@ -253,6 +264,9 @@ function Kiosk(){
     }, 700);
   }
   const seq=useRef({ id:null, n:0 });      // leituras seguidas da mesma pessoa
+  const rostoDesde=useRef(0);              // desde quando tem um rosto na frente da câmera
+  const [dica,setDica]=useState("");       // orientação na tela (chegue mais perto, use o PIN…)
+  const [diag,setDiag]=useState("");
   const ignorar=useRef(null);               // depois de "não sou eu", ignora essa pessoa por 15 s
   function loopScan(){
     clearInterval(timer.current);
@@ -263,9 +277,14 @@ function Kiosk(){
         const det=await faceapi.detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize:320, scoreThreshold:0.4 }))
           .withFaceLandmarks().withFaceDescriptor();
         let cand=null;
+        if(!det){ if(Date.now()-rostoDesde.current>2500){ rostoDesde.current=0; setDica(""); } if(DIAG) setDiag("sem rosto"); }
         if(det){ atividade();
           const v=videoRef.current;
-          const bom = det.detection.score>=QUALIDADE && det.detection.box.width >= TAM_MIN*(v.videoWidth||640);
+          if(!rostoDesde.current) rostoDesde.current=Date.now();
+          const tam = det.detection.box.width/(v.videoWidth||640), sc=det.detection.score;
+          const bom = sc>=QUALIDADE && tam>=TAM_MIN;
+          if(!bom) setDica(tam<TAM_MIN ? "Chegue mais perto da câmera" : "Fique de frente, com o rosto iluminado");
+          if(DIAG && !bom) setDiag(`rosto ${Math.round(tam*100)}% · nitidez ${sc.toFixed(2)}`);
           if(bom){
             const live=Array.from(det.descriptor);
             // menor distância de cada pessoa (1º e 2º colocados são pessoas diferentes)
@@ -275,6 +294,9 @@ function Kiosk(){
             const b1=ord[0], b2=ord[1];
             const ignorada = ignorar.current && ignorar.current.id===String(b1&&b1.r.colaborador_id) && Date.now()<ignorar.current.ate;
             if(b1 && b1.d<LIMIAR && (!b2 || b2.d-b1.d>=MARGEM) && !ignorada) cand=b1.r;
+            if(DIAG) setDiag(`${b1?b1.r.nome+" "+b1.d.toFixed(2):"—"} · 2º ${b2?b2.r.nome+" "+b2.d.toFixed(2):"—"} · rosto ${Math.round(tam*100)}% · nitidez ${sc.toFixed(2)} → ${cand?"OK":"não"}`);
+            if(cand) setDica("Reconhecendo…");
+            else setDica(Date.now()-rostoDesde.current>6000 ? "Não reconheci você. Toque em Usar PIN." : "Procurando…");
           }
         }
         // só confirma quando a mesma pessoa aparece em leituras seguidas
@@ -287,7 +309,7 @@ function Kiosk(){
   }
 
   async function reconhecer(r, metodo){
-    atividade();
+    atividade(); setDica(""); rostoDesde.current=0;
     clearInterval(timer.current);
     // batidas de hoje (desde a meia-noite local) decidem o botão sugerido
     const ini=new Date(); ini.setHours(0,0,0,0);
@@ -357,7 +379,8 @@ function Kiosk(){
 
           {fase==="scan" && <>
             <div className="msg">Olhe para a câmera</div>
-            <div className="sub">{erro || (enrolled.current.length===0 ? "Nenhum rosto cadastrado ainda — use o PIN por enquanto." : "O reconhecimento é automático. Se não funcionar, use o PIN.")}</div>
+            <div className="sub" style={dica && dica.startsWith("Não") ? {color:"#FFD27A",fontWeight:600} : null}>{erro || (enrolled.current.length===0 ? "Nenhum rosto cadastrado ainda — use o PIN por enquanto." : dica || "O reconhecimento é automático. Se não funcionar, use o PIN.")}</div>
+            {DIAG && <div className="sub" style={{fontFamily:"monospace",fontSize:12,opacity:.85}}>diag: {diag} · {enrolled.current.length} rostos</div>}
           </>}
 
           {fase==="confirmar" && pessoa && <>
