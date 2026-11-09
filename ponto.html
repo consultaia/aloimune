@@ -85,6 +85,36 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
   .err{background:var(--bad-bg);color:var(--bad);padding:9px 12px;border-radius:9px;font-size:13px;margin-bottom:12px}
   .modal-actions{display:flex;justify-content:space-between;align-items:center;margin-top:18px;gap:10px}
   .mono{font-variant-numeric:tabular-nums}
+  /* folha de ponto para assinatura (uma página A4 por funcionário; na tela fica escondida) */
+  .folhas{display:none}
+  @media print{
+    @page{size:A4 portrait;margin:10mm}
+    html,body{background:#fff}
+    .wrap{max-width:none;padding:0;margin:0}
+    .wrap:has(.espelho-host)>*:not(.espelho-host){display:none!important}
+    .espelho-host>*{display:none!important}
+    .espelho-host>.folhas{display:block!important}
+    .folhas *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  }
+  .folha{font-family:Inter,Arial,sans-serif;color:#111;font-size:9px;page-break-after:always;break-after:page}
+  .folha:last-child{page-break-after:auto;break-after:auto}
+  .folha h1{font-size:15px;margin:0 0 2px} .folha .sub{font-size:9.5px;color:#444}
+  .folha .cabf{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1.5px solid #0E7C7B;padding-bottom:6px;margin-bottom:6px}
+  .folha .dados{display:grid;grid-template-columns:repeat(4,auto);gap:2px 14px;font-size:9.5px;margin-bottom:6px}
+  .folha .dados b{font-weight:700}
+  .folha table{width:100%;border-collapse:collapse;table-layout:fixed}
+  .folha th,.folha td{border:0.5px solid #999;padding:1.5px 3px;text-align:center;height:13px}
+  .folha th{background:#EEF2F2;font-size:8px;font-weight:700}
+  .folha td.obs{text-align:left;font-size:7.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .folha tr.fds td{background:#F4F6F7} .folha tr.alerta td.obs{color:#B03A2E;font-weight:600}
+  .folha .tots{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:7px 0}
+  .folha .tots div{border:0.5px solid #999;padding:4px 6px} .folha .tots span{display:block;font-size:7.5px;color:#555;text-transform:uppercase}
+  .folha .tots b{font-size:12px}
+  .folha .decl{font-size:9px;line-height:1.45;margin:6px 0;text-align:justify}
+  .folha .linha{border-bottom:0.5px solid #555;height:15px}
+  .folha .ass{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:26px;text-align:center;font-size:9px}
+  .folha .ass div{border-top:0.5px solid #111;padding-top:3px}
+  .folha .rod{font-size:7.5px;color:#666;margin-top:8px}
 </style>
 </head>
 <body>
@@ -372,20 +402,22 @@ function Espelho(){
   const [ano,setAno]=useState(now.getFullYear()); const [mes,setMes]=useState(now.getMonth());
   const [colabs,setColabs]=useState([]); const [selC,setSelC]=useState("");
   const [regs,setRegs]=useState([]); const [loading,setLoading]=useState(true); const [edit,setEdit]=useState(null);
+  const [esc,setEsc]=useState(null); // dados da Escala (turnos do mês, férias, folgas, feriados)
 
   async function load(){
     setLoading(true);
     if(sb){
       const ini=new Date(ano,mes,1).toISOString(), fim=new Date(ano,mes+1,1).toISOString();
-      const [r,c]=await Promise.all([
+      const [r,c,e]=await Promise.all([
         sb.from("registros_ponto").select("*").gte("momento",ini).lt("momento",fim).order("momento",{ascending:true}),
-        sb.from("colaboradores").select("id,nome").eq("ativo",true).order("nome"),
+        sb.from("colaboradores").select("*").eq("ativo",true).order("nome"),
+        sb.from("escala_estado").select("dados").eq("id",1).maybeSingle(),
       ]);
       if(r.error) alert(r.error.message);
-      setRegs(r.data||[]); setColabs(c.data||[]);
+      setRegs(r.data||[]); setColabs(c.data||[]); setEsc((e&&e.data&&e.data.dados)||null);
     } else {
       const t=(d,h,mi)=>new Date(now.getFullYear(),now.getMonth(),d,h,mi).toISOString();
-      setColabs([{id:"1",nome:"Paula Ribeiro"},{id:"2",nome:"Bianca Souza"},{id:"3",nome:"Carla Nunes"}]);
+      setColabs([{id:"1",nome:"Paula Ribeiro",funcao:"Enfermeira",carga_horaria:44,admissao:"2024-03-01"},{id:"2",nome:"Bianca Souza",funcao:"Recepcionista",carga_horaria:44,carga_mensal:180},{id:"3",nome:"Carla Nunes",funcao:"Téc. laboratório",carga_horaria:40}]);
       setRegs([ {id:"a",colaborador_id:"1",tipo:"entrada",metodo:"facial",momento:t(2,7,58)},
                 {id:"a2",colaborador_id:"1",tipo:"saida",metodo:"facial",momento:t(2,12,1)},
                 {id:"a3",colaborador_id:"1",tipo:"entrada",metodo:"facial",momento:t(2,13,4)},
@@ -508,7 +540,8 @@ function Espelho(){
   }
 
   return (
-    <div>
+    <div className="espelho-host">
+      <FolhasAssinatura ano={ano} mes={mes} colabs={selC ? colabs.filter(c=>String(c.id)===String(selC)) : colabs} regs={regs} esc={esc} />
       <div className="note">Espelho de ponto: cada batida registrada. Clique numa batida para corrigir o horário, ou use os botões para incluir/apagar (esquecimento, atestado, ajuste). Toda alteração fica com método "ajuste". O almoço é reconhecido pela ordem das batidas (entrada → saída almoço → volta almoço → saída); jornada acima de 6h precisa de pelo menos 1h de almoço.</div>
       <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",marginBottom:14}}>
         <button className="btn btn-ghost btn-sm" onClick={()=>mudarMes(-1)}>‹</button>
@@ -521,6 +554,7 @@ function Espelho(){
         {comAlerta>0 && <span style={{color:"var(--bad)",fontWeight:600,fontSize:13}}>⚠ {comAlerta} dia(s) para revisar</span>}
         <div style={{flex:1}}></div>
         <button className="btn btn-ghost btn-sm" onClick={exportar} disabled={!linhas.length}>Exportar Excel</button>
+        <button className="btn btn-ghost btn-sm" onClick={()=>window.print()} disabled={!colabs.length} title={selC?"Folha do funcionário selecionado":"Uma folha por funcionário"}>🖨 Folha para assinatura</button>
         <button className="btn btn-primary btn-sm" onClick={()=>setEdit({ colaborador_id:selC||colabs[0]?.id||"", tipo:"entrada", data:_dl(new Date()), hora:"08:00" })}>+ Nova batida</button>
       </div>
 
@@ -554,6 +588,95 @@ function Espelho(){
       {edit && <BatidaModal b={edit} colabs={colabs} onClose={()=>setEdit(null)} onSave={salvar} onDel={excluir} />}
     </div>
   );
+}
+
+/* ===== FOLHA DE PONTO MENSAL PARA ASSINATURA =====
+   Uma página por funcionário: todos os dias do mês com as batidas, o que a Escala previa (folga, férias,
+   feriado), total trabalhado × carga prevista, declaração de conferência e assinaturas. */
+const DS_F=["dom","seg","ter","qua","qui","sex","sáb"];
+const hhmm=(h)=>{ if(h==null||isNaN(h)) return "—"; const neg=h<0; let m=Math.round(Math.abs(h)*60); return (neg?"−":"")+Math.floor(m/60)+"h"+String(m%60).padStart(2,"0"); };
+const NOME_COD={F:"Folga",FE:"Férias",LC:"Licença",AB:"Liberado (abonado)"};
+function FolhasAssinatura({ ano, mes, colabs, regs, esc }){
+  const D=new Date(ano,mes+1,0).getDate();
+  const mk=ano+"-"+String(mes+1).padStart(2,"0");
+  const grade=(esc&&esc.escalas&&esc.escalas[mk])||{};
+  const feriados=new Set(((esc&&esc.feriados)||[]).filter(f=>f.k===ano+"-"+mes).map(f=>f.d));
+  const turnos=(esc&&Array.isArray(esc.turnos)&&esc.turnos.length) ? esc.turnos
+    : [{sigla:"I",horas:(esc&&esc.horas&&esc.horas.I)??8},{sigla:"M",horas:(esc&&esc.horas&&esc.horas.M)??4},{sigla:"T",horas:(esc&&esc.horas&&esc.horas.T)??4},{sigla:"S",horas:(esc&&esc.horas&&esc.horas.S)??5}];
+  const horasTurno=(cod)=>{ const t=turnos.find(x=>x.sigla===cod); return t ? (+t.horas||0) : 0; };
+  const iso=(d)=>ano+"-"+String(mes+1).padStart(2,"0")+"-"+String(d).padStart(2,"0");
+  const periodo=`01/${String(mes+1).padStart(2,"0")}/${ano} a ${D}/${String(mes+1).padStart(2,"0")}/${ano}`;
+  const fmtDt=(s)=> s ? s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4) : "—";
+  const parcial = _dl(new Date()) <= iso(D);  // imprimiu antes de o mês acabar
+
+  return <div className="folhas">{colabs.map(c=>{
+    const meus=regs.filter(r=>String(r.colaborador_id)===String(c.id));
+    const porDia={}; meus.forEach(r=>{ const k=_dl(r.momento); (porDia[k]=porDia[k]||[]).push(r); });
+    const minhaGrade=grade[c.id]||{};
+    const temEscala=Object.keys(minhaGrade).length>0;
+    let total=0, diasTrab=0, ajustes=0, alertas=0;
+    const linhas=[];
+    for(let d=1;d<=D;d++){
+      const k=iso(d), w=new Date(ano,mes,d).getDay(), its=porDia[k]||[], cod=minhaGrade[d]||"";
+      const a=its.length ? analisarDia(its) : null;
+      if(a){ total+=a.horas; diasTrab++; if(a.alertas.length) alertas++; }
+      const aj=its.filter(r=>r.metodo==="ajuste").length; ajustes+=aj;
+      const obs=[];
+      if(feriados.has(d)) obs.push("Feriado");
+      if(cod && NOME_COD[cod]) obs.push(NOME_COD[cod]);
+      if(a) a.alertas.forEach(x=>obs.push(x.t));
+      if(aj) obs.push(aj===1?"1 batida ajustada manualmente":aj+" batidas ajustadas manualmente");
+      if(a && a.its.length>4) obs.push(a.its.length+" batidas");
+      linhas.push({d,w,cod,a,obs,alerta:!!(a&&a.alertas.length)});
+    }
+    // carga prevista: pela Escala do mês; sem escala, pela carga contratada
+    let prev=null, origem="";
+    if(temEscala){ prev=Object.values(minhaGrade).reduce((t,cod)=>t+horasTurno(cod),0); origem="conforme a escala do mês"; }
+    else if(c.carga_mensal!=null){ prev=Number(c.carga_mensal); origem="carga mensal contratada"; }
+    else if(c.carga_horaria){ prev=Number(c.carga_horaria)*D/7; origem=`${c.carga_horaria}h/semana × ${D} dias ÷ 7`; }
+    const saldo = prev==null ? null : total-prev;
+    const carga = c.carga_mensal!=null ? `${c.carga_mensal}h/mês` : c.carga_horaria ? `${c.carga_horaria}h/semana` : "não informada";
+    const hm=(r)=> r ? fmtH(r.momento) : "";
+    return (
+      <div className="folha" key={c.id}>
+        <div className="cabf">
+          <div><h1>Espelho de ponto mensal{parcial && <span style={{fontSize:10,color:"#B03A2E",marginLeft:8}}>PARCIAL — período ainda não encerrado</span>}</h1><div className="sub">Aloimune · Período: {periodo}</div></div>
+          <div className="sub" style={{textAlign:"right"}}>Emitido em {new Date().toLocaleDateString("pt-BR")} às {new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}<br/>Registro: ponto eletrônico (biometria facial / PIN)</div>
+        </div>
+        <div className="dados">
+          <span>Colaborador(a): <b>{c.nome}</b></span><span>Função: <b>{c.funcao||"—"}</b></span>
+          <span>Admissão: <b>{fmtDt(c.admissao)}</b></span><span>Carga horária: <b>{carga}</b></span>
+        </div>
+        <table>
+          <thead><tr><th style={{width:"6%"}}>Dia</th><th style={{width:"6%"}}>Sem.</th><th style={{width:"7%"}}>Escala</th><th style={{width:"9%"}}>Entrada</th><th style={{width:"10%"}}>Saída almoço</th><th style={{width:"10%"}}>Volta almoço</th><th style={{width:"9%"}}>Saída</th><th style={{width:"8%"}}>Intervalo</th><th style={{width:"9%"}}>Trabalhado</th><th>Observações</th></tr></thead>
+          <tbody>{linhas.map(l=>(
+            <tr key={l.d} className={(l.w===0||l.w===6||feriados.has(l.d)?"fds ":"")+(l.alerta?"alerta":"")}>
+              <td>{String(l.d).padStart(2,"0")}</td><td>{DS_F[l.w]}</td><td>{l.cod}</td>
+              <td>{l.a?hm(l.a.entrada):""}</td><td>{l.a?hm(l.a.saidaAlmoco):""}</td><td>{l.a?hm(l.a.voltaAlmoco):""}</td><td>{l.a?hm(l.a.saida):""}</td>
+              <td>{l.a&&l.a.almoco?fmtMin(l.a.almoco.min):""}</td><td><b>{l.a?hhmm(l.a.horas):""}</b></td>
+              <td className="obs">{l.obs.join(" · ")}</td>
+            </tr>))}</tbody>
+        </table>
+        <div className="tots">
+          <div><span>Dias com registro</span><b>{diasTrab}</b></div>
+          <div><span>Horas trabalhadas</span><b>{hhmm(total)}</b></div>
+          <div><span>Carga prevista{origem?` (${origem})`:""}</span><b>{hhmm(prev)}</b></div>
+          <div><span>Saldo do mês</span><b>{saldo==null?"—":(saldo>0?"+":"")+hhmm(saldo)}</b></div>
+        </div>
+        {(alertas>0||ajustes>0) && <div className="rod" style={{marginTop:0}}>{alertas>0?`${alertas} dia(s) com observação na conferência. `:""}{ajustes>0?`${ajustes} batida(s) incluída(s) ou corrigida(s) manualmente pela empresa.`:""}</div>}
+        <div className="decl">
+          Declaro que conferi os registros de ponto acima, referentes ao período de <b>{periodo}</b>, e que eles correspondem
+          à jornada que efetivamente cumpri, totalizando <b>{hhmm(total)}</b> trabalhadas
+          {saldo!=null && <>, com saldo de <b>{(saldo>0?"+":"")+hhmm(saldo)}</b> em relação à carga horária prevista de <b>{hhmm(prev)}</b></>}.
+          Eventuais divergências estão anotadas abaixo, antes da assinatura.
+        </div>
+        <div style={{fontSize:9,marginTop:4}}>Observações / divergências do(a) colaborador(a):</div>
+        <div className="linha"></div><div className="linha"></div>
+        <div style={{fontSize:9,marginTop:12}}>Local e data: ______________________________, ____ de ______________________ de ________</div>
+        <div className="ass"><div>{c.nome}<br/>Colaborador(a)</div><div>Aloimune<br/>Responsável pela empresa</div></div>
+        <div className="rod">Documento gerado pela plataforma Aloimune a partir dos registros do ponto eletrônico. Uma via para a empresa, uma para o(a) colaborador(a).</div>
+      </div>);
+  })}</div>;
 }
 
 function BatidaModal({ b, colabs, onClose, onSave, onDel }){
