@@ -126,6 +126,20 @@ function opcoesDoDia(hoje){
   return { botoes:[{tipo:"entrada",rot:"Registrar ENTRADA",feito:"Entrada",sug:true},{tipo:"saida",rot:"Registrar SAÍDA",feito:"Saída"}] };
 }
 
+// relógio do repouso: se ele parar de andar, a página travou (ajuda a diagnosticar)
+function RelogioRepouso(){ const [t,setT]=useState(hora());
+  useEffect(()=>{const i=setInterval(()=>setT(hora()),1000);return ()=>clearInterval(i);},[]);
+  return <span>{t}</span>; }
+// recarrega o ponto (autocorreção). Guarda o motivo para mostrar depois e evita recarregar em loop.
+function recarregar(motivo){
+  try{
+    const ult=Number(sessionStorage.getItem("ponto_reload_em")||0);
+    if(Date.now()-ult<60000) return;           // no máximo 1 vez por minuto
+    sessionStorage.setItem("ponto_reload_em",String(Date.now()));
+    localStorage.setItem("ponto_ultimo_reload",new Date().toLocaleString("pt-BR")+" — "+motivo);
+  }catch(_){}
+  location.reload();
+}
 function Relogio(){ const [t,setT]=useState(hora());
   useEffect(()=>{const i=setInterval(()=>setT(hora()),1000);return ()=>clearInterval(i);},[]);
   return <div className="clock">{t}</div>; }
@@ -155,7 +169,7 @@ function Kiosk(){
   const videoRef=useRef(null);
   const [fase,setFase]=useState("carregando"); // carregando | scan | confirmar | pin | salvando | feito | erro
   const [erro,setErro]=useState("");
-  const [pessoa,setPessoa]=useState(null);      // {colaborador_id, nome, metodo}
+  const [pessoa,setPessoa]=useState(null); const pessoaRef=useRef(null); pessoaRef.current=pessoa;      // {colaborador_id, nome, metodo}
   const [sugestao,setSugestao]=useState("entrada");
   const [opcoes,setOpcoes]=useState(opcoesDoDia([]));
   const [pin,setPin]=useState("");
@@ -233,7 +247,6 @@ function Kiosk(){
       return true;
     }catch(e){
       // na 2ª falha, tenta o processamento alternativo (sem placa de vídeo)
-      if(tentativasModelo.current===2 && faceapi.tf && faceapi.tf.setBackend){ try{ await faceapi.tf.setBackend("cpu"); }catch(_){} }
       setFalha("Reconhecimento facial indisponível agora ("+(e && e.message || e)+"). Tentando de novo… Use o PIN.");
       return false;
     }
@@ -263,14 +276,34 @@ function Kiosk(){
     enrolled.current=(data||[]).filter(r=>Array.isArray(r.descritor)&&r.descritor.length && (!idsAtivos.size || idsAtivos.has(String(r.colaborador_id))));
   }
   useEffect(()=>{ const id=setInterval(carregarRostos,5*60000); return ()=>clearInterval(id); },[]);
+  const dormindoRef=useRef(false);
+  const scanDesde=useRef(0);
+  // uma leitura que não termina em 15 s = reconhecimento travado (ex.: iPhone perdeu a placa de vídeo ao
+  // suspender o app). Antes isso deixava o ponto sem reconhecer ninguém, em silêncio. Agora recarrega.
+  useEffect(()=>{ const id=setInterval(()=>{
+      if(scanning.current && Date.now()-scanDesde.current>15000 && !pessoaRef.current) recarregar("reconhecimento travado");
+    },5000); return ()=>clearInterval(id); },[]);
+  // voltou depois de mais de 2 min em segundo plano (app fechado/tela bloqueada): recarrega para começar limpo
+  useEffect(()=>{ let saiu=0;
+    const vis=()=>{ if(document.visibilityState==="hidden") saiu=Date.now(); else if(saiu && Date.now()-saiu>120000) recarregar("voltou do segundo plano"); };
+    document.addEventListener("visibilitychange",vis); return ()=>document.removeEventListener("visibilitychange",vis); },[]);
   function dormir(){
+    dormindoRef.current=true;
     clearInterval(timer.current); scanning.current=false;
     setPessoa(null); setPin(""); setErro(""); setFeito(null); setFase("scan");
     setDormindo(true); iniciarMovimento();
   }
   function acordar(){
-    clearInterval(motionTimer.current); prevFrame.current=null; atividade(); garantirCamera(); if(Date.now()-rostosEm.current>60000) carregarRostos();
-    setDormindo(false); setFase("scan"); loopScan();
+    // primeiro sai do repouso; o resto não pode impedir isso
+    setDormindo(false); dormindoRef.current=false; setFase("scan");
+    try{ clearInterval(motionTimer.current); prevFrame.current=null; atividade(); loopScan(); }catch(_){}
+    try{ garantirCamera(); if(Date.now()-rostosEm.current>60000) carregarRostos(); }catch(_){}
+  }
+  // tocou para acordar e não acordou em 2 s (tela presa): recarrega o ponto sozinho
+  function tocarRepouso(e){
+    if(e){ e.stopPropagation(); }
+    acordar();
+    setTimeout(()=>{ if(dormindoRef.current) recarregar("não acordou ao toque"); },2000);
   }
   function iniciarMovimento(){
     clearInterval(motionTimer.current);
@@ -297,7 +330,7 @@ function Kiosk(){
     clearInterval(timer.current);
     timer.current=setInterval(async ()=>{
       if(scanning.current || !videoRef.current || !window.faceapi || !faceapi.nets.faceRecognitionNet.isLoaded) return;
-      scanning.current=true;
+      scanning.current=true; scanDesde.current=Date.now();
       try{
         const det=await faceapi.detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize:320, scoreThreshold:0.4 }))
           .withFaceLandmarks().withFaceDescriptor();
@@ -332,8 +365,7 @@ function Kiosk(){
       }catch(e){
         // antes o erro era engolido em silêncio; agora aparece na tela e tenta o modo de processamento alternativo
         errosSeg.current++;
-        if(errosSeg.current===5 && faceapi.tf && faceapi.tf.getBackend && faceapi.tf.getBackend()!=="cpu"){ try{ await faceapi.tf.setBackend("cpu"); await faceapi.tf.ready(); }catch(_){} }
-        if(errosSeg.current>=5) setFalha("O reconhecimento facial falhou neste aparelho ("+(e && e.message || e)+"). Use o PIN e avise a coordenação.");
+        if(errosSeg.current>=5){ setFalha("O reconhecimento facial falhou ("+(e && e.message || e)+"). Reiniciando o ponto…"); recarregar("erro na detecção: "+(e && e.message || e)); }
       }
       scanning.current=false;
     }, 600);
@@ -383,7 +415,7 @@ function Kiosk(){
     <div className="kiosk" onClick={()=>{ if(dormindo) acordar(); else atividade(); }} onTouchStart={()=>{ if(dormindo) acordar(); else atividade(); }}>
       <div className="brand"><span className="logo">{DEMO_URL ? <span style={{display:"inline-flex",width:28,height:28,borderRadius:8,background:"#0E7C7B",color:"#fff",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14}}>C</span> : <img src="icon-192.png" alt="Logo da clínica" />}</span> Ponto</div>
       <Relogio/>
-      {dormindo && <div className="repouso"><div className="rin"><div className="zz">●</div><div className="rt">Toque para bater o ponto</div><div className="rs">recepção · ponto eletrônico</div></div></div>}
+      {dormindo && <div className="repouso" onPointerDown={tocarRepouso} onTouchStart={tocarRepouso} onClick={e=>e.stopPropagation()}><div className="rin"><div className="zz">●</div><div className="rt">Toque para bater o ponto</div><div className="rs">recepção · ponto eletrônico · <RelogioRepouso/></div></div></div>}
 
       {fase==="pin" ? (
         <>
@@ -411,7 +443,7 @@ function Kiosk(){
           {fase==="scan" && <>
             <div className="msg">Olhe para a câmera</div>
             <div className="sub" style={falha || (dica && dica.startsWith("Não")) ? {color:"#FFD27A",fontWeight:600} : null}>{erro || falha || (enrolled.current.length===0 ? "Nenhum rosto cadastrado ainda — use o PIN por enquanto." : dica || "O reconhecimento é automático. Se não funcionar, use o PIN.")}</div>
-            {DIAG && <div className="sub" style={{fontFamily:"monospace",fontSize:12,opacity:.85}}>diag: {diag} · {enrolled.current.length} rostos</div>}
+            {DIAG && <div className="sub" style={{fontFamily:"monospace",fontSize:12,opacity:.85}}>diag: {diag} · {enrolled.current.length} rostos · {window.faceapi && faceapi.tf ? faceapi.tf.getBackend() : "sem faceapi"} · último reinício: {(()=>{ try{ return localStorage.getItem("ponto_ultimo_reload")||"nenhum"; }catch(_){ return "?"; } })()}</div>}
           </>}
 
           {fase==="confirmar" && pessoa && <>
