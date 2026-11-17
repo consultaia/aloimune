@@ -137,39 +137,44 @@ const fmtMin=(m)=>{ m=Math.round(m); const h=Math.floor(m/60), r=m%60; return h 
 function analisarDia(itens){
   const its=[...itens].sort((a,b)=>a.momento.localeCompare(b.momento));
   const rot=its.map(r=> r.tipo==="entrada" ? "Entrada" : "Saída");
+  // conta em minutos cheios, como aparece na tela (12:13:40 → 12:13). Antes os segundos entravam na conta:
+  // 12:13 às 13:13 dava 59min.
+  const t=(r)=> Math.floor(new Date(r.momento).getTime()/6e4)*6e4;
   let total=0, open=null, ok=true;
-  its.forEach(r=>{ if(r.tipo==="entrada"){ if(open) ok=false; open=new Date(r.momento); } else { if(!open) ok=false; else { total+=(new Date(r.momento)-open)/36e5; open=null; } } });
-  if(open) ok=false;
+  its.forEach(r=>{ if(r.tipo==="entrada"){ if(open) ok=false; open=t(r); } else { if(open==null) ok=false; else { total+=(t(r)-open)/36e5; open=null; } } });
+  if(open!=null) ok=false;
   // pausas = saída seguida de entrada
   const pausas=[];
   for(let i=0;i+1<its.length;i++) if(its[i].tipo==="saida" && its[i+1].tipo==="entrada")
-    pausas.push({i, min:(new Date(its[i+1].momento)-new Date(its[i].momento))/6e4});
+    pausas.push({i, min:(t(its[i+1])-t(its[i]))/6e4});
   const almoco = pausas.length ? pausas.reduce((a,b)=> b.min>a.min ? b : a) : null;
   if(almoco){ rot[almoco.i]="Saída almoço"; rot[almoco.i+1]="Volta almoço"; }
   const intervalo=pausas.reduce((s,p)=>s+p.min,0);
   // jornada = do primeiro ao último registro (para saber se o intervalo era obrigatório)
-  const jornada = its.length>=2 ? (new Date(its[its.length-1].momento)-new Date(its[0].momento))/36e5 : 0;
-  const alertas=[];
+  const jornada = its.length>=2 ? (t(its[its.length-1])-t(its[0]))/36e5 : 0;
+  const alertas=[], infos=[];
   if(!ok){
     if(its.length && its[its.length-1].tipo==="entrada") alertas.push({sev:"bad", t: almoco||its.length===1 ? "Falta a saída" : "Falta batida"});
     else alertas.push({sev:"bad", t:"Batidas fora de ordem / faltando"});
   }
   if(ok && total>JORNADA_COM_ALMOCO){
     if(!almoco) alertas.push({sev:"warn", t:`Sem batida de almoço (${total.toFixed(1).replace(".",",")}h direto)`});
-    else if(almoco.min<ALMOCO_MIN) alertas.push({sev:"bad", t:`Almoço de ${fmtMin(almoco.min)} (mínimo 1h)`});
+    // almoço menor que 1h não é erro: o tempo que voltou mais cedo já está somado nas horas trabalhadas
+    else if(almoco.min<ALMOCO_MIN) infos.push({t:`Almoço de ${fmtMin(almoco.min)}: voltou ${fmtMin(ALMOCO_MIN-almoco.min)} mais cedo (somado às horas)`});
   }
   if(almoco && almoco.min>ALMOCO_MAX) alertas.push({sev:"warn", t:`Almoço de ${fmtMin(almoco.min)} (acima de 2h)`});
   const pega=(lbl)=>{ const i=rot.indexOf(lbl); return i<0?null:its[i]; };
   const flags={ faltando:!ok, semAlmoco: ok&&total>JORNADA_COM_ALMOCO&&!almoco, almocoCurto: ok&&total>JORNADA_COM_ALMOCO&&!!almoco&&almoco.min<ALMOCO_MIN, almocoLongo: !!almoco&&almoco.min>ALMOCO_MAX };
-  return { its, rot, horas:total, ok, almoco, intervalo, jornada, alertas, flags,
+  return { its, rot, horas:total, ok, almoco, intervalo, jornada, alertas, infos, flags,
            entrada: its[0]&&its[0].tipo==="entrada" ? its[0] : null,
            saidaAlmoco: pega("Saída almoço"), voltaAlmoco: pega("Volta almoço"),
            saida: its.length>1 && its[its.length-1].tipo==="saida" ? its[its.length-1] : null };
 }
 function Situacao({ a }){
-  if(!a.alertas.length) return <span style={{color:"var(--ok)",fontWeight:600,fontSize:12.5}}>ok</span>;
+  const infos=(a.infos||[]).map((x,i)=><span key={"i"+i} style={{color:"var(--muted)",fontSize:12,whiteSpace:"nowrap"}}>ⓘ {x.t}</span>);
+  if(!a.alertas.length) return <div style={{display:"flex",flexDirection:"column",gap:3}}><span style={{color:"var(--ok)",fontWeight:600,fontSize:12.5}}>ok</span>{infos}</div>;
   return <div style={{display:"flex",flexDirection:"column",gap:3}}>{a.alertas.map((x,i)=>
-    <span key={i} style={{color:x.sev==="bad"?"var(--bad)":"var(--warn)",fontWeight:600,fontSize:12.5,whiteSpace:"nowrap"}}>⚠ {x.t}</span>)}</div>;
+    <span key={i} style={{color:x.sev==="bad"?"var(--bad)":"var(--warn)",fontWeight:600,fontSize:12.5,whiteSpace:"nowrap"}}>⚠ {x.t}</span>)}{infos}</div>;
 }
 
 function Enroll(){
@@ -512,7 +517,7 @@ function Espelho(){
         R.push([cel(nomes[l.colab]||"—",S.nome), cel(serial(l.dia),S.cen,"dd/mm/yyyy"), cel(DS[new Date(l.dia+"T12:00").getDay()],S.cen),
           cel(hm(l.entrada),S.cen,"hh:mm"), cel(hm(l.saidaAlmoco),S.alm,"hh:mm"), cel(hm(l.voltaAlmoco),S.alm,"hh:mm"), cel(hm(l.saida),S.cen,"hh:mm"),
           cel(l.almoco?l.almoco.min/1440:null,S.alm,"[h]:mm"), cel(l.horas/24,S.cen,"[h]:mm"),
-          cel(l.alertas.map(a=>a.t).join(" · ")||"ok",S[sev]), cel(l.its.map((r,j)=>l.rot[j]+" "+fmtH(r.momento)).join("  |  "),S.mini)]);
+          cel([...l.alertas.map(a=>a.t), ...(l.infos||[]).map(x=>x.t)].join(" · ")||"ok",S[sev]), cel(l.its.map((r,j)=>l.rot[j]+" "+fmtH(r.momento)).join("  |  "),S.mini)]);
       });
       R.push([cel("Total — "+(nomes[id]||""),S.tot),cel(dias.length+" dia(s)",S.totc),cel("",S.tot),cel("",S.tot),cel("",S.tot),cel("",S.tot),cel("",S.tot),cel("",S.tot),
         cel(soma/24,S.totc,"[h]:mm"), cel(rev?rev+" dia(s) para revisar":"tudo certo",rev?S.bad:S.ok), cel("",S.tot)]);
@@ -530,7 +535,7 @@ function Espelho(){
       T.d+=ds.length; T.h+=h; if(media!=null){T.a+=media*comAlm.length; T.na+=comAlm.length;} T.s+=n("semAlmoco"); T.c+=n("almocoCurto"); T.l+=n("almocoLongo"); T.f+=n("faltando"); T.r+=rev;
       const num=(v,bad)=>cel(v,v&&bad?S.bad:S.cen);
       RR.push([cel(nomes[id]||"—",S.nome),cel(ds.length,S.cen),cel(h/24,S.cen,"[h]:mm"),cel(media!=null?media/1440:null,S.alm,"[h]:mm"),
-        num(n("semAlmoco"),1),num(n("almocoCurto"),1),num(n("almocoLongo"),1),num(n("faltando"),1),cel(rev,rev?S.bad:S.ok)]);
+        num(n("semAlmoco"),1),num(n("almocoCurto"),0),num(n("almocoLongo"),1),num(n("faltando"),1),cel(rev,rev?S.bad:S.ok)]);
     });
     RR.push([cel("Total",S.tot),cel(T.d,S.totc),cel(T.h/24,S.totc,"[h]:mm"),cel(T.na?T.a/T.na/1440:null,S.totc,"[h]:mm"),cel(T.s,S.totc),cel(T.c,S.totc),cel(T.l,S.totc),cel(T.f,S.totc),cel(T.r,S.totc)]);
     const wsR=aba(RR,[26,10,11,10,12,12,12,10,10],[{s:{r:0,c:0},e:{r:0,c:8}},{s:{r:1,c:0},e:{r:1,c:8}}],[{hpt:22},{},{},{hpt:32}]);
@@ -624,7 +629,7 @@ function FolhasAssinatura({ ano, mes, colabs, regs, esc }){
       const obs=[];
       if(feriados.has(d)) obs.push("Feriado");
       if(cod && NOME_COD[cod]) obs.push(NOME_COD[cod]);
-      if(a) a.alertas.forEach(x=>obs.push(x.t));
+      if(a){ a.alertas.forEach(x=>obs.push(x.t)); (a.infos||[]).forEach(x=>obs.push(x.t)); }
       if(aj) obs.push(aj===1?"1 batida ajustada manualmente":aj+" batidas ajustadas manualmente");
       if(a && a.its.length>4) obs.push(a.its.length+" batidas");
       linhas.push({d,w,cod,a,obs,alerta:!!(a&&a.alertas.length)});
