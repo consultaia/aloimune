@@ -78,6 +78,16 @@
   .field{display:flex;flex-direction:column;gap:4px} .field label{font-size:12px;color:var(--muted);font-weight:600}
   .pend{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13.5px} .pend:last-child{border-bottom:none}
   .pend .d{flex:1} .pend .v{font-size:12px;color:var(--muted)} .pend.venc .v{color:var(--bad);font-weight:700}
+  /* histórico da jornada */
+  .hres{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+  .hres div{background:#F7FAFB;border:1px solid var(--line);border-radius:10px;padding:8px 10px} .hres b{display:block;font-family:"Space Grotesk";font-size:19px} .hres span{font-size:11.5px;color:var(--muted)}
+  .hmes{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:14px 0 4px}
+  .hev{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13.5px} .hev:last-child{border-bottom:none}
+  .hev .ic{flex:none;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;background:#EEF1F3}
+  .hev .ic.etapa{background:#E6F2F2} .hev .ic.consulta{background:var(--blue-bg)} .hev .ic.proc{background:#EDE9FE} .hev .ic.pend{background:var(--warn-bg)} .hev .ic.ok{background:var(--ok-bg)} .hev .ic.bad{background:var(--bad-bg)}
+  .hev .t{flex:1;min-width:0} .hev .t b{font-weight:600} .hev .t .s{font-size:12px;color:var(--muted);margin-top:1px}
+  .hev .q{font-size:12px;color:var(--muted);white-space:nowrap;text-align:right}
+  @media(max-width:560px){ .hres{grid-template-columns:repeat(2,minmax(0,1fr))} }
   .tl{border-left:2px solid var(--line);margin-left:6px;padding-left:14px} .tli{position:relative;padding:6px 0 10px;font-size:13.5px}
   .tli::before{content:"";position:absolute;left:-20px;top:11px;width:10px;height:10px;border-radius:50%;background:var(--primary)} .tli .w{font-size:12px;color:var(--muted)}
   .evo{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;background:#FBFCFC} .evo .h{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);margin-bottom:6px}
@@ -166,7 +176,8 @@ function App(){
 
   async function moverEtapa(p, etapa){
     if(!podeEditar || p.etapa===etapa) return;
-    if(sb){ const r=await sb.from("clinica_pacientes").update({etapa}).eq("id",p.id); if(r.error) return alert(r.error.message); }
+    if(sb){ const r=await sb.from("clinica_pacientes").update({etapa}).eq("id",p.id); if(r.error) return alert(r.error.message);
+      auditar("mudou_etapa", p.id, "etapa="+(p.etapa||"")+">"+etapa, "clinica_pacientes"); }
     setPacs(prev=>prev.map(x=>x.id===p.id?{...x,etapa}:x));
   }
   async function salvarPaciente(f){
@@ -175,7 +186,12 @@ function App(){
       consentimento_em: f.consentiu ? (f.consentimento_em||new Date().toISOString()) : null, obs_adm:f.obs_adm||null };
     if(!payload.nome) return "Informe o nome.";
     if(sb){ const r= f.id ? await sb.from("clinica_pacientes").update(payload).eq("id",f.id) : await sb.from("clinica_pacientes").insert(payload).select().single();
-      if(r.error) return r.error.message; await load(); if(!f.id && r.data) setSel(r.data); }
+      if(r.error) return r.error.message;
+      // guarda a etapa na auditoria para o histórico da jornada
+      const antes=f.id ? (pacs.find(x=>x.id===f.id)||{}).etapa : null;
+      if(!f.id && r.data) auditar("mudou_etapa", r.data.id, "etapa=>"+payload.etapa, "clinica_pacientes");
+      else if(f.id && antes!==payload.etapa) auditar("mudou_etapa", f.id, "etapa="+(antes||"")+">"+payload.etapa, "clinica_pacientes");
+      await load(); if(!f.id && r.data) setSel(r.data); }
     else { const np={...payload,id:f.id||("n"+Date.now())}; setPacs(p=> f.id? p.map(x=>x.id===f.id?np:x):[...p,np]); if(!f.id) setSel(np); }
     setNovo(false); return null;
   }
@@ -323,7 +339,7 @@ function PacienteForm({ p, profs, meuProf, onClose, onSave }){
 
 function Drawer({ p, papel, meuProf, profs, pends, ags, msgs, podeClinico, podeEditar, onClose, onSave, onAddPend, onConcluirPend, onMover, auditar, uid, reload, onLembrete, onCancelarLembrete }){
   const [lem,setLem]=useState(null); // pendência para lembrar
-  const [tab,setTab]=useState("resumo"); const [editar,setEditar]=useState(false);
+  const [tab,setTab]=useState("historico"); const [editar,setEditar]=useState(false);
   const [np,setNp]=useState({tipo:"exame_solicitado",descricao:"",vencimento:""}); const [msg,setMsg]=useState("");
   const [evos,setEvos]=useState(null); const [ne,setNe]=useState({data:hojeStr(),queixa:"",achados:"",conduta:"",texto:"",pendExame:"",pendRetorno:""});
   const profNome=(id)=> (profs.find(x=>x.id===id)||{}).nome || "—";
@@ -357,10 +373,10 @@ function Drawer({ p, papel, meuProf, profs, pends, ags, msgs, podeClinico, podeE
           <button className="btn btn-ghost btn-sm" onClick={onClose}>Fechar</button>
         </div>
         <div className="tabs" style={{marginTop:12,marginBottom:0}}>
-          <button className={tab==="resumo"?"on":""} onClick={()=>setTab("resumo")}>Resumo</button>
+          <button className={tab==="historico"?"on":""} onClick={()=>setTab("historico")}>Histórico</button>
+          <button className={tab==="resumo"?"on":""} onClick={()=>setTab("resumo")}>Cadastro</button>
           <button className={tab==="pendencias"?"on":""} onClick={()=>setTab("pendencias")}>Pendências{pends.length>0 && <span className="badge">{pends.length}</span>}</button>
           {PRONTUARIO && <button className={tab==="evolucao"?"on":""} onClick={()=>setTab("evolucao")}>Evolução</button>}
-          <button className={tab==="timeline"?"on":""} onClick={()=>setTab("timeline")}>Linha do tempo</button>
         </div>
       </div>
       <div className="dbody">
@@ -424,15 +440,117 @@ function Drawer({ p, papel, meuProf, profs, pends, ags, msgs, podeClinico, podeE
           </div>
         </>)}
 
-        {tab==="timeline" && <div className="card"><h3>Linha do tempo (agenda)</h3>
-          {hist.length===0 ? <div className="empty" style={{padding:8}}>Nenhum agendamento vinculado. Na Agenda, escolha a paciente pelo cadastro para vincular.</div> :
-           <div className="tl">{hist.map(a=>(<div key={a.id} className="tli"><div><b>{a.tipo||"Consulta"}</b> · {a.profissional||""} · <span className="chip">{a.status}</span></div><div className="w">{fmtD(a.data)} {(a.hora||"").slice(0,5)}</div></div>))}</div>}
-        </div>}
+        {tab==="historico" && <Historico p={p} agsPac={hist} msgs={msgs} profNome={profNome} papel={papel} />}
       </div>
       {editar && <PacienteForm p={p} profs={profs} meuProf={meuProf} onClose={()=>setEditar(false)} onSave={async(f)=>{ const e=await onSave(f); if(!e) setEditar(false); return e; }} />}
       {lem && <LembreteModal p={p} pend={lem} profNome={profNome} onClose={()=>setLem(null)} onSave={async(f)=>{ const e=await onLembrete(p,lem,f); if(!e) setLem(null); return e; }} />}
     </div></div>
   );
+}
+
+/* ===== HISTÓRICO DA JORNADA =====
+   Junta tudo o que a plataforma registra sobre a paciente, em ordem de data:
+   etapas da jornada (auditoria), consultas e procedimentos (Agenda e Atendimentos), pendências (abertas,
+   concluídas, canceladas), acompanhamento pós-consulta e lembretes da Dri. Nada clínico (sem prontuário). */
+const ST_AG={agendado:"agendado",confirmado:"confirmado",realizado:"realizado",faltou:"faltou",cancelado:"cancelado"};
+const MESES_H=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+const PASSO_H={etapa1:"1ª etapa do tratamento",etapa2:"2ª etapa do tratamento",etapa3:"3ª etapa do tratamento",consulta:"Consulta",retorno:"Retorno",usg:"USG",
+  reforco_crossmatch:"Reforço de Crossmatch",reforco_intralipid:"Reforço de Intralipid",vacina:"Vacina",exames_pre:"Exames pré-tratamento",outro:"Outro"};
+const ehConsulta=(t)=> /consulta|retorno|avalia/i.test(t||"Consulta");
+function Historico({ p, agsPac, msgs, profNome, papel }){
+  const [dados,setDados]=useState(null); const [filtro,setFiltro]=useState("");
+  useEffect(()=>{ (async()=>{
+    if(!sb){ // demonstração
+      const h=hojeStr();
+      setDados({ aud:[{acao:"mudou_etapa",detalhe:"etapa=>primeira_consulta",quando:addD(h,-60)+"T10:00:00Z"},{acao:"mudou_etapa",detalhe:"etapa=primeira_consulta>investigacao",quando:addD(h,-45)+"T15:00:00Z"}],
+        pends:[{id:"x1",tipo:"exame_solicitado",descricao:"Painel de trombofilia",status:"concluida",criado_em:addD(h,-45)+"T15:10:00Z",concluida_em:addD(h,-20)+"T11:00:00Z",vencimento:addD(h,-25)},
+               {id:"x2",tipo:"exame_solicitado",descricao:"USG transvaginal",status:"aberta",criado_em:addD(h,-10)+"T09:00:00Z",vencimento:addD(h,5)}],
+        atend:[], acomp:[{id:"k1",data_consulta:addD(h,-45),proximos_passos:["exames_pre"],situacao:"concluido",prazo:addD(h,-30),responsavel:"Joana (recepção)",criado_em:addD(h,-45)+"T16:00:00Z"}],
+        agsDemo:[{id:"g1",data:addD(h,-60),hora:"09:00",tipo:"Primeira consulta",profissional:"Dra. Marina Alves",status:"realizado"},{id:"g2",data:addD(h,-45),hora:"14:00",tipo:"Retorno",profissional:"Dra. Marina Alves",status:"realizado"},
+                 {id:"g3",data:addD(h,-20),hora:"08:00",tipo:"Crossmatch",profissional:"Enf. Paula",status:"realizado"},{id:"g4",data:addD(h,12),hora:"10:30",tipo:"Retorno",profissional:"Dra. Marina Alves",status:"confirmado"}] });
+      return;
+    }
+    const esc=(t)=>(t||"").replace(/[%_,()]/g,"");
+    const [a,pe,at,ac1,ac2]=await Promise.all([
+      sb.from("clinica_auditoria").select("acao,detalhe,quando,papel,tabela").eq("registro_id",String(p.id)).eq("tabela","clinica_pacientes").order("quando"),
+      sb.from("clinica_pendencias").select("*").eq("paciente_id",p.id),
+      sb.from("atendimentos").select("*").eq("paciente_id",p.id),
+      sb.from("clinica_acompanhamentos").select("*").eq("paciente_id",p.id).eq("ativo",true),
+      sb.from("clinica_acompanhamentos").select("*").ilike("paciente",esc(p.nome)).is("paciente_id",null).eq("ativo",true),
+    ]);
+    // cada fonte é opcional: se o perfil não puder ver uma delas, o resto aparece normalmente
+    setDados({ aud:a.error?null:(a.data||[]), pends:pe.error?[]:(pe.data||[]), atend:at.error?[]:(at.data||[]),
+      acomp:[...(ac1.error?[]:(ac1.data||[])),...(ac2.error?[]:(ac2.data||[]))] });
+  })(); },[p.id]);
+
+  if(!dados) return <div className="card"><div className="empty">Carregando o histórico…</div></div>;
+  const h=hojeStr();
+  const ags = sb ? agsPac : dados.agsDemo;
+  const ev=[]; // {quando (iso), cat, ic, cls, titulo, sub}
+  const push=(quando,cat,ic,cls,titulo,sub)=>{ if(quando) ev.push({quando:String(quando),cat,ic,cls,titulo,sub}); };
+  const dt=(x)=> x && x.length===10 ? x+"T12:00:00" : x;
+
+  // etapas
+  const etapas=(dados.aud||[]).filter(x=>x.acao==="mudou_etapa" && (x.detalhe||"").startsWith("etapa="));
+  etapas.forEach(x=>{ const [de,para]=x.detalhe.slice(6).split(">");
+    push(x.quando,"etapa","➜","etapa", de ? `Etapa: ${ETAPA_NOME[de]||de} → ${ETAPA_NOME[para]||para}` : `Entrou na jornada em: ${ETAPA_NOME[para]||para}`, x.papel?`por ${x.papel}`:""); });
+  const criado=(dados.aud||[]).find(x=>x.acao==="insert");
+  if(criado && !etapas.some(e=>e.detalhe.startsWith("etapa=>"))) push(criado.quando,"etapa","＋","etapa","Cadastro criado","");
+  else if(!criado && p.criado_em && !etapas.length) push(p.criado_em,"etapa","＋","etapa","Cadastro criado","");
+  // consultas e procedimentos (agenda)
+  const comAg=new Set();
+  ags.forEach(a=>{ if(a.status==="cancelado" && a.data>=h) return; comAg.add(a.id);
+    const cons=ehConsulta(a.tipo), st=a.status||"agendado";
+    const cls= st==="realizado"?(cons?"consulta":"proc") : st==="faltou"?"bad" : st==="cancelado"?"" : "consulta";
+    push(a.data+"T"+((a.hora||"12:00").slice(0,5)), cons?"consulta":"proc", cons?"🩺":"💉", cls,
+      a.tipo||"Consulta", `${(a.hora||"").slice(0,5)}${a.profissional?" · "+a.profissional:""} · ${ST_AG[st]||st}`); });
+  // atendimentos lançados direto (sem agenda)
+  dados.atend.filter(x=>!x.agendamento_id || !comAg.has(x.agendamento_id)).forEach(x=>{
+    const cons=ehConsulta(x.tipo); push(dt(x.data),cons?"consulta":"proc",cons?"🩺":"💉",cons?"consulta":"proc",`${x.tipo||"Atendimento"} realizado`,`${x.profissional||""}${x.pacote?" · "+x.pacote:""}`); });
+  // pendências
+  dados.pends.forEach(x=>{ const nome=(TIPOS_PEND[x.tipo]||x.tipo)+(x.descricao?` — ${x.descricao}`:"");
+    push(x.criado_em||x.created_at||dt(x.vencimento),"pend","📋","pend",`Pendência aberta: ${nome}`, x.vencimento?`prazo ${fmtD(x.vencimento)}`:"sem prazo");
+    if(x.status==="concluida") push(x.concluida_em||dt(x.vencimento),"pend","✓","ok",`Pendência concluída: ${nome}`, x.vencimento && x.concluida_em && x.concluida_em.slice(0,10)>x.vencimento ? `concluída ${Math.round((new Date(x.concluida_em.slice(0,10))-new Date(x.vencimento))/864e5)} dia(s) depois do prazo` : "");
+    if(x.status==="cancelada") push(x.concluida_em||dt(x.vencimento),"pend","×","",`Pendência cancelada: ${nome}`,""); });
+  // acompanhamento pós-consulta
+  dados.acomp.forEach(x=>{ const passos=(Array.isArray(x.proximos_passos)?x.proximos_passos:[]).map(k=>k==="outro"&&x.proximo_passo_outro?x.proximo_passo_outro:(PASSO_H[k]||k)).join(" + ");
+    push(x.criado_em||dt(x.data_consulta),"acomp","📞","",`Acompanhamento pós-consulta: ${passos||"—"}`,`${x.responsavel?"responsável "+x.responsavel+" · ":""}${x.prazo?"prazo "+fmtD(x.prazo)+" · ":""}${x.situacao==="concluido"?"concluído":x.situacao==="em_andamento"?"em andamento":"pendente"}`); });
+  // lembretes da Dri
+  (msgs||[]).filter(m=>m.status!=="cancelada").forEach(m=> push(m.status==="enviada"?(m.enviado_em||dt(m.enviar_em)):dt(m.enviar_em),"msg","💬",m.status==="erro"?"bad":"",
+    `Lembrete por WhatsApp (${m.tipo==="lembrete_retorno"?"retorno":"pendência"})`, STATUS_MSG[m.status]||m.status));
+
+  const CATS=[["","Tudo"],["etapa","Etapas"],["consulta","Consultas"],["proc","Procedimentos"],["pend","Pendências"],["acomp","Pós-consulta"],["msg","Lembretes"]];
+  const lista=ev.filter(e=>!filtro||e.cat===filtro).sort((a,b)=>b.quando.localeCompare(a.quando));
+  const futuros=lista.filter(e=>e.quando.slice(0,10)>h), passados=lista.filter(e=>e.quando.slice(0,10)<=h);
+  // resumo
+  const realiz=ags.filter(a=>a.status==="realizado");
+  const nCons=realiz.filter(a=>ehConsulta(a.tipo)).length, nProc=realiz.length-nCons + dados.atend.filter(x=>!x.agendamento_id && !ehConsulta(x.tipo)).length;
+  const faltas=ags.filter(a=>a.status==="faltou").length;
+  const inicio=ev.length ? ev.map(e=>e.quando).sort()[0].slice(0,10) : null;
+  const ultEtapa=etapas.length ? etapas[etapas.length-1].quando.slice(0,10) : null;
+  const diasEtapa=ultEtapa ? Math.round((new Date(h)-new Date(ultEtapa))/864e5) : null;
+  const pendAb=dados.pends.filter(x=>x.status==="aberta").length, pendOk=dados.pends.filter(x=>x.status==="concluida").length;
+
+  const grupo=(l)=>{ const out=[]; let m=null; l.forEach((e,i)=>{ const mm=e.quando.slice(0,7); if(mm!==m){ m=mm; out.push(<div key={"m"+i} className="hmes">{MESES_H[Number(mm.slice(5,7))-1]} de {mm.slice(0,4)}</div>); }
+    out.push(<div key={i} className="hev"><div className={"ic "+e.cls}>{e.ic}</div><div className="t"><b>{e.titulo}</b>{e.sub && <div className="s">{e.sub}</div>}</div><div className="q">{fmtD(e.quando.slice(0,10)).slice(0,5)}</div></div>); }); return out; };
+
+  return <>
+    <div className="card">
+      <div className="hres">
+        <div><b>{inicio?fmtD(inicio):"—"}</b><span>na jornada desde</span></div>
+        <div><b>{ETAPA_NOME[p.etapa]||"—"}</b><span>etapa atual{diasEtapa!=null?` · há ${diasEtapa} dia(s)`:""}</span></div>
+        <div><b>{nCons} · {nProc}</b><span>consultas · procedimentos realizados{faltas?` · ${faltas} falta(s)`:""}</span></div>
+        <div><b>{pendAb} · {pendOk}</b><span>pendências abertas · concluídas</span></div>
+      </div>
+    </div>
+    <div className="chips" style={{marginTop:0}}>{CATS.map(([k,n])=><button key={k} className={"chip"+(filtro===k?" blue":"")} style={{border:"none",cursor:"pointer",font:"inherit",fontSize:12,fontWeight:600,padding:"4px 10px"}} onClick={()=>setFiltro(k)}>{n}</button>)}</div>
+    {futuros.length>0 && <div className="card"><h3>Próximos</h3>{grupo([...futuros].reverse())}</div>}
+    <div className="card"><h3>O que já aconteceu</h3>
+      {passados.length===0 ? <div className="empty" style={{padding:8}}>Nada registrado ainda.</div> : grupo(passados)}
+    </div>
+    {dados.aud===null && <div className="note">As mudanças de etapa ficam na auditoria, que só a gestão e a chefia enxergam.</div>}
+    <div className="note">As mudanças de etapa passaram a ser registradas a partir de 17/11/2026; o que aconteceu antes aparece pelas consultas, pendências e acompanhamentos.</div>
+  </>;
 }
 
 function LembreteModal({ p, pend, profNome, onClose, onSave }){
