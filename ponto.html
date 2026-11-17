@@ -159,8 +159,7 @@ function analisarDia(itens){
   }
   if(ok && total>JORNADA_COM_ALMOCO){
     if(!almoco) alertas.push({sev:"warn", t:`Sem batida de almoço (${total.toFixed(1).replace(".",",")}h direto)`});
-    // almoço menor que 1h não é erro: o tempo que voltou mais cedo já está somado nas horas trabalhadas
-    else if(almoco.min<ALMOCO_MIN) infos.push({t:`Almoço de ${fmtMin(almoco.min)}: voltou ${fmtMin(ALMOCO_MIN-almoco.min)} mais cedo (somado às horas)`});
+    else if(almoco.min<ALMOCO_MIN) alertas.push({sev:"bad", t:`Almoço de ${fmtMin(almoco.min)} (mínimo 1h)`});
   }
   if(almoco && almoco.min>ALMOCO_MAX) alertas.push({sev:"warn", t:`Almoço de ${fmtMin(almoco.min)} (acima de 2h)`});
   const pega=(lbl)=>{ const i=rot.indexOf(lbl); return i<0?null:its[i]; };
@@ -408,16 +407,23 @@ function Espelho(){
   const [colabs,setColabs]=useState([]); const [selC,setSelC]=useState("");
   const [regs,setRegs]=useState([]); const [loading,setLoading]=useState(true); const [edit,setEdit]=useState(null);
   const [esc,setEsc]=useState(null); // dados da Escala (turnos do mês, férias, folgas, feriados)
+  const [trat,setTrat]=useState(new Set());   // dias já tratados: "colaborador|aaaa-mm-dd"
+  const [semTabTrat,setSemTabTrat]=useState(false);
+  const [vis,setVis]=useState("pendentes");    // "pendentes" (a tratar) | "tratados"
 
   async function load(){
     setLoading(true);
     if(sb){
       const ini=new Date(ano,mes,1).toISOString(), fim=new Date(ano,mes+1,1).toISOString();
-      const [r,c,e]=await Promise.all([
+      const diaIni=ano+"-"+String(mes+1).padStart(2,"0")+"-01", diaFim=_dl(new Date(ano,mes+1,1));
+      const [r,c,e,tr]=await Promise.all([
         sb.from("registros_ponto").select("*").gte("momento",ini).lt("momento",fim).order("momento",{ascending:true}),
         sb.from("colaboradores").select("*").eq("ativo",true).order("nome"),
         sb.from("escala_estado").select("dados").eq("id",1).maybeSingle(),
+        sb.from("ponto_tratados").select("colaborador_id,dia").gte("dia",diaIni).lt("dia",diaFim),
       ]);
+      setSemTabTrat(!!tr.error);
+      setTrat(new Set((tr.data||[]).map(x=>String(x.colaborador_id)+"|"+x.dia)));
       if(r.error) alert(r.error.message);
       setRegs(r.data||[]); setColabs(c.data||[]); setEsc((e&&e.data&&e.data.dados)||null);
     } else {
@@ -458,6 +464,21 @@ function Espelho(){
     else setRegs(p=> f.id? p.map(x=>x.id===f.id?{...x,tipo:f.tipo,momento}:x):[...p,{id:"n"+Date.now(),colaborador_id:f.colaborador_id,tipo:f.tipo,metodo:"ajuste",momento}]);
     setEdit(null); return null;
   }
+  const chaveT=(l)=> String(l.colab)+"|"+l.dia;
+  async function marcarTratado(ls, tratado){
+    if(!ls.length) return;
+    if(sb){
+      const r = tratado
+        ? await sb.from("ponto_tratados").upsert(ls.map(l=>({ colaborador_id:String(l.colab), dia:l.dia })))
+        : await sb.from("ponto_tratados").delete().eq("colaborador_id",String(ls[0].colab)).eq("dia",ls[0].dia);
+      if(r.error) return alert(/does not exist|schema cache/.test(r.error.message) ? "Falta criar a tabela: rode o arquivo ponto-tratados.sql no Supabase." : r.error.message);
+    }
+    setTrat(prev=>{ const n=new Set(prev); ls.forEach(l=> tratado ? n.add(chaveT(l)) : n.delete(chaveT(l))); return n; });
+  }
+  function tratar(l){
+    if(l.alertas.length && !confirm(`${nomes[l.colab]||""} em ${fmtD(l.dia)} ainda tem: ${l.alertas.map(a=>a.t).join(" · ")}.\n\nMarcar como tratado mesmo assim?`)) return;
+    marcarTratado([l], true);
+  }
   async function excluir(r){ if(!confirm("Excluir esta batida?")) return;
     if(sb){ const e=await sb.from("registros_ponto").delete().eq("id",r.id); if(e.error) return alert(e.error.message); await load(); }
     else setRegs(p=>p.filter(x=>x.id!==r.id)); }
@@ -466,7 +487,10 @@ function Espelho(){
   const fmtD=(iso)=>{ const [y,m,d]=iso.slice(0,10).split("-"); return d+"/"+m; };
   // data e hora no fuso local (antes usava o horário UTC do banco: aparecia 3h adiantado)
   const abrirEdit=(r)=> setEdit({ id:r.id, colaborador_id:r.colaborador_id, tipo:r.tipo, data:_dl(r.momento), hora:fmtH(r.momento) });
-  const comAlerta=linhas.filter(l=>l.alertas.length).length;
+  const pendentes=linhas.filter(l=>!trat.has(chaveT(l))), tratados=linhas.filter(l=>trat.has(chaveT(l)));
+  const visiveis = vis==="tratados" ? tratados : pendentes;
+  const comAlerta=pendentes.filter(l=>l.alertas.length).length;
+  const semAlerta=pendentes.filter(l=>!l.alertas.length);
   // Excel formatado: aba "Espelho" (dia a dia, com total por pessoa) e aba "Resumo"
   function exportar(){
     const X=window.XLSX;
@@ -535,7 +559,7 @@ function Espelho(){
       T.d+=ds.length; T.h+=h; if(media!=null){T.a+=media*comAlm.length; T.na+=comAlm.length;} T.s+=n("semAlmoco"); T.c+=n("almocoCurto"); T.l+=n("almocoLongo"); T.f+=n("faltando"); T.r+=rev;
       const num=(v,bad)=>cel(v,v&&bad?S.bad:S.cen);
       RR.push([cel(nomes[id]||"—",S.nome),cel(ds.length,S.cen),cel(h/24,S.cen,"[h]:mm"),cel(media!=null?media/1440:null,S.alm,"[h]:mm"),
-        num(n("semAlmoco"),1),num(n("almocoCurto"),0),num(n("almocoLongo"),1),num(n("faltando"),1),cel(rev,rev?S.bad:S.ok)]);
+        num(n("semAlmoco"),1),num(n("almocoCurto"),1),num(n("almocoLongo"),1),num(n("faltando"),1),cel(rev,rev?S.bad:S.ok)]);
     });
     RR.push([cel("Total",S.tot),cel(T.d,S.totc),cel(T.h/24,S.totc,"[h]:mm"),cel(T.na?T.a/T.na/1440:null,S.totc,"[h]:mm"),cel(T.s,S.totc),cel(T.c,S.totc),cel(T.l,S.totc),cel(T.f,S.totc),cel(T.r,S.totc)]);
     const wsR=aba(RR,[26,10,11,10,12,12,12,10,10],[{s:{r:0,c:0},e:{r:0,c:8}},{s:{r:1,c:0},e:{r:1,c:8}}],[{hpt:22},{},{},{hpt:32}]);
@@ -547,7 +571,7 @@ function Espelho(){
   return (
     <div className="espelho-host">
       <FolhasAssinatura ano={ano} mes={mes} colabs={selC ? colabs.filter(c=>String(c.id)===String(selC)) : colabs} regs={regs} esc={esc} />
-      <div className="note">Espelho de ponto: cada batida registrada. Clique numa batida para corrigir o horário, ou use os botões para incluir/apagar (esquecimento, atestado, ajuste). Toda alteração fica com método "ajuste". O almoço é reconhecido pela ordem das batidas (entrada → saída almoço → volta almoço → saída); jornada acima de 6h precisa de pelo menos 1h de almoço.</div>
+      <div className="note">Espelho de ponto: as batidas chegam em <b>A tratar</b>. Confira cada dia (clique numa batida para corrigir o horário, ou inclua/apague batidas) e toque em <b>✓ Tratar</b>: o dia vai para <b>Tratados</b>, onde ficam a folha para assinatura e o Excel. O almoço é reconhecido pela ordem das batidas (entrada → saída almoço → volta almoço → saída); jornada acima de 6h precisa de pelo menos 1h de almoço.</div>
       <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",marginBottom:14}}>
         <button className="btn btn-ghost btn-sm" onClick={()=>mudarMes(-1)}>‹</button>
         <b style={{fontFamily:"'Space Grotesk'",minWidth:130,textAlign:"center"}}>{MESES_P[mes]} {ano}</b>
@@ -556,20 +580,34 @@ function Espelho(){
           <option value="">Todos os funcionários</option>
           {colabs.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
         </select>
-        {comAlerta>0 && <span style={{color:"var(--bad)",fontWeight:600,fontSize:13}}>⚠ {comAlerta} dia(s) para revisar</span>}
         <div style={{flex:1}}></div>
-        <button className="btn btn-ghost btn-sm" onClick={exportar} disabled={!linhas.length}>Exportar Excel</button>
-        <button className="btn btn-ghost btn-sm" onClick={()=>window.print()} disabled={!colabs.length} title={selC?"Folha do funcionário selecionado":"Uma folha por funcionário"}>🖨 Folha para assinatura</button>
         <button className="btn btn-primary btn-sm" onClick={()=>setEdit({ colaborador_id:selC||colabs[0]?.id||"", tipo:"entrada", data:_dl(new Date()), hora:"08:00" })}>+ Nova batida</button>
       </div>
+      <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
+        <div className="tabs" style={{marginBottom:0}}>
+          <button className={vis==="pendentes"?"on":""} onClick={()=>setVis("pendentes")}>A tratar <span style={{marginLeft:4,fontSize:11,fontWeight:700,padding:"1px 7px",borderRadius:999,background:pendentes.length?"var(--warn)":"#C6D0D4",color:"#fff"}}>{pendentes.length}</span></button>
+          <button className={vis==="tratados"?"on":""} onClick={()=>setVis("tratados")}>Tratados <span style={{marginLeft:4,fontSize:11,fontWeight:700,padding:"1px 7px",borderRadius:999,background:"#C6D0D4",color:"#12212B"}}>{tratados.length}</span></button>
+        </div>
+        {vis==="pendentes" ? <>
+          {comAlerta>0 && <span style={{color:"var(--bad)",fontWeight:600,fontSize:13}}>⚠ {comAlerta} dia(s) com alerta</span>}
+          <div style={{flex:1}}></div>
+          {semAlerta.length>0 && <button className="btn btn-ghost btn-sm" onClick={()=>{ if(confirm(`Marcar como tratados os ${semAlerta.length} dia(s) sem alerta${selC?" deste funcionário":""}?`)) marcarTratado(semAlerta,true); }}>✓ Tratar os {semAlerta.length} dia(s) sem alerta</button>}
+        </> : <>
+          {pendentes.length>0 && <span style={{color:"var(--warn)",fontWeight:600,fontSize:13}}>Ainda há {pendentes.length} dia(s) a tratar neste mês</span>}
+          <div style={{flex:1}}></div>
+          <button className="btn btn-ghost btn-sm" onClick={exportar} disabled={!linhas.length}>Exportar Excel</button>
+          <button className="btn btn-ghost btn-sm" onClick={()=>window.print()} disabled={!colabs.length} title={selC?"Folha do funcionário selecionado":"Uma folha por funcionário"}>🖨 Folha para assinatura</button>
+        </>}
+      </div>
+      {semTabTrat && <div className="note" style={{background:"var(--warn-bg)",color:"var(--warn)"}}>Para separar "A tratar" e "Tratados", rode antes o arquivo ponto-tratados.sql no Supabase.</div>}
 
       <div className="card">
         {loading ? <div className="empty">Carregando…</div> :
-         linhas.length===0 ? <div className="empty">Sem batidas neste mês.</div> :
+         visiveis.length===0 ? <div className="empty">{linhas.length===0 ? "Sem batidas neste mês." : vis==="pendentes" ? "Tudo tratado neste mês. ✓" : "Nenhum dia tratado ainda. Trate os dias na aba \"A tratar\"."}</div> :
          <table>
            <thead><tr><th>Funcionário</th><th>Dia</th><th>Batidas</th><th>Almoço</th><th>Horas</th><th>Situação</th><th></th></tr></thead>
            <tbody>
-             {linhas.map((l,i)=>(
+             {visiveis.map((l,i)=>(
                <tr key={i}>
                  <td style={{fontWeight:600}}>{nomes[l.colab]||"—"}</td>
                  <td className="mono">{fmtD(l.dia)}</td>
@@ -578,13 +616,18 @@ function Espelho(){
                      <button key={r.id} onClick={()=>abrirEdit(r)} title={l.rot[j]+" · clique para corrigir"}
                        style={{font:"inherit",cursor:"pointer",border:"1px solid var(--line)",borderRadius:20,padding:"3px 9px",
                          background: alm ? "#E6EFF9" : r.tipo==="entrada"?"var(--ok-bg)":"#FBEFD6", color: alm ? "#1F6FB2" : r.tipo==="entrada"?"var(--ok)":"var(--warn)",fontWeight:600,fontSize:12.5}}>
-                       {alm ? "🍽 " : r.tipo==="entrada"?"▸ ":"◂ "}<span style={{fontWeight:500,fontSize:11}}>{l.rot[j]}</span> {fmtH(r.momento)}{r.metodo==="ajuste"?" ✎":""}
+                       {alm ? "🍽 " : r.tipo==="entrada"?"▸ ":"◂ "}<span style={{fontWeight:500,fontSize:11}}>{l.rot[j]}</span> {fmtH(r.momento)}
                      </button>); })}
                  </div></td>
                  <td className="mono" style={{whiteSpace:"nowrap"}}>{l.almoco ? fmtMin(l.almoco.min) : "—"}</td>
                  <td className="mono" style={{fontWeight:600}}>{l.horas.toFixed(1)}h</td>
                  <td><Situacao a={l} /></td>
-                 <td style={{textAlign:"right"}}><button className="btn btn-ghost btn-sm" onClick={()=>setEdit({ colaborador_id:l.colab, tipo:"saida", data:l.dia, hora:"18:00" })}>+ batida</button></td>
+                 <td style={{textAlign:"right"}}><div style={{display:"flex",gap:6,justifyContent:"flex-end",flexWrap:"wrap"}}>
+                   <button className="btn btn-ghost btn-sm" onClick={()=>setEdit({ colaborador_id:l.colab, tipo:"saida", data:l.dia, hora:"18:00" })}>+ batida</button>
+                   {vis==="pendentes"
+                     ? <button className="btn btn-primary btn-sm" onClick={()=>tratar(l)} title="Conferido: sai de A tratar e vai para Tratados">✓ Tratar</button>
+                     : <button className="btn btn-ghost btn-sm" onClick={()=>marcarTratado([l],false)} title="Volta para A tratar">↩ Voltar</button>}
+                 </div></td>
                </tr>
              ))}
            </tbody>
@@ -619,18 +662,16 @@ function FolhasAssinatura({ ano, mes, colabs, regs, esc }){
     const porDia={}; meus.forEach(r=>{ const k=_dl(r.momento); (porDia[k]=porDia[k]||[]).push(r); });
     const minhaGrade=grade[c.id]||{};
     const temEscala=Object.keys(minhaGrade).length>0;
-    let total=0, diasTrab=0, ajustes=0, alertas=0;
+    let total=0, diasTrab=0, alertas=0;
     const linhas=[];
     for(let d=1;d<=D;d++){
       const k=iso(d), w=new Date(ano,mes,d).getDay(), its=porDia[k]||[], cod=minhaGrade[d]||"";
       const a=its.length ? analisarDia(its) : null;
       if(a){ total+=a.horas; diasTrab++; if(a.alertas.length) alertas++; }
-      const aj=its.filter(r=>r.metodo==="ajuste").length; ajustes+=aj;
       const obs=[];
       if(feriados.has(d)) obs.push("Feriado");
       if(cod && NOME_COD[cod]) obs.push(NOME_COD[cod]);
       if(a){ a.alertas.forEach(x=>obs.push(x.t)); (a.infos||[]).forEach(x=>obs.push(x.t)); }
-      if(aj) obs.push(aj===1?"1 batida ajustada manualmente":aj+" batidas ajustadas manualmente");
       if(a && a.its.length>4) obs.push(a.its.length+" batidas");
       linhas.push({d,w,cod,a,obs,alerta:!!(a&&a.alertas.length)});
     }
@@ -668,7 +709,7 @@ function FolhasAssinatura({ ano, mes, colabs, regs, esc }){
           <div><span>Carga prevista{origem?` (${origem})`:""}</span><b>{hhmm(prev)}</b></div>
           <div><span>Saldo do mês</span><b>{saldo==null?"—":(saldo>0?"+":"")+hhmm(saldo)}</b></div>
         </div>
-        {(alertas>0||ajustes>0) && <div className="rod" style={{marginTop:0}}>{alertas>0?`${alertas} dia(s) com observação na conferência. `:""}{ajustes>0?`${ajustes} batida(s) incluída(s) ou corrigida(s) manualmente pela empresa.`:""}</div>}
+        {alertas>0 && <div className="rod" style={{marginTop:0}}>{alertas} dia(s) com observação na conferência.</div>}
         <div className="decl">
           Declaro que conferi os registros de ponto acima, referentes ao período de <b>{periodo}</b>, e que eles correspondem
           à jornada que efetivamente cumpri, totalizando <b>{hhmm(total)}</b> trabalhadas
