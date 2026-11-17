@@ -27,6 +27,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0"></script>
+<script src="supabase-pt.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.js"></script>
 
@@ -790,7 +791,7 @@ function Quiosque(){
           <div style={{flex:1,minWidth:220}}>
             <div style={{fontSize:12.5,color:"var(--muted)",marginBottom:6}}>Aponte a câmera do tablet para o QR, ou copie:</div>
             <input readOnly value={url} onFocus={e=>e.target.select()} style={{width:"100%",font:"inherit",fontSize:13,padding:"8px 10px",border:"1px solid var(--line)",borderRadius:9}} />
-            <button className="btn btn-primary btn-sm" style={{marginTop:8}} onClick={()=>{ navigator.clipboard?.writeText(url); setMsg("Link copiado."); }}>Copiar link</button>
+            <button className="btn btn-primary btn-sm" style={{marginTop:8}} onClick={async()=>{ try{ await navigator.clipboard.writeText(url); setMsg("Link copiado."); }catch(_){ setMsg("Não consegui copiar sozinho: selecione o link acima e copie."); } }}>Copiar link</button>
           </div>
         </div>
       </div>
