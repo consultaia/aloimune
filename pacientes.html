@@ -88,6 +88,32 @@
   .hev .t{flex:1;min-width:0} .hev .t b{font-weight:600} .hev .t .s{font-size:12px;color:var(--muted);margin-top:1px}
   .hev .q{font-size:12px;color:var(--muted);white-space:nowrap;text-align:right}
   @media(max-width:560px){ .hres{grid-template-columns:repeat(2,minmax(0,1fr))} }
+  /* registrar procedimento */
+  .rp-ov{position:fixed;inset:0;background:rgba(18,33,43,.5);display:flex;align-items:flex-start;justify-content:center;z-index:80;padding:28px 14px;overflow:auto}
+  .rp{width:min(680px,100%);background:#fff;border-radius:18px;box-shadow:0 24px 70px rgba(18,33,43,.3);overflow:hidden}
+  .rp-h{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;align-items:flex-start;gap:12px}
+  .rp-h h2{margin:0;font-family:"Space Grotesk";font-size:20px} .rp-h .s{font-size:13px;color:var(--muted);margin-top:2px}
+  .rp-b{padding:6px 22px 18px}
+  .rp-sec{padding:14px 0;border-bottom:1px solid var(--line)} .rp-sec:last-child{border-bottom:none}
+  .rp-t{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;margin-bottom:10px}
+  .rp-t .n{width:22px;height:22px;border-radius:50%;background:var(--primary);color:#fff;font-size:12px;display:inline-flex;align-items:center;justify-content:center}
+  .rp-t .opc{font-weight:500;font-size:12px;color:var(--muted)}
+  .rp-g{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:10px 0 6px}
+  .rp-opts{display:flex;flex-wrap:wrap;gap:8px}
+  .rp-o{font:inherit;font-size:13.5px;font-weight:600;padding:9px 13px;border-radius:11px;border:1.5px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  .rp-o:hover{border-color:#9FCFCE} .rp-o.on{background:var(--primary);border-color:var(--primary);color:#fff}
+  .rp-o .ck{width:16px;height:16px;border-radius:5px;border:1.5px solid currentColor;display:inline-flex;align-items:center;justify-content:center;font-size:11px;opacity:.7}
+  .rp-o.on .ck{opacity:1}
+  .rp-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .rp input,.rp select{font:inherit;font-size:14px;padding:10px 12px;border:1.5px solid var(--line);border-radius:11px;background:#fff;color:var(--ink);min-width:0}
+  .rp input:focus,.rp select:focus{outline:2px solid #BFE3E2;border-color:var(--primary)}
+  .rp-f{padding:14px 22px;background:#F7FAFB;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .rp-f .resumo{flex:1;font-size:13px;color:var(--muted);min-width:180px}
+  .rp-f .btn{padding:11px 18px;font-size:14px}
+  .rp-err{background:var(--bad-bg);color:var(--bad);border-radius:10px;padding:10px 12px;font-size:13px;margin-top:12px}
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#12212B;color:#fff;padding:11px 18px;border-radius:12px;font-size:14px;font-weight:600;z-index:90;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  .ptab{width:100%;border-collapse:collapse;font-size:13.5px} .ptab th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}
+  .ptab td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top} .ptab tr:last-child td{border-bottom:none}
   .tl{border-left:2px solid var(--line);margin-left:6px;padding-left:14px} .tli{position:relative;padding:6px 0 10px;font-size:13.5px}
   .tli::before{content:"";position:absolute;left:-20px;top:11px;width:10px;height:10px;border-radius:50%;background:var(--primary)} .tli .w{font-size:12px;color:var(--muted)}
   .evo{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;background:#FBFCFC} .evo .h{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);margin-bottom:6px}
@@ -340,6 +366,7 @@ function PacienteForm({ p, profs, meuProf, onClose, onSave }){
 function Drawer({ p, papel, meuProf, profs, pends, ags, msgs, podeClinico, podeEditar, onClose, onSave, onAddPend, onConcluirPend, onMover, auditar, uid, reload, onLembrete, onCancelarLembrete }){
   const [lem,setLem]=useState(null); // pendência para lembrar
   const [tab,setTab]=useState("historico"); const [editar,setEditar]=useState(false);
+  const [registrando,setRegistrando]=useState(false);
   const [np,setNp]=useState({tipo:"exame_solicitado",descricao:"",vencimento:""}); const [msg,setMsg]=useState("");
   const [evos,setEvos]=useState(null); const [ne,setNe]=useState({data:hojeStr(),queixa:"",achados:"",conduta:"",texto:"",pendExame:"",pendRetorno:""});
   const profNome=(id)=> (profs.find(x=>x.id===id)||{}).nome || "—";
@@ -369,6 +396,7 @@ function Drawer({ p, papel, meuProf, profs, pends, ags, msgs, podeClinico, podeE
       <div className="dh">
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{flex:1}}><h2>{p.nome}</h2><div className="s">{idade(p.nascimento)!==null?idade(p.nascimento)+" anos · ":""}{profNome(p.medico_responsavel_id)} · {ETAPA_NOME[p.etapa]}{!p.compartilhada?" · privada":""}</div></div>
+          {podeEditar && <button className="btn btn-primary" onClick={()=>{ setTab("historico"); setRegistrando(true); }}>＋ Registrar procedimento</button>}
           {podeEditar && <select value={p.etapa} onChange={e=>onMover(p,e.target.value)} style={{fontSize:13}}>{ETAPAS.map(([k,n])=><option key={k} value={k}>{n}</option>)}</select>}
           <button className="btn btn-ghost btn-sm" onClick={onClose}>Fechar</button>
         </div>
@@ -440,7 +468,7 @@ function Drawer({ p, papel, meuProf, profs, pends, ags, msgs, podeClinico, podeE
           </div>
         </>)}
 
-        {tab==="historico" && <Historico p={p} agsPac={hist} msgs={msgs} profNome={profNome} papel={papel} profs={profs} podeEditar={podeEditar} />}
+        {tab==="historico" && <Historico p={p} agsPac={hist} msgs={msgs} profNome={profNome} papel={papel} profs={profs} podeEditar={podeEditar} registrando={registrando} setRegistrando={setRegistrando} />}
       </div>
       {editar && <PacienteForm p={p} profs={profs} meuProf={meuProf} onClose={()=>setEditar(false)} onSave={async(f)=>{ const e=await onSave(f); if(!e) setEditar(false); return e; }} />}
       {lem && <LembreteModal p={p} pend={lem} profNome={profNome} onClose={()=>setLem(null)} onSave={async(f)=>{ const e=await onLembrete(p,lem,f); if(!e) setLem(null); return e; }} />}
@@ -458,22 +486,23 @@ const PASSO_H={etapa1:"1ª etapa do tratamento",etapa2:"2ª etapa do tratamento"
   reforco_crossmatch:"Reforço de Crossmatch",reforco_intralipid:"Reforço de Intralipid",vacina:"Vacina",exames_pre:"Exames pré-tratamento",outro:"Outro"};
 const ehConsulta=(t)=> /consulta|retorno|avalia/i.test(t||"Consulta");
 // o que a paciente realizou (registro manual) — opções rápidas; "Outro" permite escrever
-const REALIZOU=["Consulta","Retorno","USG","Crossmatch","Reforço de Crossmatch","Intralipid","Reforço de Intralipid","Vacina","Coleta de exames","Exames pré-tratamento",
-  "1ª etapa do tratamento","2ª etapa do tratamento","3ª etapa do tratamento","Outro"];
-function Historico({ p, agsPac, msgs, profNome, papel, profs, podeEditar }){
+const GRUPOS_PROC=[
+  ["Consultas",["Consulta","Retorno"]],
+  ["Imunoterapia",["Crossmatch","Reforço de Crossmatch","Intralipid","Reforço de Intralipid","Vacina"]],
+  ["Exames e imagem",["USG","Coleta de exames","Exames pré-tratamento","Histeroscopia"]],
+  ["Tratamento",["1ª etapa do tratamento","2ª etapa do tratamento","3ª etapa do tratamento"]],
+];
+function Historico({ p, agsPac, msgs, profNome, papel, profs, podeEditar, registrando, setRegistrando }){
   const [dados,setDados]=useState(null); const [filtro,setFiltro]=useState("");
-  const [nr,setNr]=useState(null); const [nrErr,setNrErr]=useState(""); const [nrSalv,setNrSalv]=useState(false);
-  const [recarga,setRecarga]=useState(0);
-  async function salvarRealizado(){
-    const proc = nr.proc==="Outro" ? (nr.outro||"").trim() : nr.proc;
-    if(!proc) return setNrErr("Diga o que a paciente realizou.");
-    if(!nr.data) return setNrErr("Informe a data.");
-    const payload={ paciente_id:p.id, data:nr.data, procedimento:proc, profissional:nr.profissional||null, obs:(nr.obs||"").trim()||null };
-    setNrSalv(true);
-    if(sb){ const r=await sb.from("clinica_realizados").insert(payload);
-      if(r.error){ setNrSalv(false); return setNrErr(/does not exist|schema cache/.test(r.error.message) ? "Falta criar a tabela: rode o arquivo realizados-schema.sql no Supabase." : r.error.message); } }
-    else setDados(d=>({...d, real:[...(d.real||[]),{...payload,id:"n"+Date.now(),criado_em:new Date().toISOString()}]}));
-    setNrSalv(false); setNr(null); setNrErr(""); if(sb) setRecarga(x=>x+1);
+  const [recarga,setRecarga]=useState(0); const [toast,setToast]=useState("");
+  // grava um registro por procedimento marcado
+  async function salvarRealizados(itens){
+    if(sb){ const r=await sb.from("clinica_realizados").insert(itens.map(x=>({ paciente_id:p.id, ...x })));
+      if(r.error) return /does not exist|schema cache/.test(r.error.message) ? "O banco ainda não está pronto para guardar procedimentos. Peça para rodar o arquivo realizados-schema.sql no Supabase (projeto da Aloimune)." : r.error.message;
+      setRecarga(v=>v+1); }
+    else setDados(d=>({...d, real:[...(d.real||[]),...itens.map((x,i)=>({...x,id:"n"+Date.now()+i,criado_em:new Date().toISOString()}))]}));
+    setRegistrando(false); setToast(itens.length===1 ? `✓ ${itens[0].procedimento} registrado` : `✓ ${itens.length} procedimentos registrados`); setTimeout(()=>setToast(""),2600);
+    return null;
   }
   async function apagarRealizado(x){
     if(!confirm(`Apagar o registro "${x.procedimento}" de ${fmtD(x.data)}?`)) return;
@@ -533,7 +562,7 @@ function Historico({ p, agsPac, msgs, profNome, papel, profs, podeEditar }){
   // registrado manualmente: o que a paciente realizou
   (dados.real||[]).forEach(x=>{ const cons=ehConsulta(x.procedimento);
     push(x.data+"T"+((x.criado_em||"").slice(11,16)||"12:00"), cons?"consulta":"proc", "✅", cons?"consulta":"proc", `Realizou: ${x.procedimento}`,
-      [x.profissional, x.obs].filter(Boolean).join(" · "), podeEditar ? ()=>apagarRealizado(x) : null); });
+      [x.profissional, x.obs].filter(Boolean).join(" · ")); });
   // pendências
   dados.pends.forEach(x=>{ const nome=(TIPOS_PEND[x.tipo]||x.tipo)+(x.descricao?` — ${x.descricao}`:"");
     push(x.criado_em||x.created_at||dt(x.vencimento),"pend","📋","pend",`Pendência aberta: ${nome}`, x.vencimento?`prazo ${fmtD(x.vencimento)}`:"sem prazo");
@@ -572,21 +601,21 @@ function Historico({ p, agsPac, msgs, profNome, papel, profs, podeEditar }){
         <div><b>{pendAb} · {pendOk}</b><span>pendências abertas · concluídas</span></div>
       </div>
     </div>
-    {podeEditar && (nr===null
-      ? <div><button className="btn btn-primary btn-sm" onClick={()=>{ setNrErr(""); setNr({ data:h, proc:"USG", outro:"", profissional:profNome(p.medico_responsavel_id)!=="—"?profNome(p.medico_responsavel_id):"", obs:"" }); }}>+ Registrar o que realizou</button></div>
-      : <div className="card"><h3>O que a paciente realizou</h3>
-          {nrErr && <div className="lock" style={{background:"var(--bad-bg)",color:"var(--bad)",marginBottom:10}}>{nrErr}</div>}
-          <div className="grid">
-            <div className="field"><label>Data</label><input type="date" value={nr.data} max={h} onChange={e=>setNr({...nr,data:e.target.value})} /></div>
-            <div className="field"><label>O que realizou</label><select value={nr.proc} onChange={e=>setNr({...nr,proc:e.target.value})}>{REALIZOU.map(x=><option key={x}>{x}</option>)}</select></div>
-            {nr.proc==="Outro" && <div className="field full"><label>Qual?</label><input value={nr.outro} onChange={e=>setNr({...nr,outro:e.target.value})} placeholder="ex.: Histeroscopia, Teste de NK…" autoFocus /></div>}
-            <div className="field"><label>Profissional</label><input list="profs-real" value={nr.profissional} onChange={e=>setNr({...nr,profissional:e.target.value})} placeholder="quem realizou" />
-              <datalist id="profs-real">{(profs||[]).map(x=><option key={x.id} value={x.nome} />)}</datalist></div>
-            <div className="field"><label>Observação (opcional)</label><input value={nr.obs} onChange={e=>setNr({...nr,obs:e.target.value})} placeholder="ex.: 2ª dose, feito em outro laboratório…" /></div>
-          </div>
-          <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:10}}><button className="btn btn-ghost btn-sm" onClick={()=>{ setNr(null); setNrErr(""); }}>Cancelar</button><button className="btn btn-primary btn-sm" onClick={salvarRealizado} disabled={nrSalv}>{nrSalv?"Salvando…":"Salvar"}</button></div>
-        </div>)}
-    {dados.semTabelaReal && podeEditar && <div className="note">Para registrar o que a paciente realizou, rode antes o arquivo realizados-schema.sql no Supabase.</div>}
+    <div className="card">
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+        <h3 style={{margin:0,flex:1}}>Procedimentos realizados</h3>
+        {podeEditar && <button className="btn btn-primary btn-sm" onClick={()=>setRegistrando(true)}>＋ Registrar procedimento</button>}
+      </div>
+      {realMan.length===0
+        ? <div className="empty" style={{padding:"10px 4px",textAlign:"left"}}>Nenhum procedimento registrado ainda.{podeEditar?" Use “Registrar procedimento” para incluir o que a paciente já fez.":""}</div>
+        : <table className="ptab"><thead><tr><th>Data</th><th>Procedimento</th><th>Profissional</th><th>Observação</th>{podeEditar && <th></th>}</tr></thead>
+            <tbody>{[...realMan].sort((a,b)=>b.data.localeCompare(a.data)).map(x=>(
+              <tr key={x.id}><td style={{whiteSpace:"nowrap"}}>{fmtD(x.data)}</td><td style={{fontWeight:600}}>{x.procedimento}</td><td>{x.profissional||"—"}</td><td style={{color:"var(--muted)"}}>{x.obs||""}</td>
+                {podeEditar && <td style={{textAlign:"right"}}><button className="btn btn-ghost btn-sm" onClick={()=>apagarRealizado(x)}>Apagar</button></td>}</tr>))}</tbody></table>}
+      {dados.semTabelaReal && podeEditar && <div className="note" style={{marginTop:8}}>O banco ainda não está pronto para guardar procedimentos: rode o arquivo realizados-schema.sql no Supabase (projeto da Aloimune).</div>}
+    </div>
+    {registrando && <RegistrarProcedimento p={p} profs={profs} profNome={profNome} onClose={()=>setRegistrando(false)} onSave={salvarRealizados} />}
+    {toast && <div className="toast">{toast}</div>}
     <div className="chips" style={{marginTop:0}}>{CATS.map(([k,n])=><button key={k} className={"chip"+(filtro===k?" blue":"")} style={{border:"none",cursor:"pointer",font:"inherit",fontSize:12,fontWeight:600,padding:"4px 10px"}} onClick={()=>setFiltro(k)}>{n}</button>)}</div>
     {futuros.length>0 && <div className="card"><h3>Próximos</h3>{grupo([...futuros].reverse())}</div>}
     <div className="card"><h3>O que já aconteceu</h3>
@@ -595,6 +624,79 @@ function Historico({ p, agsPac, msgs, profNome, papel, profs, podeEditar }){
     {dados.aud===null && <div className="note">As mudanças de etapa ficam na auditoria, que só a gestão e a chefia enxergam.</div>}
     <div className="note">As mudanças de etapa passaram a ser registradas a partir de 17/11/2026; o que aconteceu antes aparece pelas consultas, pendências e acompanhamentos.</div>
   </>;
+}
+
+/* janela "Registrar procedimento": marca um ou vários procedimentos de uma vez */
+function RegistrarProcedimento({ p, profs, profNome, onClose, onSave }){
+  const h=hojeStr();
+  const resp=profNome(p.medico_responsavel_id);
+  const [data,setData]=useState(h);
+  const [sel,setSel]=useState([]);           // procedimentos marcados
+  const [extra,setExtra]=useState("");       // "outro" sendo digitado
+  const [extras,setExtras]=useState([]);     // outros adicionados
+  const [prof,setProf]=useState(resp!=="—"?resp:""); const [profOutro,setProfOutro]=useState("");
+  const [obs,setObs]=useState(""); const [err,setErr]=useState(""); const [salv,setSalv]=useState(false);
+  const toggle=(x)=> setSel(l=> l.includes(x) ? l.filter(y=>y!==x) : [...l,x]);
+  function addExtra(){ const t=extra.trim(); if(!t) return; if(!extras.includes(t)) setExtras(l=>[...l,t]); if(!sel.includes(t)) setSel(l=>[...l,t]); setExtra(""); }
+  const quem = prof==="__outro" ? profOutro.trim() : prof;
+  async function salvar(){
+    if(extra.trim()) addExtra();
+    const lista=[...sel, ...(extra.trim() && !sel.includes(extra.trim()) ? [extra.trim()] : [])];
+    if(!lista.length) return setErr("Marque pelo menos um procedimento.");
+    if(!data) return setErr("Escolha a data.");
+    setSalv(true); setErr("");
+    const e=await onSave(lista.map(x=>({ data, procedimento:x, profissional:quem||null, obs:obs.trim()||null })));
+    setSalv(false); if(e) setErr(e);
+  }
+  const ontem=addD(h,-1);
+  const dataTxt = data===h ? "hoje" : data===ontem ? "ontem" : fmtD(data);
+  const Opt=({x})=> <button type="button" className={"rp-o"+(sel.includes(x)?" on":"")} onClick={()=>toggle(x)}><span className="ck">{sel.includes(x)?"✓":""}</span>{x}</button>;
+  return (
+    <div className="rp-ov" onClick={onClose}><div className="rp" onClick={e=>e.stopPropagation()}>
+      <div className="rp-h"><div style={{flex:1}}><h2>Registrar procedimento</h2><div className="s">{p.nome} · marque tudo o que ela realizou na mesma data</div></div>
+        <button className="btn btn-ghost btn-sm" onClick={onClose}>Fechar</button></div>
+      <div className="rp-b">
+        <div className="rp-sec">
+          <div className="rp-t"><span className="n">1</span>Quando foi realizado?</div>
+          <div className="rp-row">
+            <button type="button" className={"rp-o"+(data===h?" on":"")} onClick={()=>setData(h)}>Hoje</button>
+            <button type="button" className={"rp-o"+(data===ontem?" on":"")} onClick={()=>setData(ontem)}>Ontem</button>
+            <input type="date" value={data} max={h} onChange={e=>setData(e.target.value)} />
+          </div>
+        </div>
+        <div className="rp-sec">
+          <div className="rp-t"><span className="n">2</span>O que foi realizado? <span className="opc">pode marcar mais de um</span></div>
+          {GRUPOS_PROC.map(([g,l])=><div key={g}><div className="rp-g">{g}</div><div className="rp-opts">{l.map(x=><Opt key={x} x={x}/>)}</div></div>)}
+          {extras.length>0 && <><div className="rp-g">Outros</div><div className="rp-opts">{extras.map(x=><Opt key={x} x={x}/>)}</div></>}
+          <div className="rp-g">Não está na lista?</div>
+          <div className="rp-row"><input value={extra} onChange={e=>setExtra(e.target.value)} onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); addExtra(); } }} placeholder="Digite o procedimento (ex.: Teste de NK)" style={{flex:1,minWidth:200}} />
+            <button type="button" className="btn btn-ghost" onClick={addExtra} disabled={!extra.trim()}>Adicionar</button></div>
+        </div>
+        <div className="rp-sec">
+          <div className="rp-t"><span className="n">3</span>Quem realizou?</div>
+          <div className="rp-row">
+            <select value={prof} onChange={e=>setProf(e.target.value)} style={{flex:1,minWidth:200}}>
+              <option value="">— não informar —</option>
+              {(profs||[]).map(x=><option key={x.id} value={x.nome}>{x.nome}{x.nome===resp?" (médico responsável)":""}</option>)}
+              {prof && prof!=="__outro" && !(profs||[]).some(x=>x.nome===prof) && <option value={prof}>{prof}</option>}
+              <option value="__outro">Outro profissional / serviço externo…</option>
+            </select>
+            {prof==="__outro" && <input value={profOutro} onChange={e=>setProfOutro(e.target.value)} placeholder="Nome ou local" style={{flex:1,minWidth:180}} autoFocus />}
+          </div>
+        </div>
+        <div className="rp-sec">
+          <div className="rp-t"><span className="n">4</span>Observação <span className="opc">opcional</span></div>
+          <input value={obs} onChange={e=>setObs(e.target.value)} placeholder="ex.: 2ª dose · realizado em outro laboratório" style={{width:"100%"}} />
+        </div>
+        {err && <div className="rp-err">{err}</div>}
+      </div>
+      <div className="rp-f">
+        <div className="resumo">{sel.length ? <><b style={{color:"var(--ink)"}}>{sel.join(", ")}</b> · {dataTxt}{quem?` · ${quem}`:""}</> : "Nenhum procedimento marcado ainda."}</div>
+        <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+        <button className="btn btn-primary" onClick={salvar} disabled={salv||(!sel.length&&!extra.trim())}>{salv?"Salvando…":sel.length>1?`Registrar ${sel.length} procedimentos`:"Registrar procedimento"}</button>
+      </div>
+    </div></div>
+  );
 }
 
 function LembreteModal({ p, pend, profNome, onClose, onSave }){
