@@ -581,6 +581,8 @@ function Espelho(){
           {colabs.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
         </select>
         <div style={{flex:1}}></div>
+        <button className="btn btn-ghost btn-sm" onClick={exportar} disabled={!linhas.length}>Exportar Excel</button>
+        <button className="btn btn-ghost btn-sm" onClick={()=>{ if(pendentes.length && !confirm(`Ainda há ${pendentes.length} dia(s) a tratar neste mês${selC?" para este funcionário":""}. Imprimir mesmo assim?`)) return; window.print(); }} disabled={!colabs.length} title={selC?"Folha do funcionário selecionado":"Uma folha por funcionário"}>🖨 Imprimir ponto (folha para assinatura)</button>
         <button className="btn btn-primary btn-sm" onClick={()=>setEdit({ colaborador_id:selC||colabs[0]?.id||"", tipo:"entrada", data:_dl(new Date()), hora:"08:00" })}>+ Nova batida</button>
       </div>
       <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
@@ -594,9 +596,6 @@ function Espelho(){
           {semAlerta.length>0 && <button className="btn btn-ghost btn-sm" onClick={()=>{ if(confirm(`Marcar como tratados os ${semAlerta.length} dia(s) sem alerta${selC?" deste funcionário":""}?`)) marcarTratado(semAlerta,true); }}>✓ Tratar os {semAlerta.length} dia(s) sem alerta</button>}
         </> : <>
           {pendentes.length>0 && <span style={{color:"var(--warn)",fontWeight:600,fontSize:13}}>Ainda há {pendentes.length} dia(s) a tratar neste mês</span>}
-          <div style={{flex:1}}></div>
-          <button className="btn btn-ghost btn-sm" onClick={exportar} disabled={!linhas.length}>Exportar Excel</button>
-          <button className="btn btn-ghost btn-sm" onClick={()=>window.print()} disabled={!colabs.length} title={selC?"Folha do funcionário selecionado":"Uma folha por funcionário"}>🖨 Folha para assinatura</button>
         </>}
       </div>
       {semTabTrat && <div className="note" style={{background:"var(--warn-bg)",color:"var(--warn)"}}>Para separar "A tratar" e "Tratados", rode antes o arquivo ponto-tratados.sql no Supabase.</div>}
