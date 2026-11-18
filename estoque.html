@@ -77,6 +77,7 @@
   .nome{font-weight:600}
   .meta{font-size:12.5px; color:var(--muted); margin-top:2px}
   .cat{display:inline-block; font-size:11px; font-weight:600; color:var(--primary-ink); background:var(--ok-bg); padding:2px 7px; border-radius:6px; margin-right:6px}
+  .forn{display:inline-block; font-size:11px; font-weight:600; color:#5C6B75; background:#EEF1F3; padding:2px 7px; border-radius:6px}
   .ctrl{display:inline-block; font-size:11px; font-weight:700; color:#7A3E00; background:#FBE7CF; padding:2px 7px; border-radius:6px; margin-left:2px}
   .qty{font-variant-numeric:tabular-nums; font-weight:600}
   .qty small{font-weight:400; color:var(--muted)}
@@ -177,13 +178,13 @@ const sb = (SUPABASE_URL && SUPABASE_ANON_KEY && !DEMO_URL) ? supabase.createCli
 function demoData() {
   const rel = (n)=>{ const x=new Date(); x.setDate(x.getDate()+n); return _dl(x); };
   const insumos = [
-    { id:"i1", nome:"Tubo a vácuo EDTA", categoria:"Coleta/laboratório", unidade:"un", estoque_ideal:200, amarelo_pct:50, vermelho_pct:20, aviso_dias:60, controlado:false },
-    { id:"i2", nome:"Seringa 3 mL", categoria:"Descartáveis", unidade:"un", estoque_ideal:100, amarelo_pct:50, vermelho_pct:20, aviso_dias:60, controlado:false },
+    { id:"i1", nome:"Tubo a vácuo EDTA", valor_unitario:0.85, fornecedor:"Labor Import", categoria:"Coleta/laboratório", unidade:"un", estoque_ideal:200, amarelo_pct:50, vermelho_pct:20, aviso_dias:60, controlado:false },
+    { id:"i2", nome:"Seringa 3 mL", valor_unitario:0.42, fornecedor:"Cirúrgica Bahia", categoria:"Descartáveis", unidade:"un", estoque_ideal:100, amarelo_pct:50, vermelho_pct:20, aviso_dias:60, controlado:false },
     { id:"i3", nome:"Meio de cultura para transferência", categoria:"Insumos de FIV", unidade:"mL", estoque_ideal:50, amarelo_pct:50, vermelho_pct:20, aviso_dias:60, controlado:false },
-    { id:"i4", nome:"Midazolam 5 mg/mL", categoria:"Medicamentos", unidade:"amp", estoque_ideal:60, amarelo_pct:50, vermelho_pct:20, aviso_dias:90, controlado:true },
+    { id:"i4", nome:"Midazolam 5 mg/mL", valor_unitario:6.9, fornecedor:"Distribuidora Med", categoria:"Medicamentos", unidade:"amp", estoque_ideal:60, amarelo_pct:50, vermelho_pct:20, aviso_dias:90, controlado:true },
     { id:"i5", nome:"Imunobiológico (vacina)", categoria:"Imunobiológicos", unidade:"dose", estoque_ideal:80, amarelo_pct:50, vermelho_pct:20, aviso_dias:45, controlado:false },
-    { id:"i6", nome:"Luva de procedimento M", categoria:"Descartáveis", unidade:"cx", estoque_ideal:40, amarelo_pct:50, vermelho_pct:20, aviso_dias:60, controlado:false },
-    { id:"i7", nome:"Álcool 70%", categoria:"Descartáveis", unidade:"L", estoque_ideal:30, amarelo_pct:50, vermelho_pct:20, aviso_dias:60, controlado:false },
+    { id:"i6", nome:"Luva de procedimento M", valor_unitario:32.5, fornecedor:"Cirúrgica Bahia", categoria:"Descartáveis", unidade:"cx", estoque_ideal:40, amarelo_pct:50, vermelho_pct:20, aviso_dias:60, controlado:false },
+    { id:"i7", nome:"Álcool 70%", valor_unitario:14.9, fornecedor:"Cirúrgica Bahia", categoria:"Descartáveis", unidade:"L", estoque_ideal:30, amarelo_pct:50, vermelho_pct:20, aviso_dias:60, controlado:false },
   ];
   const lotes = [
     { id:"a", insumo_id:"i1", lote:"L2405", validade:rel(400), quantidade:30 },
@@ -200,6 +201,7 @@ function demoData() {
 }
 
 function fmtDate(s){ if(!s) return "—"; const [y,m,d]=s.split("-"); return `${d}/${m}/${y}`; }
+const brl = (n)=> (Number(n)||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 const uid = () => "tmp-" + Math.random().toString(36).slice(2,9);
 
 function resumir(insumo, lotes) {
@@ -263,7 +265,7 @@ function App(){
     else if (filtro==="baixo") l = l.filter(x=>x.q.status==="baixo");
     else if (filtro==="vencimento") l = l.filter(x=>x.validadeStatus==="vencido"||x.validadeStatus==="a_vencer");
     else if (filtro==="controlado") l = l.filter(x=>x.insumo.controlado);
-    if (q.trim()){ const t=q.toLowerCase(); l = l.filter(x=>x.insumo.nome.toLowerCase().includes(t)); }
+    if (q.trim()){ const t=q.toLowerCase(); l = l.filter(x=>x.insumo.nome.toLowerCase().includes(t) || (x.insumo.fornecedor||"").toLowerCase().includes(t)); }
     return l;
   },[linhas,cat,filtro,q]);
 
@@ -272,6 +274,11 @@ function App(){
       estoque_ideal:Number(f.estoque_ideal)||0, amarelo_pct:Number(f.amarelo_pct)||50,
       vermelho_pct:Number(f.vermelho_pct)||20, aviso_dias:Number(f.aviso_dias)||60, controlado:!!f.controlado };
     if(!p.nome.trim()) return "Dê um nome ao insumo.";
+    // valor e fornecedor (colunas de estoque-valor.sql); sem as colunas, o resto continua salvando
+    const temValor = !sb || insumos.length===0 || insumos.some(i=>"valor_unitario" in i);
+    const valor = f.valor_unitario==="" || f.valor_unitario==null ? null : Number(String(f.valor_unitario).replace(/\./g,"").replace(",","."));
+    if(temValor){ p.valor_unitario = valor!=null && !isNaN(valor) ? valor : null; p.fornecedor=(f.fornecedor||"").trim()||null; p.fornecedor_contato=(f.fornecedor_contato||"").trim()||null; }
+    else if(valor!=null || (f.fornecedor||"").trim()) return "Para guardar valor e fornecedor, o banco precisa ser atualizado (rode o instalar-atualizacoes.sql no Supabase).";
     if(sb){ const r=f.id? await sb.from("insumos").update(p).eq("id",f.id) : await sb.from("insumos").insert(p);
       if(r.error) return r.error.message; await load(); }
     else setInsumos(prev=> f.id? prev.map(i=>i.id===f.id?{...i,...p}:i):[...prev,{...p,id:uid()}]);
@@ -341,6 +348,10 @@ function App(){
   }
 
   const tiles=[["critico","Estoque crítico","t-bad"],["baixo","Estoque baixo","t-warn"],["vencimento","Validade vencendo","t-pend"],["controlado","Controlados","t-ok"]];
+  window.__fornecedores=[...new Set(insumos.map(i=>i.fornecedor).filter(Boolean))].sort();
+  // valor do que está em estoque agora (quantidade × valor unitário)
+  const valorEstoque=linhas.reduce((t,x)=>t+(x.insumo.valor_unitario!=null ? x.total*Number(x.insumo.valor_unitario) : 0),0);
+  const semValor=linhas.filter(x=>x.insumo.valor_unitario==null).length;
 
   return (
     <div className="wrap">
@@ -364,8 +375,9 @@ function App(){
               </button>
             ))}
           </div>
+          {valorEstoque>0 && <div className="hint" style={{margin:"-4px 2px 12px",fontSize:13.5,color:"var(--ink)"}}>💰 Valor em estoque: <b>{brl(valorEstoque)}</b>{semValor>0 && <span style={{color:"var(--muted)"}}> · {semValor} produto(s) sem valor cadastrado</span>}</div>}
           <div className="toolbar">
-            <input placeholder="Buscar insumo…" value={q} onChange={e=>setQ(e.target.value)} />
+            <input placeholder="Buscar insumo ou fornecedor…" value={q} onChange={e=>setQ(e.target.value)} />
             <select value={cat} onChange={e=>setCat(e.target.value)}>
               <option value="">Todas as categorias</option>
               {CATS.map(c=><option key={c} value={c}>{c}</option>)}
@@ -377,7 +389,7 @@ function App(){
             : view.length===0 ? <div className="empty"><b>Nada por aqui</b>{q||cat||filtro?"Ajuste os filtros.":"Adicione o primeiro insumo."}</div>
             : (
               <table>
-                <thead><tr><th>Insumo</th><th>Quantidade</th><th>Validade (próx. lote)</th><th>Status</th><th></th></tr></thead>
+                <thead><tr><th>Insumo</th><th>Quantidade</th><th>Valor</th><th>Validade (próx. lote)</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                   {view.map(x=>{
                     const aberto = expand===x.insumo.id;
@@ -387,12 +399,13 @@ function App(){
                         <tr>
                           <td>
                             <div className="nome">{x.insumo.nome}{x.insumo.controlado && <span className="ctrl">controlado</span>}</div>
-                            <div className="meta"><span className="cat">{x.insumo.categoria||"—"}</span></div>
+                            <div className="meta"><span className="cat">{x.insumo.categoria||"—"}</span>{x.insumo.fornecedor && <span className="forn" title={x.insumo.fornecedor_contato||""}>🏷 {x.insumo.fornecedor}</span>}</div>
                           </td>
                           <td>
                             <div className="qty">{x.total} <small>/ {x.insumo.estoque_ideal} {x.insumo.unidade}</small></div>
                             <div className={"bar "+x.q.status}><span style={{width:pctW+"%"}}></span></div>
                           </td>
+                          <td style={{whiteSpace:"nowrap"}}>{x.insumo.valor_unitario!=null ? <><div className="qty" style={{fontSize:14}}>{brl(x.insumo.valor_unitario)} <small>/ {x.insumo.unidade}</small></div><small style={{color:"var(--muted)"}}>em estoque: {brl(x.total*Number(x.insumo.valor_unitario))}</small></> : <span className="dash">—</span>}</td>
                           <td><div className="val-date">{x.proxLote? fmtDate(x.proxLote.validade) : <span className="dash">—</span>}</div></td>
                           <td>
                             <span className={"pill p-"+x.q.status}>{x.q.status==="critico"?"Crítico":x.q.status==="baixo"?"Baixo":"OK"}{x.q.pct!=null?` · ${Math.round(x.q.pct)}%`:""}</span>{" "}
@@ -408,7 +421,7 @@ function App(){
                           </td>
                         </tr>
                         {aberto &&
-                          <tr><td colSpan="5" style={{padding:0}}>
+                          <tr><td colSpan="6" style={{padding:0}}>
                             <div className="lotes-box">
                               <h4>Lotes de {x.insumo.nome}</h4>
                               {x.lotes.length===0 ? <div className="dash">Sem lotes. Use “+ Entrada”.</div> :
@@ -553,7 +566,8 @@ function Inventario({ insumos, lotesPor, onSave, loading }){
 function InsumoModal({ insumo, onClose, onSave }){
   const [f,setF]=useState({ id:insumo.id, nome:insumo.nome||"", categoria:insumo.categoria||"Descartáveis",
     unidade:insumo.unidade||"un", estoque_ideal:insumo.estoque_ideal??0, amarelo_pct:insumo.amarelo_pct??50,
-    vermelho_pct:insumo.vermelho_pct??20, aviso_dias:insumo.aviso_dias??60, controlado:insumo.controlado||false });
+    vermelho_pct:insumo.vermelho_pct??20, aviso_dias:insumo.aviso_dias??60, controlado:insumo.controlado||false,
+    valor_unitario: insumo.valor_unitario!=null ? String(insumo.valor_unitario).replace(".",",") : "", fornecedor:insumo.fornecedor||"", fornecedor_contato:insumo.fornecedor_contato||"" });
   const [err,setErr]=useState(""); const [s,setS]=useState(false);
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
   async function submit(){ setS(true); const e=await onSave(f); setS(false); if(e) setErr(e); }
@@ -570,6 +584,10 @@ function InsumoModal({ insumo, onClose, onSave }){
         <div className="field"><label>Avisar validade (dias)</label><input type="number" value={f.aviso_dias} onChange={e=>set("aviso_dias",e.target.value)} /></div>
         <div className="field"><label>Amarelo (%)</label><input type="number" value={f.amarelo_pct} onChange={e=>set("amarelo_pct",e.target.value)} /></div>
         <div className="field"><label>Vermelho (%)</label><input type="number" value={f.vermelho_pct} onChange={e=>set("vermelho_pct",e.target.value)} /></div>
+        <div className="field"><label>Valor unitário (R$ por {f.unidade||"unidade"})</label><input inputMode="decimal" value={f.valor_unitario} onChange={e=>set("valor_unitario",e.target.value.replace(/[^\d.,]/g,""))} placeholder="ex.: 12,50" /></div>
+        <div className="field"><label>Fornecedor</label><input list="lst-forn" value={f.fornecedor} onChange={e=>set("fornecedor",e.target.value)} placeholder="ex.: Cirúrgica Bahia" />
+          <datalist id="lst-forn">{(window.__fornecedores||[]).map(x=><option key={x} value={x} />)}</datalist></div>
+        <div className="field full"><label>Contato do fornecedor (opcional)</label><input value={f.fornecedor_contato} onChange={e=>set("fornecedor_contato",e.target.value)} placeholder="telefone, e-mail ou site" /></div>
         <div className="field full check"><input type="checkbox" id="ctrl" checked={f.controlado} onChange={e=>set("controlado",e.target.checked)} /><label htmlFor="ctrl" style={{margin:0}}>Medicamento controlado (Portaria 344)</label></div>
       </div>
       <div className="modal-actions"><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={submit} disabled={s}>{s?"Salvando…":"Salvar"}</button></div>

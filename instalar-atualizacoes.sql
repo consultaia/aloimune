@@ -4,7 +4,7 @@
 -- não é apagado nem duplicado. Depois rode verificar-banco.sql para conferir.
 -- Inclui: acompanhamento-schema.sql, datas-schema.sql, carga-mensal.sql,
 --         auditoria-fix.sql, realizados-schema.sql, ponto-tratados.sql,
---         forms-jornada.sql
+--         forms-jornada.sql, estoque-valor.sql
 -- ==========================================================================
 
 -- ######## acompanhamento-schema.sql ########
@@ -641,5 +641,11 @@ begin
     perform public.acomp_sync_pendencias(a);
   end loop;
 end $$;
+
+-- ######## estoque-valor.sql ########
+-- Estoque: valor e fornecedor de cada produto (insumos). Pode rodar de novo sem problema.
+alter table public.insumos add column if not exists valor_unitario    numeric;  -- R$ por unidade
+alter table public.insumos add column if not exists fornecedor        text;
+alter table public.insumos add column if not exists fornecedor_contato text;    -- telefone, e-mail ou site
 
 notify pgrst, 'reload schema';

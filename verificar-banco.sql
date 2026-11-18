@@ -3,7 +3,7 @@
 -- Só LÊ, não muda nada. Rode no SQL Editor do projeto da Aloimune.
 -- Resultado: "✓ Tudo certo" ou uma linha para cada coisa que falta,
 -- dizendo qual arquivo .sql do projeto cria aquilo.
--- Gerado a partir do código das telas (34 tabelas, 253 colunas).
+-- Gerado a partir do código das telas (34 tabelas, 256 colunas).
 -- ==========================================================================
 with esperado(tabela, coluna) as (values
   ('agendamentos','confirmacao_enviada_em'),
@@ -220,9 +220,12 @@ with esperado(tabela, coluna) as (values
   ('insumos','categoria'),
   ('insumos','controlado'),
   ('insumos','estoque_ideal'),
+  ('insumos','fornecedor'),
+  ('insumos','fornecedor_contato'),
   ('insumos','id'),
   ('insumos','nome'),
   ('insumos','unidade'),
+  ('insumos','valor_unitario'),
   ('insumos','vermelho_pct'),
   ('leituras','medido_em'),
   ('leituras','ponto_id'),
