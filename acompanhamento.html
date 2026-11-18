@@ -291,6 +291,9 @@ function App(){
                   : await sb.from("clinica_acompanhamentos").insert(p).select().single();
       if(r.error) return r.error.message + (/proximos_passos|column|schema cache/i.test(r.error.message) ? " — rode de novo o acompanhamento-schema.sql no Supabase." : "");
       setAcs(prev=> id ? prev.map(x=>x.id===id?r.data:x) : [r.data,...prev]);
+      // o banco liga à paciente (ou cria o cadastro): recarrega a lista de pacientes se apareceu uma nova
+      if(r.data.paciente_id && !pacs.some(x=>x.id===r.data.paciente_id)){
+        const pp=await sb.from("clinica_pacientes").select("id,nome,telefone").eq("ativo",true).order("nome").limit(5000); if(!pp.error) setPacs(pp.data||[]); }
       return {ok:true, a:r.data};
     }
     const old=acs.find(x=>x.id===id)||{};
@@ -437,7 +440,7 @@ function Lista({ acs, veTudo, filtro, setFiltro, responsaveis, agDe, podeEditar,
       <tbody>{vis.map(a=>{ const e=estadoPrazo(a); const g=agDe(a); return (
         <tr key={a.id} className="row" onClick={()=>onAbrir(a)}>
           <td style={{whiteSpace:"nowrap"}}><b>{a.prazo?fmtD(a.prazo):"—"}</b>{aberto(a) && <div><span className={"chip "+e.cls}>{e.t}</span></div>}</td>
-          <td><b>{a.paciente}</b><div style={{fontSize:12,color:"var(--muted)"}}>{a.telefone||""}</div>{a.observacoes && <div style={{fontSize:12,color:"var(--muted)",maxWidth:280,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={a.observacoes}>📝 {a.observacoes}</div>}</td>
+          <td><b>{a.paciente}</b>{!a.paciente_id && <span className="chip warn" style={{marginLeft:6}} title="Ainda não está na jornada de nenhuma paciente. Abra para vincular.">sem vínculo</span>}<div style={{fontSize:12,color:"var(--muted)"}}>{a.telefone||""}</div>{a.observacoes && <div style={{fontSize:12,color:"var(--muted)",maxWidth:280,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={a.observacoes}>📝 {a.observacoes}</div>}</td>
           <td>{passoNome(a)}</td>
           <td className="hide-sm">{a.responsavel||<span style={{color:"var(--muted)"}}>—</span>}</td>
           <td>{podeEditar(a) ? <select className={"sit "+a.situacao} value={a.situacao} onClick={ev=>ev.stopPropagation()} onChange={ev=>onSituacao(a,ev.target.value)}>{SITUACOES.map(([k,n])=><option key={k} value={k}>{n}</option>)}</select> : <span className={"sit "+a.situacao}>{SIT[a.situacao]}</span>}</td>
@@ -578,6 +581,17 @@ function Drawer({ a, pode, ehGestor, pacs, resp, agDe, historicoDe, onClose, onS
       </div>
       <div className="dbody">
         {!pode && <div className="lock">Somente leitura — só quem registrou ou o gestor podem editar.</div>}
+        {pacs.length>0 && <div className="card" style={!f.paciente_id?{borderColor:"#F0DDB0",background:"var(--warn-bg)"}:null}>
+          <h3>Jornada da paciente</h3>
+          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+            <span style={{fontSize:13.5}}>{f.paciente_id ? <>Este acompanhamento está na jornada de <b>{(pacs.find(x=>x.id===f.paciente_id)||{}).nome||"—"}</b>. Os próximos passos viram pendências dela.</> : <>Ainda <b>não está ligado</b> a nenhuma paciente. Escolha quem é:</>}</span>
+            {pode && <select value={f.paciente_id||""} onChange={ev=>setF({...f, paciente_id:ev.target.value||null})} style={{minWidth:220}}>
+              <option value="">— escolher paciente —</option>
+              {[...pacs].sort((x,y)=>x.nome.localeCompare(y.nome)).map(x=><option key={x.id} value={x.id}>{x.nome}{x.telefone?` · ${x.telefone}`:""}</option>)}
+            </select>}
+          </div>
+          {pode && f.paciente_id!==(a.paciente_id||null) && <div className="msg" style={{marginTop:6,color:"var(--warn)"}}>Clique em “Salvar alterações” para confirmar o vínculo.</div>}
+        </div>}
         <FormAcomp f={f} set={setF} pacs={pacs} resp={resp} travado={!pode} />
         {pode && <div className="stick">
           <button className="btn btn-primary" onClick={salvar} disabled={busy||!sujo}>{busy?"Salvando…":"Salvar alterações"}</button>

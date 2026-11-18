@@ -3,7 +3,7 @@
 -- Só LÊ, não muda nada. Rode no SQL Editor do projeto da Aloimune.
 -- Resultado: "✓ Tudo certo" ou uma linha para cada coisa que falta,
 -- dizendo qual arquivo .sql do projeto cria aquilo.
--- Gerado a partir do código das telas (34 tabelas, 252 colunas).
+-- Gerado a partir do código das telas (34 tabelas, 253 colunas).
 -- ==========================================================================
 with esperado(tabela, coluna) as (values
   ('agendamentos','confirmacao_enviada_em'),
@@ -151,6 +151,7 @@ with esperado(tabela, coluna) as (values
   ('clinica_pacientes','nome'),
   ('clinica_pacientes','obs_adm'),
   ('clinica_pacientes','telefone'),
+  ('clinica_pendencias','acompanhamento_id'),
   ('clinica_pendencias','concluida_em'),
   ('clinica_pendencias','criado_por'),
   ('clinica_pendencias','descricao'),
@@ -262,17 +263,17 @@ with esperado(tabela, coluna) as (values
 origem(tabela, arquivo) as (values
   ('agendamentos','telas'),
   ('atendimentos','telas'),
-  ('clinica_acompanhamento_responsaveis','acompanhamento-schema.sql'),
-  ('clinica_acompanhamentos','acompanhamento-schema.sql'),
-  ('clinica_acompanhamentos_historico','acompanhamento-schema.sql'),
+  ('clinica_acompanhamento_responsaveis','instalar-atualizacoes.sql'),
+  ('clinica_acompanhamentos','instalar-atualizacoes.sql'),
+  ('clinica_acompanhamentos_historico','instalar-atualizacoes.sql'),
   ('clinica_agenda_excecoes','telas'),
   ('clinica_auditoria','telas'),
-  ('clinica_datas','datas-schema.sql'),
-  ('clinica_datas_ajustes','datas-schema.sql'),
-  ('clinica_datas_plano','datas-schema.sql'),
+  ('clinica_datas','instalar-atualizacoes.sql'),
+  ('clinica_datas_ajustes','instalar-atualizacoes.sql'),
+  ('clinica_datas_plano','instalar-atualizacoes.sql'),
   ('clinica_equipamentos','telas'),
   ('clinica_evolucoes','telas'),
-  ('clinica_integracoes','acompanhamento-schema.sql'),
+  ('clinica_integracoes','instalar-atualizacoes.sql'),
   ('clinica_manutencoes','telas'),
   ('clinica_mensagens_programadas','telas'),
   ('clinica_pacientes','telas'),
@@ -312,8 +313,14 @@ faltas as (
   union all
   -- funções usadas pelas regras de acesso e pela auditoria
   select 3, 'Falta a função', f.nome, 'criada nos SQLs da plataforma'
-    from (values ('clinica_papel_atual'), ('clinica_tg_auditar'), ('acomp_papel'), ('acomp_nome'), ('acomp_receber_forms')) f(nome)
+    from (values ('clinica_papel_atual'), ('clinica_tg_auditar'), ('acomp_papel'), ('acomp_nome'), ('acomp_receber_forms'), ('acomp_vincular_paciente'), ('acomp_sync_pendencias'), ('acomp_etapa_sugerida'), ('acomp_norm'), ('acomp_tel')) f(nome)
    where not exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname=f.nome)
+  union all
+  -- gatilhos que ligam o Forms à jornada e mantêm a auditoria
+  select 3, 'Falta o gatilho', g.tabela||' → '||g.nome, 'rode '||g.arquivo
+    from (values ('clinica_acompanhamentos','acomp_vincular','forms-jornada.sql'), ('clinica_acompanhamentos','acomp_pendencias','forms-jornada.sql'), ('clinica_pendencias','acomp_pend_volta','forms-jornada.sql'), ('clinica_realizados','tg_aud_realizados','realizados-schema.sql'), ('clinica_pacientes','tg_aud_pacientes','SQLs originais da plataforma')) g(tabela,nome,arquivo)
+   where to_regclass('public.'||g.tabela) is not null
+     and not exists (select 1 from pg_trigger t where t.tgrelid=to_regclass('public.'||g.tabela) and t.tgname=g.nome)
   union all
   -- tabelas sem RLS ligado (dados expostos)
   select 4, 'RLS desligado', e.tabela, 'alter table public.'||e.tabela||' enable row level security;'
