@@ -143,6 +143,8 @@ const ETAPAS=[
 const ETAPA_NOME=Object.fromEntries(ETAPAS);
 const TIPOS_PEND={ exame_solicitado:"Exame solicitado", resultado_avaliar:"Resultado a avaliar", retorno:"Retorno", consentimento:"Consentimento", pagamento:"Pagamento", outro:"Outro" };
 const hojeStr=()=>_dl(new Date());
+// nome da pendência: as que vêm do pós-consulta (Forms) já trazem o passo na descrição
+const pendTxt=(x)=> x.descricao && (x.tipo==="outro" || x.descricao.startsWith("Pós-consulta: ")) ? x.descricao : (TIPOS_PEND[x.tipo]||x.tipo)+(x.descricao?` · ${x.descricao}`:"");
 const idade=(n)=>{ if(!n) return null; const d=new Date(n), h=new Date(); let a=h.getFullYear()-d.getFullYear(); if(h<new Date(h.getFullYear(),d.getMonth(),d.getDate())) a--; return a; };
 const fmtD=(iso)=> iso ? iso.slice(8,10)+"/"+iso.slice(5,7)+"/"+iso.slice(0,4) : "—";
 const dias=(iso)=> iso ? Math.round((new Date(iso)-new Date(hojeStr()))/864e5) : null;
@@ -322,7 +324,7 @@ function App(){
           <tbody>{pends.filter(x=>{ const p=pacs.find(y=>y.id===x.paciente_id); return p && visiveis.includes(p); }).map(x=>{ const p=pacs.find(y=>y.id===x.paciente_id); const d=dias(x.vencimento); return (
             <tr key={x.id} className="row" onClick={()=>setSel(p)}>
               <td className={d!==null&&d<0?"":""} style={{color:d!==null&&d<0?"var(--bad)":undefined,fontWeight:d!==null&&d<0?700:400}}>{x.vencimento?fmtD(x.vencimento):"—"}{d!==null&&d<0?` (há ${-d}d)`:""}</td>
-              <td style={{fontWeight:600}}>{p?.nome}</td><td>{TIPOS_PEND[x.tipo]}{x.descricao?` · ${x.descricao}`:""}</td><td>{profNome(p?.medico_responsavel_id)}</td>
+              <td style={{fontWeight:600}}>{p?.nome}</td><td>{pendTxt(x)}</td><td>{profNome(p?.medico_responsavel_id)}</td>
               <td>{podeEditar && <button className="btn btn-ghost btn-sm" onClick={e=>{ e.stopPropagation(); concluirPend(x); }}>Concluir</button>}</td></tr>); })}
             {pends.length===0 && <tr><td colSpan="5" className="empty">Nenhuma pendência aberta. 🎉</td></tr>}
           </tbody></table>
@@ -420,14 +422,14 @@ function Drawer({ p, papel, meuProf, profs, pends, ags, msgs, podeClinico, podeE
           </div>
           <div className="card"><h3>Pendências abertas</h3>
             {pends.length===0 ? <div className="empty" style={{padding:8}}>Nenhuma.</div> : pends.map(x=>{ const d=dias(x.vencimento); return (
-              <div key={x.id} className={"pend"+(d!==null&&d<0?" venc":"")}><div className="d"><b>{TIPOS_PEND[x.tipo]}</b>{x.descricao?` · ${x.descricao}`:""}</div><div className="v">{x.vencimento?(d<0?`vencida há ${-d}d`:d===0?"hoje":`em ${d}d`):"sem prazo"}</div></div>); })}
+              <div key={x.id} className={"pend"+(d!==null&&d<0?" venc":"")}><div className="d"><b>{pendTxt(x)}</b></div><div className="v">{x.vencimento?(d<0?`vencida há ${-d}d`:d===0?"hoje":`em ${d}d`):"sem prazo"}</div></div>); })}
           </div>
         </>}
 
         {tab==="pendencias" && <>
           <div className="card"><h3>Abertas</h3>
             {pends.length===0 ? <div className="empty" style={{padding:8}}>Nenhuma pendência.</div> : pends.map(x=>{ const d=dias(x.vencimento); return (
-              <div key={x.id} className={"pend"+(d!==null&&d<0?" venc":"")}><div className="d"><b>{TIPOS_PEND[x.tipo]}</b>{x.descricao?` · ${x.descricao}`:""}</div><div className="v">{x.vencimento?fmtD(x.vencimento):"sem prazo"}</div>
+              <div key={x.id} className={"pend"+(d!==null&&d<0?" venc":"")}><div className="d"><b>{pendTxt(x)}</b></div><div className="v">{x.vencimento?fmtD(x.vencimento):"sem prazo"}</div>
                 {podeEditar && <><button className="btn btn-primary btn-sm" title="A Dri manda um WhatsApp na data que você escolher" onClick={()=>setLem(x)}>Lembrar pela Dri</button><button className="btn btn-ghost btn-sm" onClick={()=>onConcluirPend(x)}>Concluir</button><button className="btn btn-ghost btn-sm" onClick={()=>onConcluirPend(x,"cancelada")}>×</button></>}</div>); })}
           </div>
           <div className="card"><h3>Lembretes pela Dri (WhatsApp)</h3>
@@ -469,7 +471,7 @@ function Drawer({ p, papel, meuProf, profs, pends, ags, msgs, podeClinico, podeE
           </div>
         </>)}
 
-        {tab==="historico" && <Historico p={p} agsPac={hist} msgs={msgs} profNome={profNome} papel={papel} profs={profs} podeEditar={podeEditar} registrando={registrando} setRegistrando={setRegistrando} />}
+        {tab==="historico" && <Historico p={p} agsPac={hist} msgs={msgs} profNome={profNome} papel={papel} profs={profs} podeEditar={podeEditar} registrando={registrando} setRegistrando={setRegistrando} onMover={onMover} />}
       </div>
       {editar && <PacienteForm p={p} profs={profs} meuProf={meuProf} onClose={()=>setEditar(false)} onSave={async(f)=>{ const e=await onSave(f); if(!e) setEditar(false); return e; }} />}
       {lem && <LembreteModal p={p} pend={lem} profNome={profNome} onClose={()=>setLem(null)} onSave={async(f)=>{ const e=await onLembrete(p,lem,f); if(!e) setLem(null); return e; }} />}
@@ -493,7 +495,10 @@ const GRUPOS_PROC=[
   ["Exames e imagem",["USG","Coleta de exames","Exames pré-tratamento","Histeroscopia"]],
   ["Tratamento",["1ª etapa do tratamento","2ª etapa do tratamento","3ª etapa do tratamento"]],
 ];
-function Historico({ p, agsPac, msgs, profNome, papel, profs, podeEditar, registrando, setRegistrando }){
+// etapa da jornada que o próximo passo do pós-consulta sugere (mesma regra do banco: acomp_etapa_sugerida)
+function etapaSugerida(passos){ const t=(l)=>(passos||[]).some(x=>l.includes(x));
+  return t(["etapa1","etapa2","etapa3","reforco_crossmatch","reforco_intralipid","vacina"]) ? "tratamento" : t(["exames_pre","usg"]) ? "aguardando_resultados" : t(["retorno"]) ? "retorno" : t(["consulta"]) ? "investigacao" : null; }
+function Historico({ p, agsPac, msgs, profNome, papel, profs, podeEditar, registrando, setRegistrando, onMover }){
   const [dados,setDados]=useState(null); const [filtro,setFiltro]=useState("");
   const [recarga,setRecarga]=useState(0); const [toast,setToast]=useState("");
   // grava um registro por procedimento marcado
@@ -515,9 +520,11 @@ function Historico({ p, agsPac, msgs, profNome, papel, profs, podeEditar, regist
       const h=hojeStr();
       setDados({ aud:[{acao:"mudou_etapa",detalhe:"etapa=>primeira_consulta",quando:addD(h,-60)+"T10:00:00Z"},{acao:"mudou_etapa",detalhe:"etapa=primeira_consulta>investigacao",quando:addD(h,-45)+"T15:00:00Z"}],
         pends:[{id:"x1",tipo:"exame_solicitado",descricao:"Painel de trombofilia",status:"concluida",criado_em:addD(h,-45)+"T15:10:00Z",concluida_em:addD(h,-20)+"T11:00:00Z",vencimento:addD(h,-25)},
-               {id:"x2",tipo:"exame_solicitado",descricao:"USG transvaginal",status:"aberta",criado_em:addD(h,-10)+"T09:00:00Z",vencimento:addD(h,5)}],
+               {id:"x2",tipo:"exame_solicitado",descricao:"USG transvaginal",status:"aberta",criado_em:addD(h,-10)+"T09:00:00Z",vencimento:addD(h,5)},
+               {id:"x3",tipo:"outro",descricao:"Pós-consulta: Reforço de Intralipid",status:"aberta",criado_em:addD(h,-2)+"T17:00:01Z",vencimento:addD(h,8),acompanhamento_id:"k2"}],
         real:[{id:"r1",data:addD(h,-15),procedimento:"Reforço de Intralipid",profissional:"Enf. Paula",obs:null}],
-        atend:[], acomp:[{id:"k1",data_consulta:addD(h,-45),proximos_passos:["exames_pre"],situacao:"concluido",prazo:addD(h,-30),responsavel:"Joana (recepção)",criado_em:addD(h,-45)+"T16:00:00Z"}],
+        atend:[], acomp:[{id:"k1",data_consulta:addD(h,-45),proximos_passos:["exames_pre"],situacao:"concluido",prazo:addD(h,-30),responsavel:"Joana (recepção)",criado_em:addD(h,-45)+"T16:00:00Z"},
+               {id:"k2",data_consulta:addD(h,-2),proximos_passos:["reforco_intralipid"],situacao:"pendente",prazo:addD(h,8),responsavel:"Carlos (enfermagem)",criado_por_nome:"Carlos · via Forms",criado_em:addD(h,-2)+"T17:00:00Z"}],
         agsDemo:[{id:"g1",data:addD(h,-60),hora:"09:00",tipo:"Primeira consulta",profissional:"Dra. Marina Alves",status:"realizado"},{id:"g2",data:addD(h,-45),hora:"14:00",tipo:"Retorno",profissional:"Dra. Marina Alves",status:"realizado"},
                  {id:"g3",data:addD(h,-20),hora:"08:00",tipo:"Crossmatch",profissional:"Enf. Paula",status:"realizado"},{id:"g4",data:addD(h,12),hora:"10:30",tipo:"Retorno",profissional:"Dra. Marina Alves",status:"confirmado"}] });
       return;
@@ -565,13 +572,13 @@ function Historico({ p, agsPac, msgs, profNome, papel, profs, podeEditar, regist
     push(x.data+"T"+((x.criado_em||"").slice(11,16)||"12:00"), cons?"consulta":"proc", "✅", cons?"consulta":"proc", `Realizou: ${x.procedimento}`,
       [x.profissional, x.obs].filter(Boolean).join(" · ")); });
   // pendências
-  dados.pends.forEach(x=>{ const nome=(TIPOS_PEND[x.tipo]||x.tipo)+(x.descricao?` — ${x.descricao}`:"");
+  dados.pends.forEach(x=>{ const nome=pendTxt(x);
     push(x.criado_em||x.created_at||dt(x.vencimento),"pend","📋","pend",`Pendência aberta: ${nome}`, x.vencimento?`prazo ${fmtD(x.vencimento)}`:"sem prazo");
     if(x.status==="concluida") push(x.concluida_em||dt(x.vencimento),"pend","✓","ok",`Pendência concluída: ${nome}`, x.vencimento && x.concluida_em && x.concluida_em.slice(0,10)>x.vencimento ? `concluída ${Math.round((new Date(x.concluida_em.slice(0,10))-new Date(x.vencimento))/864e5)} dia(s) depois do prazo` : "");
     if(x.status==="cancelada") push(x.concluida_em||dt(x.vencimento),"pend","×","",`Pendência cancelada: ${nome}`,""); });
   // acompanhamento pós-consulta
   dados.acomp.forEach(x=>{ const passos=(Array.isArray(x.proximos_passos)?x.proximos_passos:[]).map(k=>k==="outro"&&x.proximo_passo_outro?x.proximo_passo_outro:(PASSO_H[k]||k)).join(" + ");
-    push(x.criado_em||dt(x.data_consulta),"acomp","📞","",`Acompanhamento pós-consulta: ${passos||"—"}`,`${x.responsavel?"responsável "+x.responsavel+" · ":""}${x.prazo?"prazo "+fmtD(x.prazo)+" · ":""}${x.situacao==="concluido"?"concluído":x.situacao==="em_andamento"?"em andamento":"pendente"}`); });
+    push(x.criado_em||dt(x.data_consulta),"acomp","📞","",`Acompanhamento pós-consulta${/via Forms/.test(x.criado_por_nome||"")?" (via Forms)":""}: ${passos||"—"}`,`${x.responsavel?"responsável "+x.responsavel+" · ":""}${x.prazo?"prazo "+fmtD(x.prazo)+" · ":""}${x.situacao==="concluido"?"concluído":x.situacao==="em_andamento"?"em andamento":"pendente"}`); });
   // lembretes da Dri
   (msgs||[]).filter(m=>m.status!=="cancelada").forEach(m=> push(m.status==="enviada"?(m.enviado_em||dt(m.enviar_em)):dt(m.enviar_em),"msg","💬",m.status==="erro"?"bad":"",
     `Lembrete por WhatsApp (${m.tipo==="lembrete_retorno"?"retorno":"pendência"})`, STATUS_MSG[m.status]||m.status));
@@ -582,6 +589,9 @@ function Historico({ p, agsPac, msgs, profNome, papel, profs, podeEditar, regist
   // resumo
   const realiz=ags.filter(a=>a.status==="realizado");
   const realMan=dados.real||[];
+  // sugestão de etapa: pelo acompanhamento em aberto mais recente
+  const acAberto=[...dados.acomp].filter(x=>x.situacao!=="concluido").sort((a,b)=>String(b.criado_em||"").localeCompare(String(a.criado_em||"")))[0];
+  const sug=acAberto ? etapaSugerida(Array.isArray(acAberto.proximos_passos)?acAberto.proximos_passos:[]) : null;
   const nCons=realiz.filter(a=>ehConsulta(a.tipo)).length + realMan.filter(x=>ehConsulta(x.procedimento)).length,
         nProc=realiz.filter(a=>!ehConsulta(a.tipo)).length + dados.atend.filter(x=>!x.agendamento_id && !ehConsulta(x.tipo)).length + realMan.filter(x=>!ehConsulta(x.procedimento)).length;
   const faltas=ags.filter(a=>a.status==="faltou").length;
@@ -602,6 +612,11 @@ function Historico({ p, agsPac, msgs, profNome, papel, profs, podeEditar, regist
         <div><b>{pendAb} · {pendOk}</b><span>pendências abertas · concluídas</span></div>
       </div>
     </div>
+    {sug && sug!==p.etapa && podeEditar && onMover && <div className="card" style={{borderColor:"#BFE3E2",background:"#F2FAFA",display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+      <span style={{fontSize:20}}>💡</span>
+      <div style={{flex:1,minWidth:220,fontSize:13.5}}>O pós-consulta indica que ela está em <b>{ETAPA_NOME[sug]}</b> (próximo passo: {(acAberto.proximos_passos||[]).map(k=>k==="outro"&&acAberto.proximo_passo_outro?acAberto.proximo_passo_outro:(PASSO_H[k]||k)).join(" + ")}). Hoje ela está em <b>{ETAPA_NOME[p.etapa]||"—"}</b>.</div>
+      <button className="btn btn-primary btn-sm" onClick={()=>onMover(p,sug)}>Mover para {ETAPA_NOME[sug]}</button>
+    </div>}
     <div className="card">
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
         <h3 style={{margin:0,flex:1}}>Procedimentos realizados</h3>
@@ -708,11 +723,11 @@ function LembreteModal({ p, pend, profNome, onClose, onSave }){
   const prof=profNome(p.medico_responsavel_id); const nome=(p.nome||"").split(" ")[0];
   const preview = pend.tipo==="retorno"
     ? `Olá, ${nome}! Aqui é a Dri, da clínica. Está chegando a data do seu retorno com ${prof} (previsto para ${fmtD(pend.vencimento).slice(0,5)}). Quer que eu já marque um horário pra você? É só responder esta mensagem 🙂`
-    : `Olá, ${nome}! Aqui é a Dri, da clínica. Passando para lembrar: ${TIPOS_PEND[pend.tipo]}${pend.descricao?` — ${pend.descricao}`:""}. Se precisar marcar um horário, é só responder 🙂`;
+    : `Olá, ${nome}! Aqui é a Dri, da clínica. Passando para lembrar: ${pendTxt(pend).replace(/^Pós-consulta: /,"")}. Se precisar marcar um horário, é só responder 🙂`;
   async function submit(){ setS(true); const e=await onSave({...f, texto:f.texto||preview}); setS(false); if(e) setErr(e); }
   return (
     <div className="overlay" onClick={onClose} style={{alignItems:"center",justifyContent:"center"}}><div className="card" onClick={e=>e.stopPropagation()} style={{width:"min(520px,94vw)"}}>
-      <h3 style={{textTransform:"none",letterSpacing:0,fontSize:17,color:"var(--ink)"}}>Lembrar pela Dri · {TIPOS_PEND[pend.tipo]}</h3>
+      <h3 style={{textTransform:"none",letterSpacing:0,fontSize:17,color:"var(--ink)"}}>Lembrar pela Dri · {pendTxt(pend)}</h3>
       {err && <div className="lock" style={{background:"var(--bad-bg)",color:"var(--bad)",marginBottom:10}}>{err}</div>}
       <div className="grid">
         <div className="field"><label>Enviar em</label><input type="date" value={f.enviar_em} min={hojeStr()} onChange={e=>setF({...f,enviar_em:e.target.value})} /></div>
